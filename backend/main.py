@@ -1652,12 +1652,13 @@ async def sync_ad_users():
             users = result.get("users", [])
             total_from_ad = result.get("total", 0)
 
-            # Prepare batch for upsert (filter users with email)
-            batch = []
+            # Prepare batch for upsert (filter users with email, dedupe by email)
+            batch_dict = {}
             for user in users:
                 if not user.get("email"):
                     continue
-                batch.append({
+                # Use dict to deduplicate by email (last wins)
+                batch_dict[user.get("email")] = {
                     "name": user.get("name", ""),
                     "email": user.get("email"),
                     "position": user.get("title", ""),
@@ -1665,7 +1666,8 @@ async def sync_ad_users():
                     "ad_dn": user.get("dn"),
                     "manager_dn": user.get("manager_dn"),
                     "ad_login": user.get("login")
-                })
+                }
+            batch = list(batch_dict.values())
 
             # Batch upsert - one request instead of N
             if batch:
