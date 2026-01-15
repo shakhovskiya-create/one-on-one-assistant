@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Play, Pause, RotateCcw, Check, ChevronRight, Clock, User } from 'lucide-react'
 
-const API_URL = process.env.API_URL || 'http://localhost:8000'
+import { API_URL } from '@/lib/config'
 
 interface Question {
   text: string
