@@ -2,12 +2,10 @@
 
 mod ad_client;
 mod connector;
-mod ews_client;
 
 use ad_client::ADClient;
 use connector::Connector;
 use directories::ProjectDirs;
-use ews_client::EWSClient;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -27,9 +25,6 @@ pub struct ConnectorConfig {
     pub ad_bind_user: String,
     pub ad_bind_password: String,
     pub ad_base_dn: String,
-    pub ews_url: String,
-    pub ews_username: String,
-    pub ews_password: String,
 }
 
 impl Default for ConnectorConfig {
@@ -43,9 +38,6 @@ impl Default for ConnectorConfig {
             ad_bind_user: String::new(),
             ad_bind_password: String::new(),
             ad_base_dn: "DC=ekfgroup,DC=ru".to_string(),
-            ews_url: "https://post.ekf.su/EWS/Exchange.asmx".to_string(),
-            ews_username: String::new(),
-            ews_password: String::new(),
         }
     }
 }
@@ -102,7 +94,6 @@ pub struct ConnectorStatus {
     pub running: bool,
     pub connected: bool,
     pub ad_connected: bool,
-    pub exchange_connected: bool,
     pub last_error: Option<String>,
     pub logs: Vec<String>,
 }
@@ -140,7 +131,6 @@ async fn get_status(state: State<'_, AppState>) -> Result<ConnectorStatus, Strin
         running: false,
         connected: false,
         ad_connected: false,
-        exchange_connected: false,
         last_error: None,
         logs,
     };
@@ -151,7 +141,6 @@ async fn get_status(state: State<'_, AppState>) -> Result<ConnectorStatus, Strin
         status.running = conn_state.running;
         status.connected = conn_state.connected;
         status.ad_connected = conn_state.ad_connected;
-        status.exchange_connected = conn_state.exchange_connected;
         status.last_error = conn_state.last_error;
     }
 
@@ -170,7 +159,7 @@ async fn start_connector(state: State<'_, AppState>) -> Result<(), String> {
         return Err("Учетные данные AD не заданы".to_string());
     }
 
-    // Create clients
+    // Create AD client
     let ad_client = ADClient::new(
         &config.ad_server,
         config.ad_port,
@@ -180,14 +169,11 @@ async fn start_connector(state: State<'_, AppState>) -> Result<(), String> {
         &config.ad_base_dn,
     );
 
-    let ews_client = EWSClient::new(&config.ews_url, &config.ews_username, &config.ews_password);
-
     // Create connector with shared log buffer
     let connector = Arc::new(Connector::new(
         &config.backend_url,
         &config.api_key,
         ad_client,
-        ews_client,
         state.logs.clone(),
     ));
 
@@ -234,15 +220,6 @@ async fn test_ad(state: State<'_, AppState>) -> Result<String, String> {
     ad_client.test_connection().await.map(|_| "OK".to_string())
 }
 
-#[tauri::command]
-async fn test_exchange(state: State<'_, AppState>) -> Result<String, String> {
-    let config = state.config.lock().await.clone();
-
-    let ews_client = EWSClient::new(&config.ews_url, &config.ews_username, &config.ews_password);
-
-    ews_client.test_connection().await.map(|_| "OK".to_string())
-}
-
 fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -268,8 +245,7 @@ fn main() {
             start_connector,
             stop_connector,
             clear_logs,
-            test_ad,
-            test_exchange
+            test_ad
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

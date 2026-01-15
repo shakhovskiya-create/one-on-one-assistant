@@ -18,15 +18,9 @@ tokio = { version = "1", features = ["full"] }
 # LDAP for Active Directory
 ldap3 = { version = "0.11", default-features = false, features = ["tls-native"] }
 
-# HTTP client for EWS
-reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
-
 # WebSocket client
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3"
-
-# XML parsing for EWS SOAP
-quick-xml = { version = "0.37", features = ["serialize"] }
 
 # Base64 for photos
 base64 = "0.22"

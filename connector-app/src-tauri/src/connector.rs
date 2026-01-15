@@ -1,5 +1,4 @@
 use crate::ad_client::ADClient;
-use crate::ews_client::EWSClient;
 use crate::LogBuffer;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -14,7 +13,6 @@ pub struct ConnectorState {
     pub running: bool,
     pub connected: bool,
     pub ad_connected: bool,
-    pub exchange_connected: bool,
     pub last_error: Option<String>,
 }
 
@@ -29,7 +27,6 @@ pub struct Connector {
     backend_url: String,
     api_key: String,
     ad_client: ADClient,
-    ews_client: EWSClient,
     state: Arc<Mutex<ConnectorState>>,
     logs: LogBuffer,
 }
@@ -39,19 +36,16 @@ impl Connector {
         backend_url: &str,
         api_key: &str,
         ad_client: ADClient,
-        ews_client: EWSClient,
         logs: LogBuffer,
     ) -> Self {
         Self {
             backend_url: backend_url.to_string(),
             api_key: api_key.to_string(),
             ad_client,
-            ews_client,
             state: Arc::new(Mutex::new(ConnectorState {
                 running: false,
                 connected: false,
                 ad_connected: false,
-                exchange_connected: false,
                 last_error: None,
             })),
             logs,
@@ -94,19 +88,6 @@ impl Connector {
             Err(e) => {
                 self.log(&format!("AD connection failed: {}", e)).await;
                 self.state.lock().await.ad_connected = false;
-            }
-        }
-
-        // Test EWS connection
-        self.log("Testing Exchange connection...").await;
-        match self.ews_client.test_connection().await {
-            Ok(_) => {
-                self.log("Exchange connection OK").await;
-                self.state.lock().await.exchange_connected = true;
-            }
-            Err(e) => {
-                self.log(&format!("Exchange connection failed: {}", e)).await;
-                self.state.lock().await.exchange_connected = false;
             }
         }
 
@@ -240,21 +221,8 @@ impl Connector {
                 }
             }
             "get_calendar" => {
-                let params = cmd.params.as_ref().unwrap();
-                let email = params.get("email").and_then(|v| v.as_str()).unwrap_or("");
-                let days_back = params.get("days_back").and_then(|v| v.as_i64()).unwrap_or(7) as i32;
-                let days_forward = params.get("days_forward").and_then(|v| v.as_i64()).unwrap_or(30) as i32;
-
-                match self.ews_client.get_calendar_events(email, days_back, days_forward).await {
-                    Ok(events) => {
-                        self.log(&format!("Fetched {} events for {}", events.len(), email)).await;
-                        json!(events)
-                    }
-                    Err(e) => {
-                        self.log(&format!("Calendar fetch failed: {}", e)).await;
-                        json!([])
-                    }
-                }
+                // Calendar is now handled directly by the backend
+                json!({ "error": "Calendar integration moved to cloud backend" })
             }
             _ => {
                 warn!("Unknown command: {}", cmd.command);
