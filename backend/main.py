@@ -1690,9 +1690,31 @@ async def connector_websocket(websocket: WebSocket, token: Optional[str] = None)
 @app.get("/connector/status")
 async def connector_status():
     """Check if on-prem connector is connected"""
+    # Get last sync info from database
+    last_sync = None
+    ad_status = "unknown"
+    exchange_status = "unknown"
+
+    if supabase:
+        try:
+            # Check if we have any employees synced (indicates AD is working)
+            emp_count = supabase.table("employees").select("id", count="exact").execute()
+            if emp_count.count and emp_count.count > 0:
+                ad_status = "connected" if connector_manager.connected else "disconnected"
+
+            # Check if we have any meetings with exchange_id (indicates Exchange is working)
+            meeting_count = supabase.table("meetings").select("id", count="exact").not_.is_("exchange_id", "null").execute()
+            if meeting_count.count and meeting_count.count > 0:
+                exchange_status = "connected" if connector_manager.connected else "disconnected"
+        except:
+            pass
+
     return {
         "connected": connector_manager.connected,
-        "pending_requests": len(connector_manager.pending_requests)
+        "pending_requests": len(connector_manager.pending_requests),
+        "last_sync": last_sync,
+        "ad_status": ad_status if connector_manager.connected else "disconnected",
+        "exchange_status": exchange_status if connector_manager.connected else "disconnected"
     }
 
 
