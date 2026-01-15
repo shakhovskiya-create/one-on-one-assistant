@@ -1639,7 +1639,7 @@ async def sync_ad_users():
     synced = 0
     total_from_ad = 0
     offset = 0
-    batch_size = 50  # Smaller batches to avoid timeouts
+    batch_size = 100
 
     # Fetch users in batches
     while True:
@@ -1651,14 +1651,12 @@ async def sync_ad_users():
         users = result.get("users", [])
         total_from_ad = result.get("total", 0)
 
+        # Prepare batch for upsert (filter users with email)
+        batch = []
         for user in users:
             if not user.get("email"):
                 continue
-
-            # Check if exists
-            existing = supabase.table("employees").select("id").eq("email", user["email"]).execute()
-
-            employee_data = {
+            batch.append({
                 "name": user.get("name", ""),
                 "email": user.get("email"),
                 "position": user.get("title", ""),
@@ -1666,14 +1664,12 @@ async def sync_ad_users():
                 "ad_dn": user.get("dn"),
                 "manager_dn": user.get("manager_dn"),
                 "ad_login": user.get("login")
-            }
+            })
 
-            if existing.data:
-                supabase.table("employees").update(employee_data).eq("id", existing.data[0]["id"]).execute()
-            else:
-                supabase.table("employees").insert(employee_data).execute()
-
-            synced += 1
+        # Batch upsert - one request instead of N
+        if batch:
+            supabase.table("employees").upsert(batch, on_conflict="email").execute()
+            synced += len(batch)
 
         # Check if more pages
         if not result.get("has_more", False):
@@ -1681,18 +1677,21 @@ async def sync_ad_users():
 
         offset += batch_size
 
-        # Small delay between batches
-        await asyncio.sleep(0.5)
+    # Update manager relationships in batch
+    employees = supabase.table("employees").select("id, ad_dn, manager_dn").execute()
+    dn_to_id = {e["ad_dn"]: e["id"] for e in employees.data if e.get("ad_dn")}
 
-    # Update manager relationships
-    employees = supabase.table("employees").select("id, manager_dn").execute()
-    dn_to_id = {e.get("ad_dn"): e["id"] for e in supabase.table("employees").select("id, ad_dn").execute().data if e.get("ad_dn")}
-
+    updates = []
     for emp in employees.data:
         if emp.get("manager_dn") and emp["manager_dn"] in dn_to_id:
-            supabase.table("employees").update({
+            updates.append({
+                "id": emp["id"],
                 "manager_id": dn_to_id[emp["manager_dn"]]
-            }).eq("id", emp["id"]).execute()
+            })
+
+    # Batch update managers
+    if updates:
+        supabase.table("employees").upsert(updates, on_conflict="id").execute()
 
     return {
         "synced": synced,
