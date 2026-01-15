@@ -320,10 +320,14 @@ function TaskCard({
           <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">Эпик</span>
         )}
         {task.is_blocking && (
-          <Flame size={14} className="text-red-500" title="Блокирует другие задачи" />
+          <span title="Блокирует другие задачи">
+            <Flame size={14} className="text-red-500" />
+          </span>
         )}
         {task.blocked_by.length > 0 && (
-          <AlertTriangle size={14} className="text-yellow-500" title="Заблокирована" />
+          <span title="Заблокирована">
+            <AlertTriangle size={14} className="text-yellow-500" />
+          </span>
         )}
       </div>
 
@@ -361,7 +365,7 @@ function TaskCard({
       <div className="flex items-center justify-between text-sm text-gray-500">
         <div className="flex items-center gap-2">
           {task.assignee && (
-            <div className="flex items-center gap-1" title={task.assignee.name}>
+            <div className="flex items-center gap-1">
               <User size={14} />
               <span className="truncate max-w-[80px]">{task.assignee.name.split(' ')[0]}</span>
             </div>
@@ -783,7 +787,7 @@ function TaskDetailsModal({
               </div>
             </div>
           ) : (
-            <>
+            <div>
               <h2 className="text-xl font-semibold mb-2">{task.title}</h2>
               {task.description && (
                 <p className="text-gray-600 mb-4">{task.description}</p>
@@ -920,7 +924,7 @@ function TaskDetailsModal({
                   </div>
                 )}
               </div>
-            </>
+            </div>
           )}
         </div>
       </div>
