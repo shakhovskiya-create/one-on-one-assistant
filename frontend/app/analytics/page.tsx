@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense } from 'react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   LineChart,
@@ -34,11 +34,13 @@ import {
 } from 'lucide-react'
 
 import { API_URL } from '@/lib/config'
+import { useAuth } from '@/lib/auth'
 
 interface Employee {
   id: string
   name: string
   position: string
+  department?: string | null
 }
 
 interface Category {
@@ -93,14 +95,28 @@ interface CategoryAnalytics {
 function AnalyticsContent() {
   const searchParams = useSearchParams()
   const employeeIdParam = searchParams.get('employee')
+  const { subordinates: authSubordinates } = useAuth()
 
-  const [employees, setEmployees] = useState<Employee[]>([])
+  const [allEmployees, setAllEmployees] = useState<Employee[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [selectedEmployee, setSelectedEmployee] = useState(employeeIdParam || '')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
   const [categoryAnalytics, setCategoryAnalytics] = useState<CategoryAnalytics[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Filter employees to only show subordinates with departments
+  const employees = useMemo(() => {
+    if (authSubordinates.length > 0) {
+      const subordinateIds = new Set(authSubordinates.map(s => s.id))
+      return allEmployees.filter(emp =>
+        subordinateIds.has(emp.id) && emp.department
+      )
+    }
+    // Fallback: show all employees with departments
+    return allEmployees.filter(emp => emp.department)
+  }, [allEmployees, authSubordinates])
 
   useEffect(() => {
     fetchEmployees()
@@ -114,15 +130,19 @@ function AnalyticsContent() {
     }
   }, [selectedEmployee])
 
+  // Auto-select first employee when employees load
+  useEffect(() => {
+    if (!selectedEmployee && employees.length > 0) {
+      setSelectedEmployee(employeeIdParam || employees[0].id)
+    }
+  }, [employees, employeeIdParam, selectedEmployee])
+
   const fetchEmployees = async () => {
     try {
       const res = await fetch(`${API_URL}/employees`)
       if (res.ok) {
         const data = await res.json()
-        setEmployees(data)
-        if (!selectedEmployee && data.length > 0) {
-          setSelectedEmployee(employeeIdParam || data[0].id)
-        }
+        setAllEmployees(data)
       }
     } catch (error) {
       console.error('Failed to fetch employees:', error)
@@ -143,14 +163,30 @@ function AnalyticsContent() {
 
   const fetchAnalytics = async (employeeId: string) => {
     setLoading(true)
+    setError(null)
     try {
       const res = await fetch(`${API_URL}/analytics/employee/${employeeId}`)
       if (res.ok) {
         const data = await res.json()
         setAnalytics(data)
+      } else {
+        // Return empty analytics if endpoint fails
+        setAnalytics({
+          mood_history: [],
+          agreement_stats: { total: 0, completed: 0, pending: 0, overdue: 0 },
+          red_flags_history: [],
+          total_meetings: 0
+        })
       }
     } catch (error) {
       console.error('Failed to fetch analytics:', error)
+      // Return empty analytics on error
+      setAnalytics({
+        mood_history: [],
+        agreement_stats: { total: 0, completed: 0, pending: 0, overdue: 0 },
+        red_flags_history: [],
+        total_meetings: 0
+      })
     } finally {
       setLoading(false)
     }

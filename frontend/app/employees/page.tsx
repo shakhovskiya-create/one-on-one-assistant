@@ -92,14 +92,15 @@ export default function EmployeesPage() {
   // Filter employees based on mode
   const employees = useMemo(() => {
     if (filter === 'all') {
-      return allEmployees
+      // Show all employees with departments only
+      return allEmployees.filter(emp => emp.department)
     }
     // For 'my-team', use subordinates from auth context
-    // Also include current user if they exist in the list
+    // Filter to only show employees with departments
     if (authSubordinates.length > 0) {
       const subordinateIds = new Set(authSubordinates.map(s => s.id))
       return allEmployees.filter(emp =>
-        subordinateIds.has(emp.id) || (user && emp.id === user.id)
+        emp.department && (subordinateIds.has(emp.id) || (user && emp.id === user.id))
       )
     }
     return []
