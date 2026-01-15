@@ -2082,29 +2082,47 @@ async def find_free_slots(
 
 
 @app.post("/calendar/sync")
-async def sync_calendar_meetings(employee_id: str = Form(...)):
-    """Sync meetings from Exchange to app with participant matching"""
+async def sync_calendar_meetings(employee_id: Optional[str] = Form(None)):
+    """Sync meetings from Exchange to app with participant matching.
+    If employee_id is provided, sync only that employee's calendar.
+    Otherwise, sync calendars of all employees with emails.
+    """
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not configured")
-
-    employee = supabase.table("employees").select("id, email").eq("id", employee_id).single().execute()
-    if not employee.data or not employee.data.get("email"):
-        raise HTTPException(status_code=404, detail="Employee email not found")
-
-    events = await connector_manager.send_command("get_calendar", {
-        "email": employee.data["email"],
-        "days_back": 30,
-        "days_forward": 60
-    }, timeout=120.0)
 
     # Build email->employee_id lookup for participant matching
     all_employees = supabase.table("employees").select("id, email").execute()
     email_to_id = {emp["email"].lower(): emp["id"] for emp in all_employees.data if emp.get("email")}
 
+    # Determine which employees to sync
+    if employee_id:
+        employee = supabase.table("employees").select("id, email").eq("id", employee_id).single().execute()
+        if not employee.data or not employee.data.get("email"):
+            raise HTTPException(status_code=404, detail="Employee email not found")
+        employees_to_sync = [employee.data]
+    else:
+        # Sync all employees with emails
+        employees_to_sync = [emp for emp in all_employees.data if emp.get("email")]
+
+    all_events = []
+    errors = []
+
+    for emp in employees_to_sync:
+        try:
+            events = await connector_manager.send_command("get_calendar", {
+                "email": emp["email"],
+                "days_back": 30,
+                "days_forward": 60
+            }, timeout=120.0)
+            if isinstance(events, list):
+                all_events.extend(events)
+        except Exception as e:
+            errors.append(f"{emp.get('email', 'unknown')}: {str(e)}")
+
     synced = 0
     participants_matched = 0
 
-    for event in events:
+    for event in all_events:
         if not event.get("id"):
             continue
 
@@ -2156,8 +2174,11 @@ async def sync_calendar_meetings(employee_id: str = Form(...)):
 
     return {
         "synced": synced,
-        "total_events": len(events),
-        "participants_matched": participants_matched
+        "total": len(all_events),
+        "total_events": len(all_events),
+        "employees_synced": len(employees_to_sync),
+        "participants_matched": participants_matched,
+        "errors": errors if errors else None
     }
 
 
