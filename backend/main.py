@@ -1639,14 +1639,14 @@ async def sync_ad_users():
     synced = 0
     total_from_ad = 0
     offset = 0
-    batch_size = 100
+    batch_size = 50  # Smaller batches to avoid timeouts
 
     # Fetch users in batches
     while True:
         result = await connector_manager.send_command("sync_users", {
             "offset": offset,
             "limit": batch_size
-        }, timeout=60.0)
+        }, timeout=30.0)
 
         users = result.get("users", [])
         total_from_ad = result.get("total", 0)
@@ -1680,6 +1680,9 @@ async def sync_ad_users():
             break
 
         offset += batch_size
+
+        # Small delay between batches
+        await asyncio.sleep(0.5)
 
     # Update manager relationships
     employees = supabase.table("employees").select("id, manager_dn").execute()
