@@ -4,21 +4,13 @@ import { useState, useEffect } from 'react'
 import { 
   Plus, 
   Search, 
-  Filter, 
-  MoreVertical, 
   Calendar, 
   User, 
-  Flag, 
-  Link2, 
-  MessageSquare,
-  ChevronDown,
-  ChevronRight,
-  Flame,
-  Clock,
-  Tag,
   X,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  Flame,
+  MoreVertical
 } from 'lucide-react'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -28,7 +20,7 @@ interface Employee {
   name: string
 }
 
-interface Tag {
+interface TaskTag {
   id: string
   name: string
   color: string
@@ -46,12 +38,29 @@ interface Task {
   due_date?: string
   is_epic: boolean
   parent_id?: string
-  tags: Tag[]
+  tags: TaskTag[]
   blocks: string[]
   blocked_by: string[]
   is_blocking: boolean
   subtasks?: Task[]
   progress?: number
+  comments?: Comment[]
+  history?: HistoryEntry[]
+}
+
+interface Comment {
+  id: string
+  content: string
+  author?: { name: string }
+  created_at: string
+}
+
+interface HistoryEntry {
+  id: string
+  field_name: string
+  old_value?: string
+  new_value?: string
+  created_at: string
 }
 
 interface KanbanData {
@@ -62,7 +71,7 @@ interface KanbanData {
   done: Task[]
 }
 
-const STATUS_CONFIG = {
+const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   backlog: { label: 'Бэклог', color: 'bg-gray-100' },
   todo: { label: 'К выполнению', color: 'bg-blue-100' },
   in_progress: { label: 'В работе', color: 'bg-yellow-100' },
@@ -70,7 +79,7 @@ const STATUS_CONFIG = {
   done: { label: 'Готово', color: 'bg-green-100' }
 }
 
-const FLAG_COLORS = {
+const FLAG_COLORS: Record<string, { bg: string; label: string }> = {
   red: { bg: 'bg-red-500', label: 'Критично' },
   orange: { bg: 'bg-orange-500', label: 'Высокий' },
   yellow: { bg: 'bg-yellow-500', label: 'Средний' },
@@ -84,7 +93,7 @@ const PRIORITY_LABELS = ['', 'Критический', 'Высокий', 'Сре
 export default function TasksPage() {
   const [kanban, setKanban] = useState<KanbanData | null>(null)
   const [employees, setEmployees] = useState<Employee[]>([])
-  const [tags, setTags] = useState<Tag[]>([])
+  const [tags, setTags] = useState<TaskTag[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showTaskModal, setShowTaskModal] = useState(false)
@@ -100,8 +109,12 @@ export default function TasksPage() {
   const fetchData = async () => {
     setLoading(true)
     try {
+      const kanbanUrl = filterAssignee 
+        ? `${API_URL}/kanban?assignee_id=${filterAssignee}` 
+        : `${API_URL}/kanban`
+      
       const [kanbanRes, employeesRes, tagsRes] = await Promise.all([
-        fetch(`${API_URL}/kanban${filterAssignee ? `?assignee_id=${filterAssignee}` : ''}`),
+        fetch(kanbanUrl),
         fetch(`${API_URL}/employees`),
         fetch(`${API_URL}/tags`)
       ])
@@ -133,7 +146,6 @@ export default function TasksPage() {
       return
     }
 
-    // Check if task is blocked
     if (draggedTask.blocked_by.length > 0 && newStatus === 'done') {
       alert('Задача заблокирована другими задачами!')
       setDraggedTask(null)
@@ -183,7 +195,6 @@ export default function TasksPage() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Задачи</h1>
         <button
@@ -195,7 +206,6 @@ export default function TasksPage() {
         </button>
       </div>
 
-      {/* Filters */}
       <div className="flex gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
@@ -219,7 +229,6 @@ export default function TasksPage() {
         </select>
       </div>
 
-      {/* Kanban Board */}
       <div className="flex-1 overflow-x-auto">
         <div className="flex gap-4 h-full min-w-max pb-4">
           {Object.entries(STATUS_CONFIG).map(([status, config]) => (
@@ -251,7 +260,6 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {/* Create Task Modal */}
       {showCreateModal && (
         <CreateTaskModal
           employees={employees}
@@ -264,7 +272,6 @@ export default function TasksPage() {
         />
       )}
 
-      {/* Task Details Modal */}
       {showTaskModal && selectedTask && (
         <TaskDetailsModal
           task={selectedTask}
@@ -276,7 +283,7 @@ export default function TasksPage() {
           }}
           onUpdated={() => {
             fetchData()
-            openTaskDetails(selectedTask.id)
+            if (selectedTask) openTaskDetails(selectedTask.id)
           }}
         />
       )}
@@ -284,7 +291,6 @@ export default function TasksPage() {
   )
 }
 
-// Task Card Component
 function TaskCard({ 
   task, 
   onDragStart, 
@@ -295,6 +301,7 @@ function TaskCard({
   onClick: () => void 
 }) {
   const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done'
+  const flagConfig = task.flag_color ? FLAG_COLORS[task.flag_color] : null
 
   return (
     <div
@@ -305,10 +312,9 @@ function TaskCard({
         task.is_blocking ? 'ring-2 ring-red-400' : ''
       } ${task.blocked_by.length > 0 ? 'opacity-60' : ''}`}
     >
-      {/* Top row - flags and indicators */}
       <div className="flex items-center gap-2 mb-2">
-        {task.flag_color && (
-          <div className={`w-3 h-3 rounded-full ${FLAG_COLORS[task.flag_color as keyof typeof FLAG_COLORS]?.bg}`} />
+        {flagConfig && (
+          <div className={`w-3 h-3 rounded-full ${flagConfig.bg}`} />
         )}
         {task.is_epic && (
           <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">Эпик</span>
@@ -321,10 +327,8 @@ function TaskCard({
         )}
       </div>
 
-      {/* Title */}
       <h4 className="font-medium text-gray-900 mb-2 line-clamp-2">{task.title}</h4>
 
-      {/* Tags */}
       {task.tags.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {task.tags.slice(0, 3).map(tag => (
@@ -342,7 +346,6 @@ function TaskCard({
         </div>
       )}
 
-      {/* Progress bar for epics */}
       {task.is_epic && task.progress !== undefined && (
         <div className="mb-2">
           <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
@@ -355,7 +358,6 @@ function TaskCard({
         </div>
       )}
 
-      {/* Bottom row */}
       <div className="flex items-center justify-between text-sm text-gray-500">
         <div className="flex items-center gap-2">
           {task.assignee && (
@@ -377,7 +379,6 @@ function TaskCard({
   )
 }
 
-// Create Task Modal
 function CreateTaskModal({ 
   employees, 
   tags, 
@@ -385,7 +386,7 @@ function CreateTaskModal({
   onCreated 
 }: { 
   employees: Employee[]
-  tags: Tag[]
+  tags: TaskTag[]
   onClose: () => void
   onCreated: () => void 
 }) {
@@ -451,7 +452,6 @@ function CreateTaskModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          {/* Title */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Название *</label>
             <input
@@ -464,7 +464,6 @@ function CreateTaskModal({
             />
           </div>
 
-          {/* Description */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Описание</label>
             <textarea
@@ -476,7 +475,6 @@ function CreateTaskModal({
             />
           </div>
 
-          {/* Status & Priority */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Статус</label>
@@ -504,7 +502,6 @@ function CreateTaskModal({
             </div>
           </div>
 
-          {/* Assignee & Co-Assignee */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Исполнитель</label>
@@ -534,7 +531,6 @@ function CreateTaskModal({
             </div>
           </div>
 
-          {/* Due Date & Flag */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Срок</label>
@@ -561,7 +557,6 @@ function CreateTaskModal({
             </div>
           </div>
 
-          {/* Is Epic */}
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -573,7 +568,6 @@ function CreateTaskModal({
             <label htmlFor="is_epic" className="text-sm text-gray-700">Это эпик (содержит подзадачи)</label>
           </div>
 
-          {/* Tags */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Теги</label>
             <div className="flex flex-wrap gap-2">
@@ -594,7 +588,6 @@ function CreateTaskModal({
             </div>
           </div>
 
-          {/* Submit */}
           <div className="flex gap-3 pt-4">
             <button
               type="button"
@@ -617,7 +610,6 @@ function CreateTaskModal({
   )
 }
 
-// Task Details Modal
 function TaskDetailsModal({
   task,
   employees,
@@ -625,9 +617,9 @@ function TaskDetailsModal({
   onClose,
   onUpdated
 }: {
-  task: Task & { comments?: any[], history?: any[], links?: any[], subtasks?: Task[] }
+  task: Task
   employees: Employee[]
-  tags: Tag[]
+  tags: TaskTag[]
   onClose: () => void
   onUpdated: () => void
 }) {
@@ -674,7 +666,7 @@ function TaskDetailsModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           task_id: task.id,
-          author_id: employees[0]?.id, // TODO: use current user
+          author_id: employees[0]?.id,
           content: newComment
         })
       })
@@ -697,18 +689,21 @@ function TaskDetailsModal({
     }
   }
 
+  const statusConfig = STATUS_CONFIG[task.status]
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden m-4 flex flex-col">
-        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center gap-2">
             {task.is_epic && (
               <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">Эпик</span>
             )}
-            <span className={`text-xs px-2 py-1 rounded ${STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.color}`}>
-              {STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.label}
-            </span>
+            {statusConfig && (
+              <span className={`text-xs px-2 py-1 rounded ${statusConfig.color}`}>
+                {statusConfig.label}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -723,7 +718,6 @@ function TaskDetailsModal({
           </div>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto p-4">
           {editing ? (
             <div className="space-y-4">
@@ -795,7 +789,6 @@ function TaskDetailsModal({
                 <p className="text-gray-600 mb-4">{task.description}</p>
               )}
 
-              {/* Meta info */}
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
                   <span className="text-sm text-gray-500">Исполнитель</span>
@@ -819,7 +812,6 @@ function TaskDetailsModal({
                 </div>
               </div>
 
-              {/* Tags */}
               {task.tags.length > 0 && (
                 <div className="mb-6">
                   <span className="text-sm text-gray-500 block mb-2">Теги</span>
@@ -837,8 +829,7 @@ function TaskDetailsModal({
                 </div>
               )}
 
-              {/* Subtasks for epics */}
-              {task.is_epic && task.subtasks && (
+              {task.is_epic && task.subtasks && task.subtasks.length > 0 && (
                 <div className="mb-6">
                   <span className="text-sm text-gray-500 block mb-2">
                     Подзадачи ({task.subtasks.filter(s => s.status === 'done').length}/{task.subtasks.length})
@@ -860,7 +851,6 @@ function TaskDetailsModal({
                 </div>
               )}
 
-              {/* Tabs */}
               <div className="border-t pt-4">
                 <div className="flex gap-4 mb-4">
                   <button
@@ -879,7 +869,7 @@ function TaskDetailsModal({
 
                 {activeTab === 'comments' && (
                   <div className="space-y-3">
-                    {task.comments?.map((comment: any) => (
+                    {task.comments?.map((comment) => (
                       <div key={comment.id} className="p-3 bg-gray-50 rounded-lg">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-medium text-sm">{comment.author?.name || 'Аноним'}</span>
@@ -911,7 +901,7 @@ function TaskDetailsModal({
 
                 {activeTab === 'history' && (
                   <div className="space-y-2">
-                    {task.history?.map((entry: any) => (
+                    {task.history?.map((entry) => (
                       <div key={entry.id} className="text-sm">
                         <span className="text-gray-400">
                           {new Date(entry.created_at).toLocaleString('ru-RU')}
