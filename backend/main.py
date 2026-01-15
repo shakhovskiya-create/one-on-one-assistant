@@ -1680,25 +1680,22 @@ async def sync_ad_users():
 
             offset += batch_size
 
-        # Update manager relationships in batch
+        # Update manager relationships
         employees = supabase.table("employees").select("id, ad_dn, manager_dn").execute()
         dn_to_id = {e["ad_dn"]: e["id"] for e in employees.data if e.get("ad_dn")}
 
-        updates = []
+        managers_updated = 0
         for emp in employees.data:
             if emp.get("manager_dn") and emp["manager_dn"] in dn_to_id:
-                updates.append({
-                    "id": emp["id"],
-                    "manager_id": dn_to_id[emp["manager_dn"]]
-                })
-
-        # Batch update managers
-        if updates:
-            supabase.table("employees").upsert(updates, on_conflict="id").execute()
+                supabase.table("employees").update(
+                    {"manager_id": dn_to_id[emp["manager_dn"]]}
+                ).eq("id", emp["id"]).execute()
+                managers_updated += 1
 
         return {
             "synced": synced,
-            "total_from_ad": total_from_ad
+            "total_from_ad": total_from_ad,
+            "managers_updated": managers_updated
         }
     except Exception as e:
         import traceback
