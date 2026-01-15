@@ -1,4 +1,4 @@
-use ldap3::{Ldap, LdapConnAsync, LdapConnSettings, Scope, SearchEntry};
+use ldap3::{Ldap, LdapConnAsync, LdapConnSettings, Scope, SearchEntry, controls::{MakeCritical, SimplePagedResults}};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tracing::{error, info};
@@ -126,15 +126,8 @@ impl ADClient {
             attrs.push("thumbnailPhoto");
         }
 
-        let (rs, _res) = ldap
-            .search(&self.users_ou, Scope::Subtree, filter, attrs)
-            .await
-            .map_err(|e| format!("Search failed: {}", e))?
-            .success()
-            .map_err(|e| format!("Search result error: {}", e))?;
-
         let mut stats = SyncStats {
-            total_in_ad: rs.len(),
+            total_in_ad: 0,
             with_department: 0,
             without_department: 0,
             with_email: 0,
@@ -145,61 +138,90 @@ impl ADClient {
 
         let mut users = Vec::new();
 
-        for entry in rs {
-            let entry = SearchEntry::construct(entry);
+        // Use paged search to handle large directories (page size 500)
+        let mut page_ctrl = SimplePagedResults::new(500, false);
 
-            let department = entry.attrs.get("department").and_then(|v| v.first().cloned());
-            let email = entry.attrs.get("mail").and_then(|v| v.first().cloned());
+        loop {
+            let controls = vec![page_ctrl.clone().critical().into()];
 
-            // Update stats
-            if department.is_some() {
-                stats.with_department += 1;
+            let search_result = ldap
+                .with_controls(controls)
+                .search(&self.base_dn, Scope::Subtree, filter, attrs.clone())
+                .await
+                .map_err(|e| format!("Search failed: {}", e))?;
+
+            let (rs, res) = search_result
+                .success()
+                .map_err(|e| format!("Search result error: {}", e))?;
+
+            stats.total_in_ad += rs.len();
+
+            for entry in rs {
+                let entry = SearchEntry::construct(entry);
+
+                let department = entry.attrs.get("department").and_then(|v| v.first().cloned());
+                let email = entry.attrs.get("mail").and_then(|v| v.first().cloned());
+
+                // Update stats
+                if department.is_some() {
+                    stats.with_department += 1;
+                } else {
+                    stats.without_department += 1;
+                }
+
+                if email.is_some() {
+                    stats.with_email += 1;
+                } else {
+                    stats.without_email += 1;
+                }
+
+                // Apply filters
+                if require_department && department.is_none() {
+                    stats.filtered_out += 1;
+                    continue;
+                }
+
+                if require_email && email.is_none() {
+                    stats.filtered_out += 1;
+                    continue;
+                }
+
+                // Parse photo
+                let photo_base64 = if include_photo {
+                    entry
+                        .bin_attrs
+                        .get("thumbnailPhoto")
+                        .and_then(|photos| photos.first())
+                        .map(|photo| base64::Engine::encode(&base64::engine::general_purpose::STANDARD, photo))
+                } else {
+                    None
+                };
+
+                let user = ADUser {
+                    dn: entry.dn,
+                    name: entry.attrs.get("cn").and_then(|v| v.first().cloned()),
+                    email,
+                    login: entry.attrs.get("sAMAccountName").and_then(|v| v.first().cloned()),
+                    title: entry.attrs.get("title").and_then(|v| v.first().cloned()),
+                    department,
+                    manager_dn: entry.attrs.get("manager").and_then(|v| v.first().cloned()),
+                    phone: entry.attrs.get("telephoneNumber").and_then(|v| v.first().cloned()),
+                    mobile: entry.attrs.get("mobile").and_then(|v| v.first().cloned()),
+                    photo_base64,
+                };
+
+                users.push(user);
+            }
+
+            // Check if there are more pages
+            if let Some(cookie) = SimplePagedResults::from(&res) {
+                if cookie.is_empty() {
+                    break;
+                }
+                page_ctrl.set_cookie(cookie);
             } else {
-                stats.without_department += 1;
+                break;
             }
-
-            if email.is_some() {
-                stats.with_email += 1;
-            } else {
-                stats.without_email += 1;
-            }
-
-            // Apply filters
-            if require_department && department.is_none() {
-                stats.filtered_out += 1;
-                continue;
-            }
-
-            if require_email && email.is_none() {
-                stats.filtered_out += 1;
-                continue;
-            }
-
-            // Parse photo
-            let photo_base64 = if include_photo {
-                entry
-                    .bin_attrs
-                    .get("thumbnailPhoto")
-                    .and_then(|photos| photos.first())
-                    .map(|photo| base64::Engine::encode(&base64::engine::general_purpose::STANDARD, photo))
-            } else {
-                None
-            };
-
-            let user = ADUser {
-                dn: entry.dn,
-                name: entry.attrs.get("cn").and_then(|v| v.first().cloned()),
-                email,
-                login: entry.attrs.get("sAMAccountName").and_then(|v| v.first().cloned()),
-                title: entry.attrs.get("title").and_then(|v| v.first().cloned()),
-                department,
-                manager_dn: entry.attrs.get("manager").and_then(|v| v.first().cloned()),
-                phone: entry.attrs.get("telephoneNumber").and_then(|v| v.first().cloned()),
-                mobile: entry.attrs.get("mobile").and_then(|v| v.first().cloned()),
-                photo_base64,
-            };
-
-            users.push(user);
         }
 
         stats.returned = users.len();
