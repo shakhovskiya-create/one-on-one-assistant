@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Upload, FileAudio, Loader2, CheckCircle, AlertCircle, X } from 'lucide-react'
 
-const API_URL = process.env.API_URL || 'http://localhost:8000'
+import { API_URL } from '@/lib/config'
 
 interface Employee {
   id: string
