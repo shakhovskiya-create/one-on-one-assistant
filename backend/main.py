@@ -343,6 +343,12 @@ async def delete_employee(employee_id: str):
     supabase.table("employees").delete().eq("id", employee_id).execute()
     return {"status": "deleted"}
 
+@app.get("/employees/{employee_id}")
+async def get_employee(employee_id: str):
+    result = supabase.table("employees").select("*").eq("id", employee_id).single().execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    return result.data
 
 # ============ MEETINGS ============
 
