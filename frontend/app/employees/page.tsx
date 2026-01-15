@@ -2,24 +2,31 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Plus, Edit, User, Calendar } from 'lucide-react'
+import { Plus, Edit, User, Calendar, Users, Filter, Building } from 'lucide-react'
 
 import { API_URL } from '@/lib/config'
+import { useAuth } from '@/lib/auth'
 
 interface Employee {
   id: string
   name: string
   position: string
+  email: string | null
+  department: string | null
+  manager_id: string | null
   meeting_frequency: string
   meeting_day: string | null
   development_priorities: string | null
+  level?: number
 }
 
 export default function EmployeesPage() {
+  const { user, subordinates } = useAuth()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
+  const [filter, setFilter] = useState<'all' | 'my-team'>('my-team')
   const [formData, setFormData] = useState({
     name: '',
     position: '',
@@ -30,11 +37,19 @@ export default function EmployeesPage() {
 
   useEffect(() => {
     fetchEmployees()
-  }, [])
+  }, [filter, user])
 
   const fetchEmployees = async () => {
+    setLoading(true)
     try {
-      const res = await fetch(`${API_URL}/employees`)
+      let url = `${API_URL}/employees`
+
+      // If filter is 'my-team' and user is logged in, use filtered endpoint
+      if (filter === 'my-team' && user) {
+        url = `${API_URL}/employees/my-team?manager_id=${user.id}&include_indirect=true`
+      }
+
+      const res = await fetch(url)
       if (res.ok) {
         const data = await res.json()
         setEmployees(data)
@@ -76,12 +91,12 @@ export default function EmployeesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     try {
       const url = editingEmployee
         ? `${API_URL}/employees/${editingEmployee.id}`
         : `${API_URL}/employees`
-      
+
       const res = await fetch(url, {
         method: editingEmployee ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -111,6 +126,17 @@ export default function EmployeesPage() {
     friday: 'Пятница',
   }
 
+  // Group employees by department for better display
+  const groupByDepartment = (emps: Employee[]) => {
+    const groups: Record<string, Employee[]> = {}
+    emps.forEach(emp => {
+      const dept = emp.department || 'Без отдела'
+      if (!groups[dept]) groups[dept] = []
+      groups[dept].push(emp)
+    })
+    return groups
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -119,10 +145,40 @@ export default function EmployeesPage() {
     )
   }
 
+  const groupedEmployees = groupByDepartment(employees)
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Команда</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-bold text-gray-900">Команда</h1>
+          {user && (
+            <div className="flex border rounded-lg overflow-hidden">
+              <button
+                onClick={() => setFilter('my-team')}
+                className={`flex items-center gap-1 px-3 py-1 text-sm ${
+                  filter === 'my-team'
+                    ? 'bg-blue-600 text-white'
+                    : 'hover:bg-gray-100'
+                }`}
+              >
+                <Users size={14} />
+                Мои подчинённые
+              </button>
+              <button
+                onClick={() => setFilter('all')}
+                className={`flex items-center gap-1 px-3 py-1 text-sm ${
+                  filter === 'all'
+                    ? 'bg-blue-600 text-white'
+                    : 'hover:bg-gray-100'
+                }`}
+              >
+                <Building size={14} />
+                Все
+              </button>
+            </div>
+          )}
+        </div>
         <button
           onClick={() => openModal()}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -132,65 +188,108 @@ export default function EmployeesPage() {
         </button>
       </div>
 
+      {/* Stats */}
+      {user && filter === 'my-team' && (
+        <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
+          <div className="flex items-center gap-2 text-blue-700">
+            <Users size={20} />
+            <span className="font-medium">
+              {employees.length} {employees.length === 1 ? 'подчинённый' : 'подчинённых'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {employees.length === 0 ? (
         <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
           <User size={48} className="mx-auto text-gray-400 mb-4" />
-          <p className="text-gray-600 mb-4">Пока нет сотрудников</p>
-          <button
-            onClick={() => openModal()}
-            className="text-blue-600 hover:underline"
-          >
-            Добавить первого сотрудника
-          </button>
+          <p className="text-gray-600 mb-4">
+            {filter === 'my-team' ? 'У вас нет подчинённых' : 'Пока нет сотрудников'}
+          </p>
+          {filter === 'all' && (
+            <button
+              onClick={() => openModal()}
+              className="text-blue-600 hover:underline"
+            >
+              Добавить первого сотрудника
+            </button>
+          )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {employees.map((employee) => (
-            <div
-              key={employee.id}
-              className="bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-shadow"
-            >
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="font-semibold text-lg">{employee.name}</h3>
-                  <p className="text-gray-500">{employee.position}</p>
-                </div>
-                <button
-                  onClick={() => openModal(employee)}
-                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
-                >
-                  <Edit size={16} />
-                </button>
-              </div>
-              
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center gap-2 text-gray-600">
-                  <Calendar size={16} />
-                  <span>{frequencyLabels[employee.meeting_frequency]}</span>
-                  {employee.meeting_day && (
-                    <span>({dayLabels[employee.meeting_day]})</span>
-                  )}
-                </div>
-                {employee.development_priorities && (
-                  <p className="text-gray-500 line-clamp-2">
-                    {employee.development_priorities}
-                  </p>
-                )}
-              </div>
+        <div className="space-y-6">
+          {Object.entries(groupedEmployees).map(([department, deptEmployees]) => (
+            <div key={department}>
+              <h2 className="text-sm font-medium text-gray-500 mb-3 flex items-center gap-2">
+                <Building size={14} />
+                {department}
+                <span className="text-gray-400">({deptEmployees.length})</span>
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {deptEmployees.map((employee) => (
+                  <div
+                    key={employee.id}
+                    className="bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h3 className="font-semibold text-lg">{employee.name}</h3>
+                        <p className="text-gray-500">{employee.position}</p>
+                        {employee.email && (
+                          <p className="text-xs text-gray-400 mt-1">{employee.email}</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => openModal(employee)}
+                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+                      >
+                        <Edit size={16} />
+                      </button>
+                    </div>
 
-              <div className="mt-4 pt-4 border-t flex gap-2">
-                <Link
-                  href={`/employees/${employee.id}`}
-                  className="flex-1 text-center py-2 text-blue-600 hover:bg-blue-50 rounded text-sm"
-                >
-                  Профиль
-                </Link>
-                <Link
-                  href={`/analytics?employee=${employee.id}`}
-                  className="flex-1 text-center py-2 text-blue-600 hover:bg-blue-50 rounded text-sm"
-                >
-                  Аналитика
-                </Link>
+                    {/* Level indicator for subordinates */}
+                    {filter === 'my-team' && employee.level && (
+                      <div className="mb-3">
+                        <span className={`text-xs px-2 py-0.5 rounded ${
+                          employee.level === 1
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {employee.level === 1 ? 'Прямой подчинённый' : `Уровень ${employee.level}`}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <Calendar size={16} />
+                        <span>{frequencyLabels[employee.meeting_frequency] || 'Не задано'}</span>
+                        {employee.meeting_day && (
+                          <span>({dayLabels[employee.meeting_day]})</span>
+                        )}
+                      </div>
+                      {employee.development_priorities && (
+                        <p className="text-gray-500 line-clamp-2">
+                          {employee.development_priorities}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-4 pt-4 border-t flex gap-2">
+                      <Link
+                        href={`/employees/${employee.id}`}
+                        className="flex-1 text-center py-2 text-blue-600 hover:bg-blue-50 rounded text-sm"
+                      >
+                        Досье
+                      </Link>
+                      <Link
+                        href={`/analytics?employee=${employee.id}`}
+                        className="flex-1 text-center py-2 text-blue-600 hover:bg-blue-50 rounded text-sm"
+                      >
+                        Аналитика
+                      </Link>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ))}
