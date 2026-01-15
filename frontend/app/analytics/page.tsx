@@ -17,7 +17,7 @@ import {
 } from 'recharts'
 import { TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+import { API_URL } from '@/lib/config'
 
 interface Employee {
   id: string
