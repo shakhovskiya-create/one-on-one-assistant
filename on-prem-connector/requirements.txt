@@ -1,0 +1,16 @@
+# On-Prem Connector Dependencies
+
+# WebSocket client
+websockets>=12.0
+
+# LDAP (Active Directory)
+ldap3>=2.9.1
+
+# Exchange Web Services
+exchangelib>=5.1.0
+
+# Config parsing
+PyYAML>=6.0.1
+
+# For development/testing
+python-dotenv>=1.0.0
