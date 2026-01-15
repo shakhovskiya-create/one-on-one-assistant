@@ -600,7 +600,7 @@ async def list_tasks(
     )
     
     if assignee_id:
-        query = query.or_(f"assignee_id.eq.{assignee_id},co_assignee_id.eq.{assignee_id}")
+        query = query.eq("assignee_id", assignee_id)
     
     if status:
         query = query.eq("status", status)
