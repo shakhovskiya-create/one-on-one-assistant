@@ -160,9 +160,9 @@ export default function TasksPage() {
     }
   }
 
-  const filterTasks = (tasks: Task[]) => {
+  const filterTasks = (tasks: Task[]): Task[] => {
     if (!searchQuery) return tasks
-    return tasks.filter(t => 
+    return tasks.filter((t: Task) => 
       t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.description?.toLowerCase().includes(searchQuery.toLowerCase())
     )
@@ -172,10 +172,11 @@ export default function TasksPage() {
     const { active } = event
     const taskId = active.id as string
     
-    // Find the task across all columns
     if (kanban) {
-      for (const status of Object.keys(kanban)) {
-        const task = kanban[status as keyof KanbanData].find(t => t.id === taskId)
+      const statuses = Object.keys(kanban) as Array<keyof KanbanData>
+      for (const status of statuses) {
+        const tasks = kanban[status]
+        const task = tasks.find((t: Task) => t.id === taskId)
         if (task) {
           setActiveTask(task)
           break
@@ -187,14 +188,14 @@ export default function TasksPage() {
   const handleDragOver = (event: DragOverEvent) => {
     const { over } = event
     if (over) {
-      // Check if over a column
       if (Object.keys(STATUS_CONFIG).includes(over.id as string)) {
         setOverColumn(over.id as string)
       } else {
-        // Over a task - find its column
         if (kanban) {
-          for (const [status, tasks] of Object.entries(kanban)) {
-            if (tasks.find(t => t.id === over.id)) {
+          const statuses = Object.keys(kanban) as Array<keyof KanbanData>
+          for (const status of statuses) {
+            const tasks = kanban[status]
+            if (tasks.find((t: Task) => t.id === over.id)) {
               setOverColumn(status)
               break
             }
@@ -215,15 +216,15 @@ export default function TasksPage() {
     if (!over || !kanban) return
 
     const taskId = active.id as string
-    let newStatus: string | null = null
+    let newStatus: keyof KanbanData | null = null
 
-    // Determine target column
     if (Object.keys(STATUS_CONFIG).includes(over.id as string)) {
-      newStatus = over.id as string
+      newStatus = over.id as keyof KanbanData
     } else {
-      // Dropped on a task - find its column
-      for (const [status, tasks] of Object.entries(kanban)) {
-        if (tasks.find(t => t.id === over.id)) {
+      const statuses = Object.keys(kanban) as Array<keyof KanbanData>
+      for (const status of statuses) {
+        const tasks = kanban[status]
+        if (tasks.find((t: Task) => t.id === over.id)) {
           newStatus = status
           break
         }
@@ -232,12 +233,13 @@ export default function TasksPage() {
 
     if (!newStatus) return
 
-    // Find current task
     let currentTask: Task | null = null
-    let currentStatus: string | null = null
+    let currentStatus: keyof KanbanData | null = null
     
-    for (const [status, tasks] of Object.entries(kanban)) {
-      const task = tasks.find(t => t.id === taskId)
+    const statuses = Object.keys(kanban) as Array<keyof KanbanData>
+    for (const status of statuses) {
+      const tasks = kanban[status]
+      const task = tasks.find((t: Task) => t.id === taskId)
       if (task) {
         currentTask = task
         currentStatus = status
@@ -245,28 +247,24 @@ export default function TasksPage() {
       }
     }
 
-    if (!currentTask || currentStatus === newStatus) return
+    if (!currentTask || !currentStatus || currentStatus === newStatus) return
 
-    // Check if blocked
     if ((currentTask.blocked_by?.length ?? 0) > 0 && newStatus === 'done') {
       alert('Задача заблокирована другими задачами!')
       return
     }
 
-    // Optimistic update
-    const newKanban = { ...kanban }
-    newKanban[currentStatus as keyof KanbanData] = kanban[currentStatus as keyof KanbanData].filter(t => t.id !== taskId)
-    newKanban[newStatus as keyof KanbanData] = [...kanban[newStatus as keyof KanbanData], { ...currentTask, status: newStatus }]
+    const newKanban: KanbanData = { ...kanban }
+    newKanban[currentStatus] = kanban[currentStatus].filter((t: Task) => t.id !== taskId)
+    newKanban[newStatus] = [...kanban[newStatus], { ...currentTask, status: newStatus }]
     setKanban(newKanban)
 
-    // API call
     try {
       await fetch(`${API_URL}/kanban/move?task_id=${taskId}&new_status=${newStatus}`, {
         method: 'PUT'
       })
     } catch (error) {
       console.error('Failed to move task:', error)
-      // Revert on error
       fetchData()
     }
   }
@@ -286,7 +284,7 @@ export default function TasksPage() {
 
   const allTaskIds = useMemo(() => {
     if (!kanban) return []
-    return Object.values(kanban).flat().map(t => t.id)
+    return Object.values(kanban).flat().map((t: Task) => t.id)
   }, [kanban])
 
   if (loading) {
@@ -327,7 +325,7 @@ export default function TasksPage() {
           className="px-4 py-2 border rounded-lg"
         >
           <option value="">Все исполнители</option>
-          {employees.map(emp => (
+          {employees.map((emp: Employee) => (
             <option key={emp.id} value={emp.id}>{emp.name}</option>
           ))}
         </select>
@@ -433,9 +431,9 @@ function KanbanColumn({
         </span>
       </div>
       
-      <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+      <SortableContext items={tasks.map((t: Task) => t.id)} strategy={verticalListSortingStrategy}>
         <div className="space-y-3 min-h-[100px]">
-          {tasks.map(task => (
+          {tasks.map((task: Task) => (
             <SortableTaskCard
               key={task.id}
               task={task}
@@ -535,7 +533,7 @@ function TaskCard({
 
       {taskTags.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
-          {taskTags.slice(0, 3).map(tag => (
+          {taskTags.slice(0, 3).map((tag: TaskTag) => (
             <span
               key={tag.id}
               className="text-xs px-2 py-0.5 rounded"
@@ -640,7 +638,7 @@ function CreateTaskModal({
     setFormData(prev => ({
       ...prev,
       tags: prev.tags.includes(tagName)
-        ? prev.tags.filter(t => t !== tagName)
+        ? prev.tags.filter((t: string) => t !== tagName)
         : [...prev.tags, tagName]
     }))
   }
@@ -699,7 +697,7 @@ function CreateTaskModal({
                 onChange={(e) => setFormData({ ...formData, priority: Number(e.target.value) })}
                 className="w-full px-3 py-2 border rounded-lg"
               >
-                {[1, 2, 3, 4, 5].map(p => (
+                {[1, 2, 3, 4, 5].map((p: number) => (
                   <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>
                 ))}
               </select>
@@ -715,7 +713,7 @@ function CreateTaskModal({
                 className="w-full px-3 py-2 border rounded-lg"
               >
                 <option value="">Не назначен</option>
-                {employees.map(emp => (
+                {employees.map((emp: Employee) => (
                   <option key={emp.id} value={emp.id}>{emp.name}</option>
                 ))}
               </select>
@@ -728,7 +726,7 @@ function CreateTaskModal({
                 className="w-full px-3 py-2 border rounded-lg"
               >
                 <option value="">Не назначен</option>
-                {employees.map(emp => (
+                {employees.map((emp: Employee) => (
                   <option key={emp.id} value={emp.id}>{emp.name}</option>
                 ))}
               </select>
@@ -775,7 +773,7 @@ function CreateTaskModal({
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Теги</label>
             <div className="flex flex-wrap gap-2">
-              {tags.map(tag => (
+              {tags.map((tag: TaskTag) => (
                 <button
                   key={tag.id}
                   type="button"
@@ -959,7 +957,7 @@ function TaskDetailsModal({
                   className="px-3 py-2 border rounded-lg"
                 >
                   <option value="">Не назначен</option>
-                  {employees.map(emp => (
+                  {employees.map((emp: Employee) => (
                     <option key={emp.id} value={emp.id}>{emp.name}</option>
                   ))}
                 </select>
@@ -1025,7 +1023,7 @@ function TaskDetailsModal({
                 <div className="mb-6">
                   <span className="text-sm text-gray-500 block mb-2">Теги</span>
                   <div className="flex flex-wrap gap-2">
-                    {taskTags.map(tag => (
+                    {taskTags.map((tag: TaskTag) => (
                       <span
                         key={tag.id}
                         className="px-3 py-1 rounded-full text-sm"
@@ -1041,10 +1039,10 @@ function TaskDetailsModal({
               {task.is_epic && taskSubtasks.length > 0 && (
                 <div className="mb-6">
                   <span className="text-sm text-gray-500 block mb-2">
-                    Подзадачи ({taskSubtasks.filter(s => s.status === 'done').length}/{taskSubtasks.length})
+                    Подзадачи ({taskSubtasks.filter((s: Task) => s.status === 'done').length}/{taskSubtasks.length})
                   </span>
                   <div className="space-y-2">
-                    {taskSubtasks.map(subtask => (
+                    {taskSubtasks.map((subtask: Task) => (
                       <div key={subtask.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
                         {subtask.status === 'done' ? (
                           <Check size={16} className="text-green-500" />
@@ -1078,7 +1076,7 @@ function TaskDetailsModal({
 
                 {activeTab === 'comments' && (
                   <div className="space-y-3">
-                    {taskComments.map((comment) => (
+                    {taskComments.map((comment: Comment) => (
                       <div key={comment.id} className="p-3 bg-gray-50 rounded-lg">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-medium text-sm">{comment.author?.name || 'Аноним'}</span>
@@ -1110,7 +1108,7 @@ function TaskDetailsModal({
 
                 {activeTab === 'history' && (
                   <div className="space-y-2">
-                    {taskHistory.map((entry) => (
+                    {taskHistory.map((entry: HistoryEntry) => (
                       <div key={entry.id} className="text-sm">
                         <span className="text-gray-400">
                           {new Date(entry.created_at).toLocaleString('ru-RU')}
