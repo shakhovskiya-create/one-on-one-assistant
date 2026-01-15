@@ -245,11 +245,15 @@ impl Connector {
             }
         };
 
+        let success = result.get("error").is_none();
+        let error = result.get("error").and_then(|e| e.as_str()).map(|s| s.to_string());
+
         json!({
             "type": "response",
             "request_id": cmd.request_id,
             "command": cmd.command,
-            "success": !result.get("error").is_some(),
+            "success": success,
+            "error": error,
             "result": result,
             "timestamp": chrono::Utc::now().to_rfc3339()
         })

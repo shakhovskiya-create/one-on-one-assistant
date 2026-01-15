@@ -113,7 +113,9 @@ class ConnectorManager:
                 if data.get("success"):
                     future.set_result(data.get("result"))
                 else:
-                    future.set_exception(Exception(data.get("error", "Unknown error")))
+                    # Error can be at top level or inside result
+                    error = data.get("error") or data.get("result", {}).get("error", "Unknown error")
+                    future.set_exception(Exception(error))
 
 
 connector_manager = ConnectorManager()
