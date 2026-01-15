@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Settings, Server, RefreshCw, CheckCircle, XCircle, Users, Calendar, Loader2 } from 'lucide-react'
+import { Settings, Server, RefreshCw, CheckCircle, XCircle, Users, Calendar, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 
 import { API_URL } from '@/lib/config'
 
@@ -12,17 +12,38 @@ interface ConnectorStatus {
   exchange_status: 'connected' | 'disconnected' | 'unknown'
 }
 
+interface SyncStats {
+  mode: string
+  total_in_ad: number
+  with_department: number
+  without_department: number
+  filtered_out: number
+  new_users: number
+  updated_users: number
+  skipped_existing: number
+  managers_updated: number
+  imported: number
+}
+
 interface SyncResult {
   success: boolean
   message: string
-  count?: number
+  stats?: SyncStats
 }
+
+type SyncMode = 'full' | 'new_only' | 'changes'
 
 export default function SettingsPage() {
   const [connectorStatus, setConnectorStatus] = useState<ConnectorStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState<string | null>(null)
   const [syncResults, setSyncResults] = useState<Record<string, SyncResult>>({})
+
+  // AD Sync options
+  const [syncMode, setSyncMode] = useState<SyncMode>('full')
+  const [includePhotos, setIncludePhotos] = useState(true)
+  const [requireDepartment, setRequireDepartment] = useState(true)
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   useEffect(() => {
     checkConnectorStatus()
@@ -60,12 +81,20 @@ export default function SettingsPage() {
     setSyncing('ad')
     setSyncResults(prev => ({ ...prev, ad: { success: false, message: 'Синхронизация...' } }))
     try {
-      const res = await fetch(`${API_URL}/ad/sync`, { method: 'POST' })
+      const params = new URLSearchParams({
+        mode: syncMode,
+        include_photos: includePhotos.toString(),
+        require_department: requireDepartment.toString()
+      })
+
+      const res = await fetch(`${API_URL}/ad/sync?${params}`, { method: 'POST' })
       const data = await res.json()
       if (res.ok) {
+        const stats = data as SyncStats
+        const message = `Импортировано ${stats.imported} (новых: ${stats.new_users}, обновлено: ${stats.updated_users})`
         setSyncResults(prev => ({
           ...prev,
-          ad: { success: true, message: `Синхронизировано ${data.imported || 0} сотрудников`, count: data.imported }
+          ad: { success: true, message, stats }
         }))
       } else {
         setSyncResults(prev => ({
@@ -173,9 +202,53 @@ export default function SettingsPage() {
                 </div>
                 <StatusIcon status={connectorStatus?.ad_status || 'unknown'} />
               </div>
-              <p className="text-sm text-ekf-gray mb-4">
-                Синхронизация сотрудников и оргструктуры
-              </p>
+
+              {/* Sync Mode */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-ekf-dark mb-2">Режим синхронизации</label>
+                <select
+                  value={syncMode}
+                  onChange={(e) => setSyncMode(e.target.value as SyncMode)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-ekf-orange focus:ring-1 focus:ring-ekf-orange outline-none"
+                >
+                  <option value="full">Полная синхронизация</option>
+                  <option value="new_only">Только новые</option>
+                  <option value="changes">Новые + изменения</option>
+                </select>
+              </div>
+
+              {/* Advanced Options Toggle */}
+              <button
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center gap-1 text-sm text-ekf-gray mb-3 hover:text-ekf-orange"
+              >
+                {showAdvanced ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                Дополнительные опции
+              </button>
+
+              {showAdvanced && (
+                <div className="space-y-3 mb-4 p-3 bg-gray-50 rounded-lg">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={requireDepartment}
+                      onChange={(e) => setRequireDepartment(e.target.checked)}
+                      className="rounded border-gray-300 text-ekf-orange focus:ring-ekf-orange"
+                    />
+                    <span className="text-sm">Только с департаментом</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={includePhotos}
+                      onChange={(e) => setIncludePhotos(e.target.checked)}
+                      className="rounded border-gray-300 text-ekf-orange focus:ring-ekf-orange"
+                    />
+                    <span className="text-sm">Загружать фото (медленнее)</span>
+                  </label>
+                </div>
+              )}
+
               <button
                 onClick={syncAD}
                 disabled={syncing === 'ad' || !connectorStatus?.connected}
@@ -193,10 +266,24 @@ export default function SettingsPage() {
                   </>
                 )}
               </button>
+
+              {/* Sync Results */}
               {syncResults.ad && (
-                <p className={`mt-2 text-sm ${syncResults.ad.success ? 'text-green-600' : 'text-red-600'}`}>
-                  {syncResults.ad.message}
-                </p>
+                <div className={`mt-3 p-3 rounded-lg ${syncResults.ad.success ? 'bg-green-50' : 'bg-red-50'}`}>
+                  <p className={`text-sm font-medium ${syncResults.ad.success ? 'text-green-700' : 'text-red-700'}`}>
+                    {syncResults.ad.message}
+                  </p>
+                  {syncResults.ad.stats && (
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-600">
+                      <div>Всего в AD: {syncResults.ad.stats.total_in_ad}</div>
+                      <div>С департаментом: {syncResults.ad.stats.with_department}</div>
+                      <div>Новых: {syncResults.ad.stats.new_users}</div>
+                      <div>Обновлено: {syncResults.ad.stats.updated_users}</div>
+                      <div>Пропущено: {syncResults.ad.stats.skipped_existing}</div>
+                      <div>Связей: {syncResults.ad.stats.managers_updated}</div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 

@@ -16,10 +16,41 @@ class ADClient:
     def __init__(self, config: dict):
         self.config = config['ad']
         self.conn: Optional[Connection] = None
+        self._validate_config()
+
+    def _validate_config(self):
+        """Validate AD configuration"""
+        errors = []
+
+        if not self.config.get('bind_user'):
+            errors.append("AD_BIND_USER not set")
+        elif '${' in str(self.config.get('bind_user', '')):
+            errors.append("AD_BIND_USER contains unexpanded variable")
+
+        if not self.config.get('bind_password'):
+            errors.append("AD_BIND_PASSWORD not set")
+        elif '${' in str(self.config.get('bind_password', '')):
+            errors.append("AD_BIND_PASSWORD contains unexpanded variable")
+
+        if errors:
+            for err in errors:
+                logger.error(f"Config error: {err}")
+            raise ValueError(f"AD configuration errors: {', '.join(errors)}")
 
     def connect(self) -> bool:
         """Establish connection to AD"""
         try:
+            bind_user = self.config['bind_user']
+            bind_password = self.config['bind_password']
+
+            # Validate credentials before connecting
+            if not bind_user or not bind_password:
+                logger.error("AD credentials not configured. Set AD_BIND_USER and AD_BIND_PASSWORD environment variables.")
+                return False
+
+            # Log connection attempt (hide password)
+            logger.info(f"Connecting to AD server {self.config['server']} as {bind_user}")
+
             server = Server(
                 self.config['server'],
                 port=self.config['port'],
@@ -29,8 +60,8 @@ class ADClient:
 
             self.conn = Connection(
                 server,
-                user=self.config['bind_user'],
-                password=self.config['bind_password'],
+                user=bind_user,
+                password=bind_password,
                 authentication=NTLM,
                 auto_bind=True
             )
@@ -40,6 +71,11 @@ class ADClient:
 
         except LDAPException as e:
             logger.error(f"Failed to connect to AD: {e}")
+            if "NTLM needs domain" in str(e):
+                logger.error("Hint: Check that AD_BIND_USER is in format 'DOMAIN\\\\username' and AD_BIND_PASSWORD is set")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error connecting to AD: {e}")
             return False
 
     def disconnect(self):
@@ -49,13 +85,43 @@ class ADClient:
             self.conn = None
             logger.info("Disconnected from AD")
 
-    def get_all_users(self, offset: int = 0, limit: int = 100, include_photo: bool = True) -> tuple[list[dict], int]:
-        """Fetch users from AD with pagination"""
+    def get_all_users(
+        self,
+        offset: int = 0,
+        limit: int = 100,
+        include_photo: bool = True,
+        require_department: bool = True,
+        require_email: bool = True
+    ) -> tuple[list[dict], int, dict]:
+        """
+        Fetch users from AD with pagination and filtering.
+
+        Args:
+            offset: Starting position
+            limit: Max users to return
+            include_photo: Include thumbnailPhoto (slow)
+            require_department: Only return users with department set
+            require_email: Only return users with email set
+
+        Returns:
+            (users, total_in_ad, stats)
+        """
         if not self.conn:
             if not self.connect():
-                return [], 0
+                return [], 0, {"error": "Connection failed"}
+
+        stats = {
+            "total_in_ad": 0,
+            "with_department": 0,
+            "without_department": 0,
+            "with_email": 0,
+            "without_email": 0,
+            "filtered_out": 0,
+            "returned": 0
+        }
 
         try:
+            # Base filter: active users only
             search_filter = "(&(objectClass=user)(objectCategory=person)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
 
             self.conn.search(
@@ -66,10 +132,38 @@ class ADClient:
             )
 
             all_entries = self.conn.entries
-            total = len(all_entries)
+            stats["total_in_ad"] = len(all_entries)
+
+            # Filter and collect stats
+            filtered_entries = []
+            for entry in all_entries:
+                has_dept = hasattr(entry, 'department') and entry.department.value
+                has_email = hasattr(entry, 'mail') and entry.mail.value
+
+                if has_dept:
+                    stats["with_department"] += 1
+                else:
+                    stats["without_department"] += 1
+
+                if has_email:
+                    stats["with_email"] += 1
+                else:
+                    stats["without_email"] += 1
+
+                # Apply filters
+                if require_department and not has_dept:
+                    stats["filtered_out"] += 1
+                    continue
+                if require_email and not has_email:
+                    stats["filtered_out"] += 1
+                    continue
+
+                filtered_entries.append(entry)
+
+            total = len(filtered_entries)
 
             # Apply pagination
-            paginated = all_entries[offset:offset + limit]
+            paginated = filtered_entries[offset:offset + limit]
 
             users = []
             for entry in paginated:
@@ -77,12 +171,19 @@ class ADClient:
                 if user:
                     users.append(user)
 
-            logger.info(f"Fetched {len(users)} users from AD (offset={offset}, limit={limit}, total={total})")
-            return users, total
+            stats["returned"] = len(users)
+
+            logger.info(
+                f"AD sync: {stats['total_in_ad']} total, "
+                f"{stats['with_department']} with dept, "
+                f"{stats['filtered_out']} filtered out, "
+                f"{len(users)} returned"
+            )
+            return users, total, stats
 
         except LDAPException as e:
             logger.error(f"Failed to fetch users: {e}")
-            return [], 0
+            return [], 0, {"error": str(e)}
 
     def get_user_by_email(self, email: str) -> Optional[dict]:
         """Fetch single user by email"""
