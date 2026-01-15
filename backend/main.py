@@ -730,7 +730,8 @@ async def health():
         "supabase": supabase is not None,
         "telegram": bool(TELEGRAM_BOT_TOKEN),
         "yandex_stt": bool(YANDEX_API_KEY and YANDEX_FOLDER_ID),
-        "ms_graph_calendar": bool(MS_GRAPH_CLIENT_ID)
+        "ews_calendar": bool(EWS_URL),
+        "ews_url": EWS_URL
     }
 
 
@@ -1549,18 +1550,18 @@ async def get_dashboard():
 async def get_employee_analytics(employee_id: str):
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not configured")
-    
+
     meetings = supabase.table("meetings")\
-        .select("date, mood_score, analysis")\
+        .select("id, date, mood_score, analysis")\
         .eq("employee_id", employee_id)\
         .order("date")\
         .execute()
-    
+
     mood_history = [
         {"date": m["date"], "score": m["mood_score"]}
         for m in meetings.data if m.get("mood_score")
     ]
-    
+
     red_flags_history = []
     for m in meetings.data:
         if m.get("analysis") and m["analysis"].get("red_flags"):
@@ -1570,9 +1571,24 @@ async def get_employee_analytics(employee_id: str):
                     "date": m["date"],
                     "flags": flags
                 })
-    
+
     tasks = supabase.table("tasks").select("status").eq("assignee_id", employee_id).execute()
-    
+
+    # Get agreements for this employee's meetings
+    meeting_ids = [m.get("id") for m in meetings.data if m.get("id")]
+    agreements_data = []
+    if meeting_ids:
+        agreements = supabase.table("agreements")\
+            .select("status, deadline")\
+            .in_("meeting_id", meeting_ids)\
+            .execute()
+        agreements_data = agreements.data
+
+    today = date.today().isoformat()
+    completed = len([a for a in agreements_data if a.get("status") == "completed"])
+    pending = len([a for a in agreements_data if a.get("status") == "pending"])
+    overdue = len([a for a in agreements_data if a.get("status") == "pending" and a.get("deadline") and a["deadline"] < today])
+
     return {
         "mood_history": mood_history,
         "red_flags_history": red_flags_history,
@@ -1581,8 +1597,52 @@ async def get_employee_analytics(employee_id: str):
             "done": len([t for t in tasks.data if t["status"] == "done"]),
             "in_progress": len([t for t in tasks.data if t["status"] == "in_progress"])
         },
+        "agreement_stats": {
+            "total": len(agreements_data),
+            "completed": completed,
+            "pending": pending - overdue,
+            "overdue": overdue
+        },
         "total_meetings": len(meetings.data)
     }
+
+
+@app.get("/analytics/employee/{employee_id}/by-category")
+async def get_employee_analytics_by_category(employee_id: str):
+    """Get analytics broken down by meeting category"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database not configured")
+
+    # Get all categories
+    categories = supabase.table("meeting_categories").select("*").execute()
+
+    # Get meetings for this employee with category info
+    meetings = supabase.table("meetings")\
+        .select("*, meeting_categories(code, name)")\
+        .eq("employee_id", employee_id)\
+        .execute()
+
+    result = []
+    for cat in categories.data:
+        cat_meetings = [m for m in meetings.data if m.get("category_id") == cat["id"]]
+
+        # Calculate stats for this category
+        mood_scores = [m["mood_score"] for m in cat_meetings if m.get("mood_score")]
+        avg_mood = sum(mood_scores) / len(mood_scores) if mood_scores else None
+
+        result.append({
+            "category": cat,
+            "meetings_count": len(cat_meetings),
+            "avg_mood": round(avg_mood, 1) if avg_mood else None,
+            "mood_trend": None,  # TODO: calculate trend
+            "agreements_created": 0,  # TODO: count
+            "agreements_completed": 0,  # TODO: count
+            "common_topics": [],
+            "red_flags_count": sum(1 for m in cat_meetings if m.get("analysis", {}).get("red_flags")),
+            "specific_metrics": {}
+        })
+
+    return result
 
 
 # ============ TELEGRAM ============
@@ -1712,7 +1772,8 @@ async def connector_status():
         "pending_requests": len(connector_manager.pending_requests),
         "ad_status": ad_status if connector_manager.connected else "disconnected",
         "employee_count": employee_count,
-        "calendar_integration": "ms_graph" if MS_GRAPH_CLIENT_ID else "not_configured"
+        "calendar_integration": "ews",
+        "ews_url": EWS_URL
     }
 
 
@@ -1963,42 +2024,340 @@ async def get_my_team(manager_id: str, include_indirect: bool = True):
         return result.data
 
 
-# ============ CALENDAR INTEGRATION ============
-# Calendar is accessed directly from the cloud (Microsoft Graph API for O365 or direct EWS)
-# Not through the on-prem connector
+# ============ CALENDAR INTEGRATION (EWS) ============
+# Calendar is accessed directly via Exchange Web Services (EWS)
+# for on-prem Exchange server
 
-# TODO: Add Microsoft Graph API credentials
-MS_GRAPH_CLIENT_ID = os.getenv("MS_GRAPH_CLIENT_ID", "")
-MS_GRAPH_CLIENT_SECRET = os.getenv("MS_GRAPH_CLIENT_SECRET", "")
-MS_GRAPH_TENANT_ID = os.getenv("MS_GRAPH_TENANT_ID", "")
+# EWS Configuration
+EWS_URL = os.getenv("EWS_URL", "https://post.ekf.su/EWS/Exchange.asmx")
+EWS_DOMAIN = os.getenv("EWS_DOMAIN", "ekfgroup")  # AD domain for auth
 
 
-@app.get("/calendar/{employee_id}")
+class EWSClient:
+    """Exchange Web Services client for on-prem Exchange"""
+
+    def __init__(self, url: str = None):
+        self.url = url or EWS_URL
+
+    async def get_calendar_events(
+        self,
+        email: str,
+        username: str,
+        password: str,
+        days_back: int = 7,
+        days_forward: int = 30
+    ) -> list:
+        """Fetch calendar events from Exchange using EWS"""
+        from datetime import datetime, timedelta
+
+        start_date = (datetime.utcnow() - timedelta(days=days_back)).strftime("%Y-%m-%dT00:00:00Z")
+        end_date = (datetime.utcnow() + timedelta(days=days_forward)).strftime("%Y-%m-%dT23:59:59Z")
+
+        # SOAP request for FindItem
+        soap_request = f'''<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:FindItem Traversal="Shallow">
+      <m:ItemShape>
+        <t:BaseShape>Default</t:BaseShape>
+        <t:AdditionalProperties>
+          <t:FieldURI FieldURI="item:Subject"/>
+          <t:FieldURI FieldURI="item:Body"/>
+          <t:FieldURI FieldURI="calendar:Start"/>
+          <t:FieldURI FieldURI="calendar:End"/>
+          <t:FieldURI FieldURI="calendar:Location"/>
+          <t:FieldURI FieldURI="calendar:Organizer"/>
+          <t:FieldURI FieldURI="calendar:RequiredAttendees"/>
+          <t:FieldURI FieldURI="calendar:OptionalAttendees"/>
+          <t:FieldURI FieldURI="calendar:IsRecurring"/>
+          <t:FieldURI FieldURI="calendar:IsCancelled"/>
+        </t:AdditionalProperties>
+      </m:ItemShape>
+      <m:CalendarView MaxEntriesReturned="200" StartDate="{start_date}" EndDate="{end_date}"/>
+      <m:ParentFolderIds>
+        <t:DistinguishedFolderId Id="calendar"/>
+      </m:ParentFolderIds>
+    </m:FindItem>
+  </soap:Body>
+</soap:Envelope>'''
+
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
+                # Try NTLM auth first (domain\username)
+                auth_user = f"{EWS_DOMAIN}\\{username}" if "\\" not in username else username
+
+                response = await client.post(
+                    self.url,
+                    content=soap_request,
+                    headers={"Content-Type": "text/xml; charset=utf-8"},
+                    auth=(auth_user, password)
+                )
+
+                if response.status_code != 200:
+                    print(f"EWS error: {response.status_code} - {response.text[:500]}")
+                    return []
+
+                # Parse response
+                events = self._parse_calendar_response(response.text)
+                return events
+
+        except Exception as e:
+            print(f"EWS request error: {e}")
+            return []
+
+    def _parse_calendar_response(self, xml: str) -> list:
+        """Parse EWS FindItem response"""
+        events = []
+
+        # Simple XML parsing (no external dependencies)
+        for item in xml.split("<t:CalendarItem"):
+            if "</t:CalendarItem>" not in item:
+                continue
+
+            item_xml = item.split("</t:CalendarItem>")[0]
+
+            event = {
+                "id": self._extract_value(item_xml, 'ItemId Id="', '"'),
+                "subject": self._extract_value(item_xml, "<t:Subject>", "</t:Subject>") or "Без темы",
+                "start": self._extract_value(item_xml, "<t:Start>", "</t:Start>"),
+                "end": self._extract_value(item_xml, "<t:End>", "</t:End>"),
+                "location": self._extract_value(item_xml, "<t:Location>", "</t:Location>"),
+                "organizer": self._extract_organizer(item_xml),
+                "attendees": self._extract_attendees(item_xml),
+                "is_recurring": "<t:IsRecurring>true" in item_xml.lower(),
+                "is_cancelled": "<t:IsCancelled>true" in item_xml.lower(),
+            }
+
+            if event["start"]:  # Only add if we have at least a start time
+                events.append(event)
+
+        return events
+
+    def _extract_value(self, xml: str, start_tag: str, end_tag: str) -> str:
+        """Extract value between tags"""
+        try:
+            start_idx = xml.find(start_tag)
+            if start_idx == -1:
+                return ""
+            start_idx += len(start_tag)
+            end_idx = xml.find(end_tag, start_idx)
+            if end_idx == -1:
+                return ""
+            return xml[start_idx:end_idx].strip()
+        except:
+            return ""
+
+    def _extract_organizer(self, xml: str) -> dict:
+        """Extract organizer info"""
+        organizer_section = ""
+        if "<t:Organizer>" in xml:
+            start = xml.find("<t:Organizer>")
+            end = xml.find("</t:Organizer>")
+            if start != -1 and end != -1:
+                organizer_section = xml[start:end]
+
+        return {
+            "name": self._extract_value(organizer_section, "<t:Name>", "</t:Name>"),
+            "email": self._extract_value(organizer_section, "<t:EmailAddress>", "</t:EmailAddress>")
+        }
+
+    def _extract_attendees(self, xml: str) -> list:
+        """Extract attendees from RequiredAttendees and OptionalAttendees"""
+        attendees = []
+
+        for section_tag in ["<t:RequiredAttendees>", "<t:OptionalAttendees>"]:
+            is_optional = "Optional" in section_tag
+            if section_tag not in xml:
+                continue
+
+            section_start = xml.find(section_tag)
+            section_end = xml.find(section_tag.replace("<", "</"))
+            if section_start == -1 or section_end == -1:
+                continue
+
+            section = xml[section_start:section_end]
+
+            # Extract each Attendee
+            for attendee_xml in section.split("<t:Attendee>"):
+                if "</t:Attendee>" not in attendee_xml:
+                    continue
+
+                attendee = {
+                    "name": self._extract_value(attendee_xml, "<t:Name>", "</t:Name>"),
+                    "email": self._extract_value(attendee_xml, "<t:EmailAddress>", "</t:EmailAddress>"),
+                    "response": self._extract_value(attendee_xml, "<t:ResponseType>", "</t:ResponseType>"),
+                    "optional": is_optional
+                }
+                if attendee["email"]:
+                    attendees.append(attendee)
+
+        return attendees
+
+    async def get_free_busy(
+        self,
+        emails: list,
+        username: str,
+        password: str,
+        start_date: str,
+        end_date: str
+    ) -> dict:
+        """Get free/busy information for multiple users"""
+        # Build mailboxes XML
+        mailboxes_xml = ""
+        for email in emails:
+            mailboxes_xml += f'''<t:MailboxData>
+              <t:Email><t:Address>{email}</t:Address></t:Email>
+              <t:AttendeeType>Required</t:AttendeeType>
+            </t:MailboxData>'''
+
+        soap_request = f'''<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:GetUserAvailabilityRequest>
+      <t:TimeZone>
+        <t:Bias>-180</t:Bias>
+        <t:StandardTime><t:Bias>0</t:Bias><t:Time>00:00:00</t:Time><t:DayOrder>1</t:DayOrder><t:Month>1</t:Month><t:DayOfWeek>Sunday</t:DayOfWeek></t:StandardTime>
+        <t:DaylightTime><t:Bias>0</t:Bias><t:Time>00:00:00</t:Time><t:DayOrder>1</t:DayOrder><t:Month>1</t:Month><t:DayOfWeek>Sunday</t:DayOfWeek></t:DaylightTime>
+      </t:TimeZone>
+      <m:MailboxDataArray>
+        {mailboxes_xml}
+      </m:MailboxDataArray>
+      <t:FreeBusyViewOptions>
+        <t:TimeWindow>
+          <t:StartTime>{start_date}T00:00:00</t:StartTime>
+          <t:EndTime>{end_date}T23:59:59</t:EndTime>
+        </t:TimeWindow>
+        <t:MergedFreeBusyIntervalInMinutes>30</t:MergedFreeBusyIntervalInMinutes>
+        <t:RequestedView>FreeBusy</t:RequestedView>
+      </t:FreeBusyViewOptions>
+    </m:GetUserAvailabilityRequest>
+  </soap:Body>
+</soap:Envelope>'''
+
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
+                auth_user = f"{EWS_DOMAIN}\\{username}" if "\\" not in username else username
+
+                response = await client.post(
+                    self.url,
+                    content=soap_request,
+                    headers={"Content-Type": "text/xml; charset=utf-8"},
+                    auth=(auth_user, password)
+                )
+
+                if response.status_code != 200:
+                    print(f"EWS free/busy error: {response.status_code}")
+                    return {}
+
+                return self._parse_free_busy_response(response.text, emails)
+
+        except Exception as e:
+            print(f"EWS free/busy error: {e}")
+            return {}
+
+    def _parse_free_busy_response(self, xml: str, emails: list) -> dict:
+        """Parse GetUserAvailability response"""
+        result = {}
+
+        # Split by FreeBusyResponse
+        responses = xml.split("<FreeBusyResponse>")
+        for i, resp in enumerate(responses[1:]):  # Skip first split
+            if i >= len(emails):
+                break
+
+            email = emails[i]
+            busy_times = []
+
+            # Extract CalendarEventArray
+            for event in resp.split("<CalendarEvent>"):
+                if "</CalendarEvent>" not in event:
+                    continue
+
+                start = self._extract_value(event, "<StartTime>", "</StartTime>")
+                end = self._extract_value(event, "<EndTime>", "</EndTime>")
+                busy_type = self._extract_value(event, "<BusyType>", "</BusyType>")
+
+                if start and end:
+                    busy_times.append({
+                        "start": start,
+                        "end": end,
+                        "status": busy_type
+                    })
+
+            result[email] = busy_times
+
+        return result
+
+
+# Global EWS client instance
+ews_client = EWSClient()
+
+
+class CalendarRequest(BaseModel):
+    username: str  # AD login
+    password: str  # AD password
+
+
+@app.post("/calendar/{employee_id}")
 async def get_employee_calendar(
     employee_id: str,
+    auth: CalendarRequest,
     days_back: int = 7,
     days_forward: int = 30
 ):
-    """Get calendar events for an employee.
+    """Get calendar events for an employee from Exchange.
 
-    Requires Microsoft Graph API configuration (MS_GRAPH_* env vars)
-    for Office 365 / Exchange Online integration.
+    Requires user credentials for EWS authentication.
     """
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not configured")
-
-    if not MS_GRAPH_CLIENT_ID:
-        raise HTTPException(
-            status_code=501,
-            detail="Calendar integration not configured. Set MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET, MS_GRAPH_TENANT_ID environment variables for Office 365 integration."
-        )
 
     employee = supabase.table("employees").select("email").eq("id", employee_id).single().execute()
     if not employee.data or not employee.data.get("email"):
         raise HTTPException(status_code=404, detail="Employee email not found")
 
-    # TODO: Implement Microsoft Graph API calendar fetch
-    # For now, return meetings from database
+    email = employee.data["email"]
+
+    # Fetch from Exchange via EWS
+    events = await ews_client.get_calendar_events(
+        email=email,
+        username=auth.username,
+        password=auth.password,
+        days_back=days_back,
+        days_forward=days_forward
+    )
+
+    return {
+        "employee_id": employee_id,
+        "email": email,
+        "events": events,
+        "source": "exchange_ews"
+    }
+
+
+@app.get("/calendar/{employee_id}/simple")
+async def get_employee_calendar_simple(
+    employee_id: str,
+    days_back: int = 7,
+    days_forward: int = 30
+):
+    """Get calendar from database (without Exchange connection).
+
+    Returns only meetings stored in the app database.
+    """
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database not configured")
+
     meetings = supabase.table("meetings")\
         .select("*, meeting_participants!inner(employee_id)")\
         .eq("meeting_participants.employee_id", employee_id)\
@@ -2006,7 +2365,11 @@ async def get_employee_calendar(
         .lte("date", (datetime.now() + timedelta(days=days_forward)).date().isoformat())\
         .execute()
 
-    return meetings.data
+    return {
+        "employee_id": employee_id,
+        "events": meetings.data,
+        "source": "database"
+    }
 
 
 @app.post("/calendar/meeting")
@@ -2070,23 +2433,69 @@ async def create_calendar_meeting(
     }
 
 
-@app.get("/calendar/free-slots")
-async def find_free_slots(
+class FreeSlotsRequest(BaseModel):
+    attendee_ids: list  # List of employee IDs
+    username: str  # AD login for EWS auth
+    password: str  # AD password
+    start_date: str  # YYYY-MM-DD
+    end_date: str  # YYYY-MM-DD
+    duration_minutes: int = 60
+
+
+@app.post("/calendar/free-slots")
+async def find_free_slots(request: FreeSlotsRequest):
+    """Find free time slots using Exchange free/busy data.
+
+    Queries EWS GetUserAvailability for real-time availability.
+    """
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database not configured")
+
+    # Get emails for all attendees
+    employees = supabase.table("employees")\
+        .select("id, email")\
+        .in_("id", request.attendee_ids)\
+        .execute()
+
+    emails = [e["email"] for e in employees.data if e.get("email")]
+
+    if not emails:
+        raise HTTPException(status_code=400, detail="No valid employee emails found")
+
+    # Get free/busy from Exchange
+    free_busy = await ews_client.get_free_busy(
+        emails=emails,
+        username=request.username,
+        password=request.password,
+        start_date=request.start_date,
+        end_date=request.end_date
+    )
+
+    # Calculate common free slots
+    all_busy = []
+    for email, busy_times in free_busy.items():
+        all_busy.extend(busy_times)
+
+    return {
+        "attendees": emails,
+        "free_busy": free_busy,
+        "all_busy_times": all_busy,
+        "source": "exchange_ews"
+    }
+
+
+@app.get("/calendar/free-slots/simple")
+async def find_free_slots_simple(
     attendee_ids: str = Query(...),  # Comma-separated IDs
-    duration_minutes: int = Query(60),
     start_date: str = Query(...),
     end_date: str = Query(...)
 ):
-    """Find free time slots based on existing meetings in the database.
-
-    TODO: Add Microsoft Graph API integration for real-time availability.
-    """
+    """Find free slots based on database meetings only (no Exchange connection)."""
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not configured")
 
     ids = [id.strip() for id in attendee_ids.split(",")]
 
-    # Get all meetings for these attendees in the date range
     meetings = supabase.table("meetings")\
         .select("start_time, end_time, meeting_participants!inner(employee_id)")\
         .in_("meeting_participants.employee_id", ids)\
@@ -2094,8 +2503,6 @@ async def find_free_slots(
         .lte("date", end_date)\
         .execute()
 
-    # Simple free slot calculation (9:00-18:00 work hours)
-    # In production, integrate with Microsoft Graph for real availability
     busy_times = []
     for m in meetings.data:
         if m.get("start_time") and m.get("end_time"):
@@ -2106,30 +2513,102 @@ async def find_free_slots(
 
     return {
         "busy_times": busy_times,
-        "message": "For real-time availability, configure Microsoft Graph API (MS_GRAPH_* env vars)"
+        "source": "database"
     }
 
 
+class CalendarSyncRequest(BaseModel):
+    employee_id: str
+    username: str  # AD login
+    password: str  # AD password
+    days_back: int = 7
+    days_forward: int = 30
+
+
 @app.post("/calendar/sync")
-async def sync_calendar_meetings(employee_id: Optional[str] = Form(None)):
-    """Sync meetings from Exchange/Outlook to app.
+async def sync_calendar_meetings(request: CalendarSyncRequest):
+    """Sync meetings from Exchange to app database.
 
-    Requires Microsoft Graph API configuration for Office 365 integration.
+    Fetches calendar events via EWS and creates/updates meetings in the app.
     """
-    if not MS_GRAPH_CLIENT_ID:
-        raise HTTPException(
-            status_code=501,
-            detail="Calendar sync not configured. Set MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET, MS_GRAPH_TENANT_ID for Office 365 integration."
-        )
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database not configured")
 
-    # TODO: Implement Microsoft Graph API calendar sync
-    # 1. Get access token using client credentials flow
-    # 2. Fetch calendar events for employee(s)
-    # 3. Upsert meetings and match participants
+    employee = supabase.table("employees").select("id, email").eq("id", request.employee_id).single().execute()
+    if not employee.data or not employee.data.get("email"):
+        raise HTTPException(status_code=404, detail="Employee email not found")
+
+    email = employee.data["email"]
+
+    # Fetch from Exchange
+    events = await ews_client.get_calendar_events(
+        email=email,
+        username=request.username,
+        password=request.password,
+        days_back=request.days_back,
+        days_forward=request.days_forward
+    )
+
+    if not events:
+        return {"synced": 0, "message": "No events found or EWS connection failed"}
+
+    # Build email lookup for matching attendees
+    all_employees = supabase.table("employees").select("id, email, name").execute()
+    email_to_emp = {emp["email"].lower(): emp for emp in all_employees.data if emp.get("email")}
+
+    synced = 0
+    for event in events:
+        if not event.get("id"):
+            continue
+
+        # Check if meeting already exists
+        existing = supabase.table("meetings").select("id").eq("exchange_id", event["id"]).execute()
+
+        meeting_data = {
+            "exchange_id": event["id"],
+            "title": event.get("subject", "Без темы"),
+            "date": event.get("start", "")[:10] if event.get("start") else None,
+            "start_time": event.get("start"),
+            "end_time": event.get("end"),
+            "location": event.get("location"),
+            "exchange_data": event,  # Store full event data
+        }
+
+        # Find organizer in employees
+        if event.get("organizer") and event["organizer"].get("email"):
+            org_email = event["organizer"]["email"].lower()
+            if org_email in email_to_emp:
+                meeting_data["organizer_id"] = email_to_emp[org_email]["id"]
+
+        if existing.data:
+            # Update existing
+            supabase.table("meetings").update(meeting_data).eq("id", existing.data[0]["id"]).execute()
+            meeting_id = existing.data[0]["id"]
+        else:
+            # Create new
+            result = supabase.table("meetings").insert(meeting_data).execute()
+            meeting_id = result.data[0]["id"]
+
+        # Sync participants
+        for attendee in event.get("attendees", []):
+            attendee_email = (attendee.get("email") or "").lower()
+            if attendee_email in email_to_emp:
+                emp = email_to_emp[attendee_email]
+                try:
+                    supabase.table("meeting_participants").insert({
+                        "meeting_id": meeting_id,
+                        "employee_id": emp["id"]
+                    }).execute()
+                except:
+                    pass  # Already exists
+
+        synced += 1
 
     return {
-        "status": "not_implemented",
-        "message": "Microsoft Graph API integration pending"
+        "synced": synced,
+        "total_events": len(events),
+        "employee_email": email,
+        "source": "exchange_ews"
     }
 
 
