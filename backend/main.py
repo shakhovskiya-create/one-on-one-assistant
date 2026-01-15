@@ -1726,15 +1726,21 @@ async def sync_ad_users():
                 if not user.get("email"):
                     continue
                 # Use dict to deduplicate by email (last wins)
-                batch_dict[user.get("email")] = {
+                user_data = {
                     "name": user.get("name", ""),
                     "email": user.get("email"),
                     "position": user.get("title", ""),
                     "department": user.get("department", ""),
                     "ad_dn": user.get("dn"),
                     "manager_dn": user.get("manager_dn"),
-                    "ad_login": user.get("login")
+                    "ad_login": user.get("login"),
+                    "phone": user.get("phone"),
+                    "mobile": user.get("mobile"),
                 }
+                # Add photo if present (can be large, so optional)
+                if user.get("photo_base64"):
+                    user_data["photo_base64"] = user.get("photo_base64")
+                batch_dict[user.get("email")] = user_data
             batch = list(batch_dict.values())
 
             # Batch upsert - one request instead of N

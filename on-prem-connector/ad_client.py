@@ -49,7 +49,7 @@ class ADClient:
             self.conn = None
             logger.info("Disconnected from AD")
 
-    def get_all_users(self, offset: int = 0, limit: int = 100) -> tuple[list[dict], int]:
+    def get_all_users(self, offset: int = 0, limit: int = 100, include_photo: bool = True) -> tuple[list[dict], int]:
         """Fetch users from AD with pagination"""
         if not self.conn:
             if not self.connect():
@@ -73,7 +73,7 @@ class ADClient:
 
             users = []
             for entry in paginated:
-                user = self._parse_user(entry)
+                user = self._parse_user(entry, include_photo=include_photo)
                 if user:
                     users.append(user)
 
