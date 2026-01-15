@@ -1592,10 +1592,10 @@ async def notify_new_task(task_id: str, assignee_id: str, title: str):
 # ============ ON-PREM CONNECTOR WEBSOCKET ============
 
 @app.websocket("/ws/connector")
-async def connector_websocket(websocket: WebSocket):
+async def connector_websocket(websocket: WebSocket, token: Optional[str] = None):
     """WebSocket endpoint for on-prem connector"""
-    # Get API key from headers
-    api_key = websocket.headers.get("authorization", "").replace("Bearer ", "")
+    # Get API key from query param or headers
+    api_key = token or websocket.headers.get("authorization", "").replace("Bearer ", "")
 
     if not await connector_manager.connect(websocket, api_key):
         return

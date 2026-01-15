@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import signal
+import ssl
 import sys
 from datetime import datetime
 from typing import Optional
@@ -19,6 +20,11 @@ load_dotenv()
 import yaml
 import websockets
 from websockets.exceptions import ConnectionClosed
+
+# SSL context that doesn't verify certificates (for development)
+ssl_context = ssl.create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
 
 from ad_client import ADClient
 from ews_client import EWSClient
@@ -77,6 +83,7 @@ class OnPremConnector:
         try:
             self.ws = await websockets.connect(
                 url,
+                ssl=ssl_context,
                 ping_interval=20,
                 ping_timeout=10
             )
@@ -305,6 +312,11 @@ class OnPremConnector:
             loop.add_signal_handler(sig, self.stop)
 
         logger.info("Starting On-Prem Connector...")
+
+        # Debug: show loaded config (hide password)
+        ad_user = self.config.get('ad', {}).get('bind_user', 'NOT SET')
+        ad_pass = '***' if self.config.get('ad', {}).get('bind_password') else 'NOT SET'
+        logger.info(f"AD Config: user={ad_user}, password={ad_pass}")
 
         # Initialize clients
         logger.info("Connecting to AD...")
