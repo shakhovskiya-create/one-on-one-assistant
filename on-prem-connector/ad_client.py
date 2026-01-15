@@ -186,12 +186,12 @@ class ADClient:
             logger.warning(f"Authentication failed for {username}: {e}")
             return None
 
-    def _parse_user(self, entry) -> Optional[dict]:
+    def _parse_user(self, entry, include_photo: bool = False) -> Optional[dict]:
         """Parse LDAP entry to user dict"""
         try:
-            # Get photo as base64
+            # Get photo as base64 only if requested (photos are large!)
             photo = None
-            if hasattr(entry, 'thumbnailPhoto') and entry.thumbnailPhoto.value:
+            if include_photo and hasattr(entry, 'thumbnailPhoto') and entry.thumbnailPhoto.value:
                 photo = base64.b64encode(entry.thumbnailPhoto.value).decode('utf-8')
 
             # Extract manager email from DN
