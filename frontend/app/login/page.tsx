@@ -38,12 +38,20 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-ekf-light">
       <div className="max-w-md w-full">
         {/* Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-blue-600">1-on-1 Assistant</h1>
-          <p className="text-gray-600 mt-2">Войдите с учётными данными AD</p>
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <div className="w-12 h-12 bg-ekf-orange rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-lg">EKF</span>
+            </div>
+            <div className="text-left">
+              <h1 className="text-2xl font-bold text-ekf-dark">Team Hub</h1>
+              <p className="text-xs text-ekf-gray">Управление командой</p>
+            </div>
+          </div>
+          <p className="text-ekf-gray mt-4">Войдите с учётными данными AD</p>
         </div>
 
         {/* Login Form */}
@@ -51,26 +59,26 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Error message */}
             {error && (
-              <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">
+              <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm border border-red-200">
                 {error}
               </div>
             )}
 
             {/* Username */}
             <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="username" className="block text-sm font-medium text-ekf-dark mb-1">
                 Логин
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <User size={18} className="text-gray-400" />
+                  <User size={18} className="text-ekf-gray-light" />
                 </div>
                 <input
                   id="username"
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-ekf-orange focus:border-ekf-orange outline-none"
                   placeholder="DOMAIN\\username или email"
                   required
                   autoFocus
@@ -80,19 +88,19 @@ export default function LoginPage() {
 
             {/* Password */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="password" className="block text-sm font-medium text-ekf-dark mb-1">
                 Пароль
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock size={18} className="text-gray-400" />
+                  <Lock size={18} className="text-ekf-gray-light" />
                 </div>
                 <input
                   id="password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-ekf-orange focus:border-ekf-orange outline-none"
                   placeholder="Пароль AD"
                   required
                 />
@@ -103,7 +111,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-ekf-orange text-white rounded-lg hover:bg-ekf-orange-dark focus:ring-2 focus:ring-offset-2 focus:ring-ekf-orange disabled:opacity-50 transition-colors"
             >
               {loading ? (
                 <>
@@ -117,13 +125,13 @@ export default function LoginPage() {
           </form>
 
           {/* Help text */}
-          <p className="mt-6 text-center text-sm text-gray-500">
+          <p className="mt-6 text-center text-sm text-ekf-gray">
             Используйте ваши корпоративные учётные данные Active Directory
           </p>
         </div>
 
         {/* Footer */}
-        <p className="mt-8 text-center text-xs text-gray-400">
+        <p className="mt-8 text-center text-xs text-ekf-gray-light">
           Для работы требуется подключение on-prem коннектора
         </p>
       </div>
