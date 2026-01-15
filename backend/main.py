@@ -729,7 +729,8 @@ async def health():
         "anthropic": anthropic_client is not None,
         "supabase": supabase is not None,
         "telegram": bool(TELEGRAM_BOT_TOKEN),
-        "yandex_stt": bool(YANDEX_API_KEY and YANDEX_FOLDER_ID)
+        "yandex_stt": bool(YANDEX_API_KEY and YANDEX_FOLDER_ID),
+        "ms_graph_calendar": bool(MS_GRAPH_CLIENT_ID)
     }
 
 
@@ -1692,32 +1693,26 @@ async def connector_websocket(websocket: WebSocket, token: Optional[str] = None)
 
 @app.get("/connector/status")
 async def connector_status():
-    """Check if on-prem connector is connected"""
-    # Get last sync info from database
-    last_sync = None
+    """Check if on-prem connector is connected (for AD sync)"""
     ad_status = "unknown"
-    exchange_status = "unknown"
+    employee_count = 0
 
     if supabase:
         try:
             # Check if we have any employees synced (indicates AD is working)
             emp_count = supabase.table("employees").select("id", count="exact").execute()
-            if emp_count.count and emp_count.count > 0:
+            employee_count = emp_count.count or 0
+            if employee_count > 0:
                 ad_status = "connected" if connector_manager.connected else "disconnected"
-
-            # Check if we have any meetings with exchange_id (indicates Exchange is working)
-            meeting_count = supabase.table("meetings").select("id", count="exact").not_.is_("exchange_id", "null").execute()
-            if meeting_count.count and meeting_count.count > 0:
-                exchange_status = "connected" if connector_manager.connected else "disconnected"
         except:
             pass
 
     return {
         "connected": connector_manager.connected,
         "pending_requests": len(connector_manager.pending_requests),
-        "last_sync": last_sync,
         "ad_status": ad_status if connector_manager.connected else "disconnected",
-        "exchange_status": exchange_status if connector_manager.connected else "disconnected"
+        "employee_count": employee_count,
+        "calendar_integration": "ms_graph" if MS_GRAPH_CLIENT_ID else "not_configured"
     }
 
 
@@ -1968,7 +1963,15 @@ async def get_my_team(manager_id: str, include_indirect: bool = True):
         return result.data
 
 
-# ============ EXCHANGE/CALENDAR INTEGRATION ============
+# ============ CALENDAR INTEGRATION ============
+# Calendar is accessed directly from the cloud (Microsoft Graph API for O365 or direct EWS)
+# Not through the on-prem connector
+
+# TODO: Add Microsoft Graph API credentials
+MS_GRAPH_CLIENT_ID = os.getenv("MS_GRAPH_CLIENT_ID", "")
+MS_GRAPH_CLIENT_SECRET = os.getenv("MS_GRAPH_CLIENT_SECRET", "")
+MS_GRAPH_TENANT_ID = os.getenv("MS_GRAPH_TENANT_ID", "")
+
 
 @app.get("/calendar/{employee_id}")
 async def get_employee_calendar(
@@ -1976,21 +1979,34 @@ async def get_employee_calendar(
     days_back: int = 7,
     days_forward: int = 30
 ):
-    """Get calendar events from Exchange"""
+    """Get calendar events for an employee.
+
+    Requires Microsoft Graph API configuration (MS_GRAPH_* env vars)
+    for Office 365 / Exchange Online integration.
+    """
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not configured")
+
+    if not MS_GRAPH_CLIENT_ID:
+        raise HTTPException(
+            status_code=501,
+            detail="Calendar integration not configured. Set MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET, MS_GRAPH_TENANT_ID environment variables for Office 365 integration."
+        )
 
     employee = supabase.table("employees").select("email").eq("id", employee_id).single().execute()
     if not employee.data or not employee.data.get("email"):
         raise HTTPException(status_code=404, detail="Employee email not found")
 
-    result = await connector_manager.send_command("get_calendar", {
-        "email": employee.data["email"],
-        "days_back": days_back,
-        "days_forward": days_forward
-    }, timeout=60.0)
+    # TODO: Implement Microsoft Graph API calendar fetch
+    # For now, return meetings from database
+    meetings = supabase.table("meetings")\
+        .select("*, meeting_participants!inner(employee_id)")\
+        .eq("meeting_participants.employee_id", employee_id)\
+        .gte("date", (datetime.now() - timedelta(days=days_back)).date().isoformat())\
+        .lte("date", (datetime.now() + timedelta(days=days_forward)).date().isoformat())\
+        .execute()
 
-    return result
+    return meetings.data
 
 
 @app.post("/calendar/meeting")
@@ -2003,182 +2019,117 @@ async def create_calendar_meeting(
     body: str = Form(""),
     location: str = Form("")
 ):
-    """Create meeting in Exchange and sync to app"""
+    """Create meeting in the app database.
+
+    TODO: Add Microsoft Graph API integration to also create in Exchange/Outlook.
+    """
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not configured")
 
-    # Get organizer email
-    organizer = supabase.table("employees").select("email").eq("id", organizer_id).single().execute()
-    if not organizer.data or not organizer.data.get("email"):
+    # Get organizer
+    organizer = supabase.table("employees").select("id, email, name").eq("id", organizer_id).single().execute()
+    if not organizer.data:
         raise HTTPException(status_code=404, detail="Organizer not found")
 
-    # Get attendee emails
+    # Parse attendees
     attendee_list = json.loads(attendee_ids)
-    attendee_emails = []
-    if attendee_list:
-        attendees = supabase.table("employees").select("email").in_("id", attendee_list).execute()
-        attendee_emails = [a["email"] for a in attendees.data if a.get("email")]
 
-    # Create in Exchange
-    result = await connector_manager.send_command("create_meeting", {
-        "organizer_email": organizer.data["email"],
-        "subject": subject,
-        "start": start,
-        "end": end,
-        "attendees": attendee_emails,
-        "body": body,
-        "location": location
-    }, timeout=30.0)
+    # Create meeting in database
+    meeting_data = {
+        "title": subject,
+        "date": start.split("T")[0],
+        "start_time": start,
+        "end_time": end,
+        "location": location,
+        "organizer_id": organizer_id
+    }
 
-    if result:
-        # Also create in our database
-        meeting_data = {
-            "title": subject,
-            "date": start.split("T")[0],
-            "exchange_id": result.get("id"),
-            "category_id": None  # Will be set when processed
-        }
+    meeting = supabase.table("meetings").insert(meeting_data).execute()
+    meeting_id = meeting.data[0]["id"]
 
-        meeting = supabase.table("meetings").insert(meeting_data).execute()
-
-        # Add participants
-        for aid in attendee_list:
+    # Add participants
+    for aid in attendee_list:
+        try:
             supabase.table("meeting_participants").insert({
-                "meeting_id": meeting.data[0]["id"],
+                "meeting_id": meeting_id,
                 "employee_id": aid
             }).execute()
+        except:
+            pass
 
-        result["app_meeting_id"] = meeting.data[0]["id"]
+    # TODO: If MS Graph configured, also create in Exchange
+    # graph_meeting_id = await create_graph_meeting(...)
+    # supabase.table("meetings").update({"exchange_id": graph_meeting_id}).eq("id", meeting_id).execute()
 
-    return result
+    return {
+        "id": meeting_id,
+        "title": subject,
+        "start": start,
+        "end": end,
+        "participants": attendee_list
+    }
 
 
 @app.get("/calendar/free-slots")
 async def find_free_slots(
     attendee_ids: str = Query(...),  # Comma-separated IDs
     duration_minutes: int = Query(60),
-    start: str = Query(...),
-    end: str = Query(...)
+    start_date: str = Query(...),
+    end_date: str = Query(...)
 ):
-    """Find free time slots for all attendees"""
-    if not supabase:
-        raise HTTPException(status_code=500, detail="Database not configured")
+    """Find free time slots based on existing meetings in the database.
 
-    ids = [id.strip() for id in attendee_ids.split(",")]
-    attendees = supabase.table("employees").select("email").in_("id", ids).execute()
-    emails = [a["email"] for a in attendees.data if a.get("email")]
-
-    if not emails:
-        raise HTTPException(status_code=400, detail="No valid attendee emails found")
-
-    result = await connector_manager.send_command("find_free_slots", {
-        "emails": emails,
-        "duration_minutes": duration_minutes,
-        "start": start,
-        "end": end
-    }, timeout=60.0)
-
-    return result
-
-
-@app.post("/calendar/sync")
-async def sync_calendar_meetings(employee_id: Optional[str] = Form(None)):
-    """Sync meetings from Exchange to app with participant matching.
-    If employee_id is provided, sync only that employee's calendar.
-    Otherwise, sync calendars of all employees with emails.
+    TODO: Add Microsoft Graph API integration for real-time availability.
     """
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not configured")
 
-    # Build email->employee_id lookup for participant matching
-    all_employees = supabase.table("employees").select("id, email").execute()
-    email_to_id = {emp["email"].lower(): emp["id"] for emp in all_employees.data if emp.get("email")}
+    ids = [id.strip() for id in attendee_ids.split(",")]
 
-    # Determine which employees to sync
-    if employee_id:
-        employee = supabase.table("employees").select("id, email").eq("id", employee_id).single().execute()
-        if not employee.data or not employee.data.get("email"):
-            raise HTTPException(status_code=404, detail="Employee email not found")
-        employees_to_sync = [employee.data]
-    else:
-        # Sync all employees with emails
-        employees_to_sync = [emp for emp in all_employees.data if emp.get("email")]
+    # Get all meetings for these attendees in the date range
+    meetings = supabase.table("meetings")\
+        .select("start_time, end_time, meeting_participants!inner(employee_id)")\
+        .in_("meeting_participants.employee_id", ids)\
+        .gte("date", start_date)\
+        .lte("date", end_date)\
+        .execute()
 
-    all_events = []
-    errors = []
-
-    for emp in employees_to_sync:
-        try:
-            events = await connector_manager.send_command("get_calendar", {
-                "email": emp["email"],
-                "days_back": 30,
-                "days_forward": 60
-            }, timeout=120.0)
-            if isinstance(events, list):
-                all_events.extend(events)
-        except Exception as e:
-            errors.append(f"{emp.get('email', 'unknown')}: {str(e)}")
-
-    synced = 0
-    participants_matched = 0
-
-    for event in all_events:
-        if not event.get("id"):
-            continue
-
-        # Check if already exists
-        existing = supabase.table("meetings").select("id").eq("exchange_id", event["id"]).execute()
-
-        if not existing.data:
-            # Parse start/end times
-            start_time = event.get("start")
-            end_time = event.get("end")
-
-            # Find organizer in employees
-            organizer_id = None
-            organizer_email = event.get("organizer", "").lower()
-            if organizer_email in email_to_id:
-                organizer_id = email_to_id[organizer_email]
-
-            meeting_data = {
-                "title": event.get("subject", "Untitled"),
-                "date": start_time.split("T")[0] if start_time else None,
-                "start_time": start_time,
-                "end_time": end_time,
-                "location": event.get("location"),
-                "exchange_id": event["id"],
-                "exchange_data": event,
-                "organizer_id": organizer_id
-            }
-
-            meeting_result = supabase.table("meetings").insert(meeting_data).execute()
-            meeting_id = meeting_result.data[0]["id"]
-
-            # Match attendees to employees and add as participants
-            attendees = event.get("attendees", [])
-            for attendee in attendees:
-                attendee_email = (attendee.get("email") or "").lower()
-                if attendee_email in email_to_id:
-                    employee_id_matched = email_to_id[attendee_email]
-                    try:
-                        supabase.table("meeting_participants").insert({
-                            "meeting_id": meeting_id,
-                            "employee_id": employee_id_matched
-                        }).execute()
-                        participants_matched += 1
-                    except:
-                        # Duplicate or other error - skip
-                        pass
-
-            synced += 1
+    # Simple free slot calculation (9:00-18:00 work hours)
+    # In production, integrate with Microsoft Graph for real availability
+    busy_times = []
+    for m in meetings.data:
+        if m.get("start_time") and m.get("end_time"):
+            busy_times.append({
+                "start": m["start_time"],
+                "end": m["end_time"]
+            })
 
     return {
-        "synced": synced,
-        "total": len(all_events),
-        "total_events": len(all_events),
-        "employees_synced": len(employees_to_sync),
-        "participants_matched": participants_matched,
-        "errors": errors if errors else None
+        "busy_times": busy_times,
+        "message": "For real-time availability, configure Microsoft Graph API (MS_GRAPH_* env vars)"
+    }
+
+
+@app.post("/calendar/sync")
+async def sync_calendar_meetings(employee_id: Optional[str] = Form(None)):
+    """Sync meetings from Exchange/Outlook to app.
+
+    Requires Microsoft Graph API configuration for Office 365 integration.
+    """
+    if not MS_GRAPH_CLIENT_ID:
+        raise HTTPException(
+            status_code=501,
+            detail="Calendar sync not configured. Set MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET, MS_GRAPH_TENANT_ID for Office 365 integration."
+        )
+
+    # TODO: Implement Microsoft Graph API calendar sync
+    # 1. Get access token using client credentials flow
+    # 2. Fetch calendar events for employee(s)
+    # 3. Upsert meetings and match participants
+
+    return {
+        "status": "not_implemented",
+        "message": "Microsoft Graph API integration pending"
     }
 
 

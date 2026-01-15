@@ -7,7 +7,6 @@
     running: false,
     connected: false,
     ad_connected: false,
-    exchange_connected: false,
     last_error: null,
     logs: []
   }
@@ -18,10 +17,7 @@
     ad_server: 'ldap://172.20.0.33',
     ad_bind_user: '',
     ad_bind_password: '',
-    ad_base_dn: 'DC=ekfgroup,DC=ru',
-    ews_url: 'https://post.ekf.su/EWS/Exchange.asmx',
-    ews_username: '',
-    ews_password: ''
+    ad_base_dn: 'DC=ekfgroup,DC=ru'
   }
 
   let originalConfig = null
@@ -31,7 +27,6 @@
   // Password visibility states
   let showApiKey = false
   let showAdPassword = false
-  let showEwsPassword = false
 
   // Check if config has changed
   $: hasChanges = originalConfig && JSON.stringify(config) !== JSON.stringify(originalConfig)
@@ -147,12 +142,6 @@
           </div>
         </div>
         <div class="status-card">
-          <h4>Exchange</h4>
-          <div class="value" class:connected={status.exchange_connected} class:disconnected={!status.exchange_connected}>
-            {status.exchange_connected ? '● Подключен' : '○ Отключен'}
-          </div>
-        </div>
-        <div class="status-card">
           <h4>Статус</h4>
           <div class="value">
             {status.running ? 'Запущен' : 'Остановлен'}
@@ -230,31 +219,6 @@
         <div class="form-group">
           <label>Base DN</label>
           <input type="text" bind:value={config.ad_base_dn} placeholder="DC=domain,DC=com" />
-        </div>
-      </div>
-
-      <div class="form-section">
-        <h3>Exchange (EWS)</h3>
-        <div class="form-group">
-          <label>URL EWS</label>
-          <input type="text" bind:value={config.ews_url} placeholder="https://mail.domain.com/EWS/Exchange.asmx" />
-        </div>
-        <div class="form-group">
-          <label>Пользователь</label>
-          <input type="text" bind:value={config.ews_username} />
-        </div>
-        <div class="form-group">
-          <label>Пароль</label>
-          <div class="password-input">
-            {#if showEwsPassword}
-              <input type="text" bind:value={config.ews_password} />
-            {:else}
-              <input type="password" bind:value={config.ews_password} />
-            {/if}
-            <button type="button" class="eye-btn" on:click={() => showEwsPassword = !showEwsPassword}>
-              {showEwsPassword ? '🙈' : '👁'}
-            </button>
-          </div>
         </div>
       </div>
 
