@@ -6,11 +6,15 @@ mod ews_client;
 
 use ad_client::ADClient;
 use connector::Connector;
+use directories::ProjectDirs;
 use ews_client::EWSClient;
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::State;
 use tokio::sync::Mutex;
+use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +50,53 @@ impl Default for ConnectorConfig {
     }
 }
 
+fn get_config_path() -> Option<PathBuf> {
+    ProjectDirs::from("ru", "ekf", "ekf-connector").map(|dirs| {
+        let config_dir = dirs.config_dir();
+        config_dir.join("config.json")
+    })
+}
+
+fn load_config_from_file() -> ConnectorConfig {
+    if let Some(path) = get_config_path() {
+        if path.exists() {
+            match fs::read_to_string(&path) {
+                Ok(contents) => match serde_json::from_str(&contents) {
+                    Ok(config) => {
+                        info!("Config loaded from {:?}", path);
+                        return config;
+                    }
+                    Err(e) => {
+                        error!("Failed to parse config: {}", e);
+                    }
+                },
+                Err(e) => {
+                    error!("Failed to read config file: {}", e);
+                }
+            }
+        }
+    }
+    info!("Using default config");
+    ConnectorConfig::default()
+}
+
+fn save_config_to_file(config: &ConnectorConfig) -> Result<(), String> {
+    let path = get_config_path().ok_or("Could not determine config path")?;
+
+    // Create parent directory if it doesn't exist
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create config dir: {}", e))?;
+    }
+
+    let json = serde_json::to_string_pretty(config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+
+    fs::write(&path, json).map_err(|e| format!("Failed to write config: {}", e))?;
+
+    info!("Config saved to {:?}", path);
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct ConnectorStatus {
     pub running: bool,
@@ -72,6 +123,10 @@ async fn get_config(state: State<'_, AppState>) -> Result<ConnectorConfig, Strin
 
 #[tauri::command]
 async fn save_config(config: ConnectorConfig, state: State<'_, AppState>) -> Result<(), String> {
+    // Save to file first
+    save_config_to_file(&config)?;
+
+    // Update in-memory state
     let mut current = state.config.lock().await;
     *current = config;
     Ok(())
@@ -196,10 +251,13 @@ fn main() {
         )
         .init();
 
+    // Load config from file on startup
+    let initial_config = load_config_from_file();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
-            config: Mutex::new(ConnectorConfig::default()),
+            config: Mutex::new(initial_config),
             connector: Mutex::new(None),
             logs: Arc::new(Mutex::new(Vec::new())),
         })
