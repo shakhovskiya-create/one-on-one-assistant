@@ -960,7 +960,75 @@ async def get_meeting(meeting_id: str):
     
     data = result.data
     data["participants"] = [p["employees"] for p in participants.data]
-    
+
+    return data
+
+
+@app.post("/meetings/{meeting_id}/resolve-participants")
+async def resolve_meeting_participants(meeting_id: str):
+    """Match Exchange attendees to employees and update meeting_participants"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database not configured")
+
+    meeting = supabase.table("meetings").select("exchange_data").eq("id", meeting_id).single().execute()
+    if not meeting.data:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+
+    exchange_data = meeting.data.get("exchange_data")
+    if not exchange_data:
+        return {"matched": 0, "message": "No Exchange data available"}
+
+    # Build email lookup
+    all_employees = supabase.table("employees").select("id, email, name").execute()
+    email_to_emp = {emp["email"].lower(): emp for emp in all_employees.data if emp.get("email")}
+
+    attendees = exchange_data.get("attendees", [])
+    matched = 0
+    unmatched = []
+
+    for attendee in attendees:
+        attendee_email = (attendee.get("email") or "").lower()
+        if attendee_email in email_to_emp:
+            emp = email_to_emp[attendee_email]
+            try:
+                supabase.table("meeting_participants").insert({
+                    "meeting_id": meeting_id,
+                    "employee_id": emp["id"]
+                }).execute()
+                matched += 1
+            except:
+                pass  # Already exists
+        else:
+            unmatched.append(attendee.get("email") or attendee.get("name"))
+
+    return {
+        "matched": matched,
+        "unmatched": unmatched
+    }
+
+
+@app.get("/meetings/exchange/{exchange_id}")
+async def get_meeting_by_exchange_id(exchange_id: str):
+    """Get meeting by Exchange ID"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database not configured")
+
+    result = supabase.table("meetings").select(
+        "*, employees(name, position), meeting_categories(code, name)"
+    ).eq("exchange_id", exchange_id).single().execute()
+
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+
+    # Get participants
+    participants = supabase.table("meeting_participants")\
+        .select("employees(id, name, position, email)")\
+        .eq("meeting_id", result.data["id"])\
+        .execute()
+
+    data = result.data
+    data["participants"] = [p["employees"] for p in participants.data if p.get("employees")]
+
     return data
 
 
@@ -1743,12 +1811,30 @@ async def authenticate_ad_user(username: str = Form(...), password: str = Form(.
 
 
 @app.get("/ad/subordinates/{employee_id}")
-async def get_ad_subordinates(employee_id: str):
-    """Get subordinates for a manager from AD"""
+async def get_ad_subordinates(employee_id: str, from_db: bool = True):
+    """Get subordinates for a manager (from DB by default, or AD if connector available)"""
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not configured")
 
-    # Get manager's DN
+    if from_db:
+        # Get all subordinates recursively from database using manager_id
+        subordinates = []
+
+        def get_subordinates_recursive(manager_id: str, level: int = 1):
+            if level > 10:  # Prevent infinite loops
+                return
+            result = supabase.table("employees")\
+                .select("id, name, email, position, department, manager_id")\
+                .eq("manager_id", manager_id)\
+                .execute()
+            for emp in result.data:
+                subordinates.append({**emp, "level": level})
+                get_subordinates_recursive(emp["id"], level + 1)
+
+        get_subordinates_recursive(employee_id)
+        return subordinates
+
+    # Fallback to AD connector
     employee = supabase.table("employees").select("ad_dn").eq("id", employee_id).single().execute()
     if not employee.data or not employee.data.get("ad_dn"):
         raise HTTPException(status_code=404, detail="Employee not found or not synced from AD")
@@ -1758,6 +1844,38 @@ async def get_ad_subordinates(employee_id: str):
     })
 
     return result
+
+
+@app.get("/employees/my-team")
+async def get_my_team(manager_id: str, include_indirect: bool = True):
+    """Get employees that report to this manager (for filtered views)"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database not configured")
+
+    if include_indirect:
+        # Get all subordinates recursively
+        subordinates = []
+
+        def get_subordinates_recursive(mgr_id: str, level: int = 1):
+            if level > 10:
+                return
+            result = supabase.table("employees")\
+                .select("*")\
+                .eq("manager_id", mgr_id)\
+                .execute()
+            for emp in result.data:
+                subordinates.append({**emp, "level": level})
+                get_subordinates_recursive(emp["id"], level + 1)
+
+        get_subordinates_recursive(manager_id)
+        return subordinates
+    else:
+        # Direct reports only
+        result = supabase.table("employees")\
+            .select("*")\
+            .eq("manager_id", manager_id)\
+            .execute()
+        return result.data
 
 
 # ============ EXCHANGE/CALENDAR INTEGRATION ============
@@ -1875,11 +1993,11 @@ async def find_free_slots(
 
 @app.post("/calendar/sync")
 async def sync_calendar_meetings(employee_id: str = Form(...)):
-    """Sync meetings from Exchange to app"""
+    """Sync meetings from Exchange to app with participant matching"""
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not configured")
 
-    employee = supabase.table("employees").select("email").eq("id", employee_id).single().execute()
+    employee = supabase.table("employees").select("id, email").eq("id", employee_id).single().execute()
     if not employee.data or not employee.data.get("email"):
         raise HTTPException(status_code=404, detail="Employee email not found")
 
@@ -1889,7 +2007,13 @@ async def sync_calendar_meetings(employee_id: str = Form(...)):
         "days_forward": 60
     }, timeout=120.0)
 
+    # Build email->employee_id lookup for participant matching
+    all_employees = supabase.table("employees").select("id, email").execute()
+    email_to_id = {emp["email"].lower(): emp["id"] for emp in all_employees.data if emp.get("email")}
+
     synced = 0
+    participants_matched = 0
+
     for event in events:
         if not event.get("id"):
             continue
@@ -1898,17 +2022,53 @@ async def sync_calendar_meetings(employee_id: str = Form(...)):
         existing = supabase.table("meetings").select("id").eq("exchange_id", event["id"]).execute()
 
         if not existing.data:
+            # Parse start/end times
+            start_time = event.get("start")
+            end_time = event.get("end")
+
+            # Find organizer in employees
+            organizer_id = None
+            organizer_email = event.get("organizer", "").lower()
+            if organizer_email in email_to_id:
+                organizer_id = email_to_id[organizer_email]
+
             meeting_data = {
                 "title": event.get("subject", "Untitled"),
-                "date": event.get("start", "").split("T")[0] if event.get("start") else None,
+                "date": start_time.split("T")[0] if start_time else None,
+                "start_time": start_time,
+                "end_time": end_time,
+                "location": event.get("location"),
                 "exchange_id": event["id"],
-                "exchange_data": event
+                "exchange_data": event,
+                "organizer_id": organizer_id
             }
 
-            supabase.table("meetings").insert(meeting_data).execute()
+            meeting_result = supabase.table("meetings").insert(meeting_data).execute()
+            meeting_id = meeting_result.data[0]["id"]
+
+            # Match attendees to employees and add as participants
+            attendees = event.get("attendees", [])
+            for attendee in attendees:
+                attendee_email = (attendee.get("email") or "").lower()
+                if attendee_email in email_to_id:
+                    employee_id_matched = email_to_id[attendee_email]
+                    try:
+                        supabase.table("meeting_participants").insert({
+                            "meeting_id": meeting_id,
+                            "employee_id": employee_id_matched
+                        }).execute()
+                        participants_matched += 1
+                    except:
+                        # Duplicate or other error - skip
+                        pass
+
             synced += 1
 
-    return {"synced": synced, "total_events": len(events)}
+    return {
+        "synced": synced,
+        "total_events": len(events),
+        "participants_matched": participants_matched
+    }
 
 
 if __name__ == "__main__":
