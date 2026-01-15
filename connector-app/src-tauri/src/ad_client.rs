@@ -140,7 +140,19 @@ impl ADClient {
             .await
             .map_err(|e| format!("Search failed: {}", e))?;
 
-        while let Some(entry) = search_stream.next().await.map_err(|e| format!("Stream error: {}", e))? {
+        loop {
+            let entry_result = search_stream.next().await;
+
+            let entry = match entry_result {
+                Ok(Some(e)) => e,
+                Ok(None) => break, // End of stream
+                Err(e) => {
+                    // Log error but continue processing what we have
+                    error!("Stream error during AD sync: {}", e);
+                    break;
+                }
+            };
+
             let entry = SearchEntry::construct(entry);
 
             stats.total_in_ad += 1;
@@ -196,7 +208,10 @@ impl ADClient {
             users.push(user);
         }
 
-        let _res = search_stream.finish().await;
+        // Safely finish the stream
+        if let Err(e) = search_stream.finish().await {
+            error!("Error finishing search stream: {:?}", e);
+        }
         stats.returned = users.len();
 
         ldap.unbind().await.ok();

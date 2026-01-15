@@ -190,8 +190,15 @@ impl Connector {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(true);
 
-                match self.ad_client.get_all_users(require_dept, true, include_photo).await {
-                    Ok((users, stats)) => {
+                self.log("Starting AD sync...").await;
+
+                let result = tokio::time::timeout(
+                    std::time::Duration::from_secs(300), // 5 minute timeout
+                    self.ad_client.get_all_users(require_dept, true, include_photo)
+                ).await;
+
+                match result {
+                    Ok(Ok((users, stats))) => {
                         self.log(&format!(
                             "Synced {} users ({} with dept)",
                             stats.returned, stats.with_department
@@ -203,9 +210,13 @@ impl Connector {
                             "has_more": false
                         })
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         self.log(&format!("Sync failed: {}", e)).await;
                         json!({ "error": e })
+                    }
+                    Err(_) => {
+                        self.log("Sync timed out after 5 minutes").await;
+                        json!({ "error": "Sync timed out" })
                     }
                 }
             }
