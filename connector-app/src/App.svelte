@@ -24,12 +24,22 @@
     ews_password: ''
   }
 
+  let originalConfig = null
   let saving = false
   let starting = false
+
+  // Password visibility states
+  let showApiKey = false
+  let showAdPassword = false
+  let showEwsPassword = false
+
+  // Check if config has changed
+  $: hasChanges = originalConfig && JSON.stringify(config) !== JSON.stringify(originalConfig)
 
   onMount(async () => {
     try {
       config = await invoke('get_config')
+      originalConfig = JSON.parse(JSON.stringify(config))
       status = await invoke('get_status')
     } catch (e) {
       console.error('Failed to load config:', e)
@@ -49,6 +59,7 @@
     saving = true
     try {
       await invoke('save_config', { config })
+      originalConfig = JSON.parse(JSON.stringify(config))
       alert('Настройки сохранены')
     } catch (e) {
       alert('Ошибка сохранения: ' + e)
@@ -180,7 +191,15 @@
         </div>
         <div class="form-group">
           <label>API Key</label>
-          <input type="password" bind:value={config.api_key} />
+          <div class="password-input">
+            <input
+              type={showApiKey ? 'text' : 'password'}
+              bind:value={config.api_key}
+            />
+            <button type="button" class="eye-btn" on:click={() => showApiKey = !showApiKey}>
+              {showApiKey ? '👁' : '👁‍🗨'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -196,7 +215,15 @@
         </div>
         <div class="form-group">
           <label>Пароль</label>
-          <input type="password" bind:value={config.ad_bind_password} />
+          <div class="password-input">
+            <input
+              type={showAdPassword ? 'text' : 'password'}
+              bind:value={config.ad_bind_password}
+            />
+            <button type="button" class="eye-btn" on:click={() => showAdPassword = !showAdPassword}>
+              {showAdPassword ? '👁' : '👁‍🗨'}
+            </button>
+          </div>
         </div>
         <div class="form-group">
           <label>Base DN</label>
@@ -216,12 +243,26 @@
         </div>
         <div class="form-group">
           <label>Пароль</label>
-          <input type="password" bind:value={config.ews_password} />
+          <div class="password-input">
+            <input
+              type={showEwsPassword ? 'text' : 'password'}
+              bind:value={config.ews_password}
+            />
+            <button type="button" class="eye-btn" on:click={() => showEwsPassword = !showEwsPassword}>
+              {showEwsPassword ? '👁' : '👁‍🗨'}
+            </button>
+          </div>
         </div>
       </div>
 
-      <button class="btn btn-primary btn-full" on:click={saveConfig} disabled={saving}>
-        {saving ? 'Сохранение...' : 'Сохранить'}
+      <button
+        class="btn btn-full"
+        class:btn-primary={hasChanges}
+        class:btn-disabled={!hasChanges}
+        on:click={saveConfig}
+        disabled={saving || !hasChanges}
+      >
+        {saving ? 'Сохранение...' : hasChanges ? 'Сохранить' : 'Сохранено'}
       </button>
     </div>
   {/if}
@@ -231,7 +272,7 @@
     <div class="panel">
       <div class="logs">
         {#if status.logs.length === 0}
-          <div class="log-entry">Нет логов</div>
+          <div class="log-entry log-empty">Нет логов</div>
         {:else}
           {#each status.logs as log}
             <div class="log-entry">{log}</div>
@@ -256,5 +297,38 @@
     margin-bottom: 16px;
     font-size: 12px;
     color: #DC2626;
+  }
+
+  .password-input {
+    display: flex;
+    gap: 8px;
+  }
+
+  .password-input input {
+    flex: 1;
+  }
+
+  .eye-btn {
+    background: #f3f4f6;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+
+  .eye-btn:hover {
+    background: #e5e7eb;
+  }
+
+  .btn-disabled {
+    background: #e5e7eb;
+    color: #9ca3af;
+    cursor: not-allowed;
+  }
+
+  .log-empty {
+    color: #9ca3af;
+    font-style: italic;
   }
 </style>

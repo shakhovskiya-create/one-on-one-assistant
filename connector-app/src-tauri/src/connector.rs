@@ -1,10 +1,11 @@
 use crate::ad_client::ADClient;
 use crate::ews_client::EWSClient;
+use crate::LogBuffer;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::Mutex;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{error, info, warn};
 
@@ -30,7 +31,7 @@ pub struct Connector {
     ad_client: ADClient,
     ews_client: EWSClient,
     state: Arc<Mutex<ConnectorState>>,
-    log_tx: broadcast::Sender<String>,
+    logs: LogBuffer,
 }
 
 impl Connector {
@@ -39,7 +40,7 @@ impl Connector {
         api_key: &str,
         ad_client: ADClient,
         ews_client: EWSClient,
-        log_tx: broadcast::Sender<String>,
+        logs: LogBuffer,
     ) -> Self {
         Self {
             backend_url: backend_url.to_string(),
@@ -53,14 +54,19 @@ impl Connector {
                 exchange_connected: false,
                 last_error: None,
             })),
-            log_tx,
+            logs,
         }
     }
 
-    fn log(&self, message: &str) {
+    async fn log(&self, message: &str) {
         let timestamp = chrono::Local::now().format("%H:%M:%S");
         let log_line = format!("[{}] {}", timestamp, message);
-        self.log_tx.send(log_line).ok();
+        let mut logs = self.logs.lock().await;
+        logs.push(log_line);
+        // Keep only last 100 logs
+        if logs.len() > 100 {
+            logs.remove(0);
+        }
     }
 
     pub async fn get_state(&self) -> ConnectorState {
@@ -76,41 +82,41 @@ impl Connector {
             state.running = true;
         }
 
-        self.log("Starting connector...");
+        self.log("Starting connector...").await;
 
         // Test AD connection
-        self.log("Testing AD connection...");
+        self.log("Testing AD connection...").await;
         match self.ad_client.test_connection().await {
             Ok(_) => {
-                self.log("AD connection OK");
+                self.log("AD connection OK").await;
                 self.state.lock().await.ad_connected = true;
             }
             Err(e) => {
-                self.log(&format!("AD connection failed: {}", e));
+                self.log(&format!("AD connection failed: {}", e)).await;
                 self.state.lock().await.ad_connected = false;
             }
         }
 
         // Test EWS connection
-        self.log("Testing Exchange connection...");
+        self.log("Testing Exchange connection...").await;
         match self.ews_client.test_connection().await {
             Ok(_) => {
-                self.log("Exchange connection OK");
+                self.log("Exchange connection OK").await;
                 self.state.lock().await.exchange_connected = true;
             }
             Err(e) => {
-                self.log(&format!("Exchange connection failed: {}", e));
+                self.log(&format!("Exchange connection failed: {}", e)).await;
                 self.state.lock().await.exchange_connected = false;
             }
         }
 
         // Connect to backend WebSocket
-        self.log("Connecting to backend...");
+        self.log("Connecting to backend...").await;
         let url = format!("{}?token={}", self.backend_url, self.api_key);
 
         match connect_async(&url).await {
             Ok((ws_stream, _)) => {
-                self.log("Connected to backend");
+                self.log("Connected to backend").await;
                 self.state.lock().await.connected = true;
 
                 let (mut write, mut read) = ws_stream.split();
@@ -131,7 +137,7 @@ impl Connector {
                             write.send(Message::Pong(data)).await.ok();
                         }
                         Ok(Message::Close(_)) => {
-                            self.log("Backend closed connection");
+                            self.log("Backend closed connection").await;
                             break;
                         }
                         Err(e) => {
@@ -146,7 +152,7 @@ impl Connector {
             }
             Err(e) => {
                 let err = format!("Failed to connect to backend: {}", e);
-                self.log(&err);
+                self.log(&err).await;
                 self.state.lock().await.last_error = Some(err.clone());
                 return Err(err);
             }
@@ -156,7 +162,7 @@ impl Connector {
     }
 
     pub async fn stop(&self) {
-        self.log("Stopping connector...");
+        self.log("Stopping connector...").await;
         let mut state = self.state.lock().await;
         state.running = false;
         state.connected = false;
@@ -164,7 +170,7 @@ impl Connector {
 
     async fn handle_command(&self, cmd: &Command) -> Value {
         info!("Received command: {} ({})", cmd.command, cmd.request_id);
-        self.log(&format!("Command: {}", cmd.command));
+        self.log(&format!("Command: {}", cmd.command)).await;
 
         let result = match cmd.command.as_str() {
             "ping" => {
@@ -189,7 +195,7 @@ impl Connector {
                         self.log(&format!(
                             "Synced {} users ({} with dept)",
                             stats.returned, stats.with_department
-                        ));
+                        )).await;
                         json!({
                             "users": users,
                             "total": stats.total_in_ad,
@@ -198,7 +204,7 @@ impl Connector {
                         })
                     }
                     Err(e) => {
-                        self.log(&format!("Sync failed: {}", e));
+                        self.log(&format!("Sync failed: {}", e)).await;
                         json!({ "error": e })
                     }
                 }
@@ -210,11 +216,11 @@ impl Connector {
 
                 match self.ad_client.authenticate(username, password).await {
                     Ok(Some(user)) => {
-                        self.log(&format!("Auth success: {}", username));
+                        self.log(&format!("Auth success: {}", username)).await;
                         json!({ "authenticated": true, "user": user })
                     }
                     Ok(None) => {
-                        self.log(&format!("Auth failed: {}", username));
+                        self.log(&format!("Auth failed: {}", username)).await;
                         json!({ "authenticated": false, "error": "Invalid credentials" })
                     }
                     Err(e) => {
@@ -230,11 +236,11 @@ impl Connector {
 
                 match self.ews_client.get_calendar_events(email, days_back, days_forward).await {
                     Ok(events) => {
-                        self.log(&format!("Fetched {} events for {}", events.len(), email));
+                        self.log(&format!("Fetched {} events for {}", events.len(), email)).await;
                         json!(events)
                     }
                     Err(e) => {
-                        self.log(&format!("Calendar fetch failed: {}", e));
+                        self.log(&format!("Calendar fetch failed: {}", e)).await;
                         json!([])
                     }
                 }

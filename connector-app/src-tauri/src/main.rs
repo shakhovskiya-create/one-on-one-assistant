@@ -10,7 +10,7 @@ use ews_client::EWSClient;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::State;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::Mutex;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,11 +56,13 @@ pub struct ConnectorStatus {
     pub logs: Vec<String>,
 }
 
+// Shared log buffer type
+pub type LogBuffer = Arc<Mutex<Vec<String>>>;
+
 struct AppState {
     config: Mutex<ConnectorConfig>,
-    status: Mutex<ConnectorStatus>,
     connector: Mutex<Option<Arc<Connector>>>,
-    log_tx: broadcast::Sender<String>,
+    logs: LogBuffer,
 }
 
 #[tauri::command]
@@ -77,16 +79,16 @@ async fn save_config(config: ConnectorConfig, state: State<'_, AppState>) -> Res
 
 #[tauri::command]
 async fn get_status(state: State<'_, AppState>) -> Result<ConnectorStatus, String> {
-    let mut status = state.status.lock().await.clone();
+    let logs = state.logs.lock().await.clone();
 
-    // Get recent logs
-    let mut log_rx = state.log_tx.subscribe();
-    while let Ok(log) = log_rx.try_recv() {
-        status.logs.push(log);
-        if status.logs.len() > 100 {
-            status.logs.remove(0);
-        }
-    }
+    let mut status = ConnectorStatus {
+        running: false,
+        connected: false,
+        ad_connected: false,
+        exchange_connected: false,
+        last_error: None,
+        logs,
+    };
 
     // Update from connector state if running
     if let Some(connector) = state.connector.lock().await.as_ref() {
@@ -125,13 +127,13 @@ async fn start_connector(state: State<'_, AppState>) -> Result<(), String> {
 
     let ews_client = EWSClient::new(&config.ews_url, &config.ews_username, &config.ews_password);
 
-    // Create connector
+    // Create connector with shared log buffer
     let connector = Arc::new(Connector::new(
         &config.backend_url,
         &config.api_key,
         ad_client,
         ews_client,
-        state.log_tx.clone(),
+        state.logs.clone(),
     ));
 
     *state.connector.lock().await = Some(connector.clone());
@@ -157,8 +159,7 @@ async fn stop_connector(state: State<'_, AppState>) -> Result<(), String> {
 
 #[tauri::command]
 async fn clear_logs(state: State<'_, AppState>) -> Result<(), String> {
-    let mut status = state.status.lock().await;
-    status.logs.clear();
+    state.logs.lock().await.clear();
     Ok(())
 }
 
@@ -195,15 +196,12 @@ fn main() {
         )
         .init();
 
-    let (log_tx, _) = broadcast::channel::<String>(100);
-
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
             config: Mutex::new(ConnectorConfig::default()),
-            status: Mutex::new(ConnectorStatus::default()),
             connector: Mutex::new(None),
-            log_tx,
+            logs: Arc::new(Mutex::new(Vec::new())),
         })
         .invoke_handler(tauri::generate_handler![
             get_config,
