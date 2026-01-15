@@ -1636,67 +1636,71 @@ async def sync_ad_users():
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not configured")
 
-    synced = 0
-    total_from_ad = 0
-    offset = 0
-    batch_size = 100
+    try:
+        synced = 0
+        total_from_ad = 0
+        offset = 0
+        batch_size = 100
 
-    # Fetch users in batches
-    while True:
-        result = await connector_manager.send_command("sync_users", {
-            "offset": offset,
-            "limit": batch_size
-        }, timeout=30.0)
+        # Fetch users in batches
+        while True:
+            result = await connector_manager.send_command("sync_users", {
+                "offset": offset,
+                "limit": batch_size
+            }, timeout=30.0)
 
-        users = result.get("users", [])
-        total_from_ad = result.get("total", 0)
+            users = result.get("users", [])
+            total_from_ad = result.get("total", 0)
 
-        # Prepare batch for upsert (filter users with email)
-        batch = []
-        for user in users:
-            if not user.get("email"):
-                continue
-            batch.append({
-                "name": user.get("name", ""),
-                "email": user.get("email"),
-                "position": user.get("title", ""),
-                "department": user.get("department", ""),
-                "ad_dn": user.get("dn"),
-                "manager_dn": user.get("manager_dn"),
-                "ad_login": user.get("login")
-            })
+            # Prepare batch for upsert (filter users with email)
+            batch = []
+            for user in users:
+                if not user.get("email"):
+                    continue
+                batch.append({
+                    "name": user.get("name", ""),
+                    "email": user.get("email"),
+                    "position": user.get("title", ""),
+                    "department": user.get("department", ""),
+                    "ad_dn": user.get("dn"),
+                    "manager_dn": user.get("manager_dn"),
+                    "ad_login": user.get("login")
+                })
 
-        # Batch upsert - one request instead of N
-        if batch:
-            supabase.table("employees").upsert(batch, on_conflict="email").execute()
-            synced += len(batch)
+            # Batch upsert - one request instead of N
+            if batch:
+                supabase.table("employees").upsert(batch, on_conflict="email").execute()
+                synced += len(batch)
 
-        # Check if more pages
-        if not result.get("has_more", False):
-            break
+            # Check if more pages
+            if not result.get("has_more", False):
+                break
 
-        offset += batch_size
+            offset += batch_size
 
-    # Update manager relationships in batch
-    employees = supabase.table("employees").select("id, ad_dn, manager_dn").execute()
-    dn_to_id = {e["ad_dn"]: e["id"] for e in employees.data if e.get("ad_dn")}
+        # Update manager relationships in batch
+        employees = supabase.table("employees").select("id, ad_dn, manager_dn").execute()
+        dn_to_id = {e["ad_dn"]: e["id"] for e in employees.data if e.get("ad_dn")}
 
-    updates = []
-    for emp in employees.data:
-        if emp.get("manager_dn") and emp["manager_dn"] in dn_to_id:
-            updates.append({
-                "id": emp["id"],
-                "manager_id": dn_to_id[emp["manager_dn"]]
-            })
+        updates = []
+        for emp in employees.data:
+            if emp.get("manager_dn") and emp["manager_dn"] in dn_to_id:
+                updates.append({
+                    "id": emp["id"],
+                    "manager_id": dn_to_id[emp["manager_dn"]]
+                })
 
-    # Batch update managers
-    if updates:
-        supabase.table("employees").upsert(updates, on_conflict="id").execute()
+        # Batch update managers
+        if updates:
+            supabase.table("employees").upsert(updates, on_conflict="id").execute()
 
-    return {
-        "synced": synced,
-        "total_from_ad": total_from_ad
-    }
+        return {
+            "synced": synced,
+            "total_from_ad": total_from_ad
+        }
+    except Exception as e:
+        import traceback
+        raise HTTPException(status_code=500, detail=f"Sync error: {str(e)}\n{traceback.format_exc()}")
 
 
 @app.post("/ad/authenticate")
