@@ -179,10 +179,11 @@ class OnPremConnector:
     def _handle_sync_users(self) -> dict:
         """Sync all users from AD"""
         users = self.ad_client.get_all_users()
-        org_tree = self.ad_client.build_org_tree(users)
+        # Don't include org_tree - it creates circular references
+        # Backend will build relationships from manager_dn
         return {
             'users': users,
-            'org_tree': org_tree
+            'total': len(users)
         }
 
     def _handle_get_user(self, params: dict) -> Optional[dict]:
