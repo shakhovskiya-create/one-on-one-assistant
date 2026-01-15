@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Plus, Edit, User, Calendar } from 'lucide-react'
 
-const API_URL = process.env.API_URL || 'http://localhost:8000'
+import { API_URL } from '@/lib/config'
 
 interface Employee {
   id: string
