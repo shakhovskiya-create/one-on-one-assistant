@@ -1,0 +1,19 @@
+# Claude tokens
+.claude/
+
+# Environment
+.env
+*.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
