@@ -310,7 +310,7 @@ function TaskCard({
       onClick={onClick}
       className={`bg-white rounded-lg p-4 shadow-sm cursor-pointer hover:shadow-md transition-shadow ${
         task.is_blocking ? 'ring-2 ring-red-400' : ''
-      } ${task.blocked_by.length > 0 ? 'opacity-60' : ''}`}
+      } ${(task.blocked_by?.length ?? 0) > 0 ? 'opacity-60' : ''}`}
     >
       <div className="flex items-center gap-2 mb-2">
         {flagConfig && (
@@ -324,7 +324,7 @@ function TaskCard({
             <Flame size={14} className="text-red-500" />
           </span>
         )}
-        {task.blocked_by.length > 0 && (
+        {task.blocked_by?.length > 0 && (
           <span title="Заблокирована">
             <AlertTriangle size={14} className="text-yellow-500" />
           </span>
