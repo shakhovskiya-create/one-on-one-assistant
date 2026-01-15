@@ -1,17 +1,31 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import { 
-  Plus, 
-  Search, 
-  Calendar, 
-  User, 
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import {
+  Plus,
+  Search,
+  Calendar,
+  User,
   X,
   Check,
   AlertTriangle,
   Flame,
   MoreVertical,
-  GripVertical
+  GripVertical,
+  LayoutGrid,
+  List,
+  Table2,
+  ChevronDown,
+  Filter,
+  SortAsc,
+  SortDesc,
+  MessageSquare,
+  AtSign,
+  Send,
+  Settings2,
+  Eye,
+  EyeOff,
+  ArrowUpDown
 } from 'lucide-react'
 import {
   DndContext,
@@ -35,6 +49,7 @@ import { CSS } from '@dnd-kit/utilities'
 
 import { API_URL } from '@/lib/config'
 
+// Types
 interface Employee {
   id: string
   name: string
@@ -66,12 +81,14 @@ interface Task {
   progress?: number
   comments?: Comment[]
   history?: HistoryEntry[]
+  created_at?: string
+  updated_at?: string
 }
 
 interface Comment {
   id: string
   content: string
-  author?: { name: string }
+  author?: { id: string; name: string }
   created_at: string
 }
 
@@ -91,12 +108,17 @@ interface KanbanData {
   done: Task[]
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; bgDrop: string }> = {
-  backlog: { label: 'Бэклог', color: 'bg-gray-100', bgDrop: 'bg-gray-200' },
-  todo: { label: 'К выполнению', color: 'bg-blue-100', bgDrop: 'bg-blue-200' },
-  in_progress: { label: 'В работе', color: 'bg-yellow-100', bgDrop: 'bg-yellow-200' },
-  review: { label: 'На проверке', color: 'bg-purple-100', bgDrop: 'bg-purple-200' },
-  done: { label: 'Готово', color: 'bg-green-100', bgDrop: 'bg-green-200' }
+type ViewMode = 'board' | 'list' | 'table'
+type SortField = 'title' | 'status' | 'priority' | 'due_date' | 'assignee' | 'created_at'
+type SortDirection = 'asc' | 'desc'
+
+// Config
+const STATUS_CONFIG: Record<string, { label: string; color: string; bgDrop: string; textColor: string }> = {
+  backlog: { label: 'Бэклог', color: 'bg-gray-100', bgDrop: 'bg-gray-200', textColor: 'text-gray-700' },
+  todo: { label: 'К выполнению', color: 'bg-blue-100', bgDrop: 'bg-blue-200', textColor: 'text-blue-700' },
+  in_progress: { label: 'В работе', color: 'bg-yellow-100', bgDrop: 'bg-yellow-200', textColor: 'text-yellow-700' },
+  review: { label: 'На проверке', color: 'bg-purple-100', bgDrop: 'bg-purple-200', textColor: 'text-purple-700' },
+  done: { label: 'Готово', color: 'bg-green-100', bgDrop: 'bg-green-200', textColor: 'text-green-700' }
 }
 
 const FLAG_COLORS: Record<string, { bg: string; label: string }> = {
@@ -109,47 +131,77 @@ const FLAG_COLORS: Record<string, { bg: string; label: string }> = {
 }
 
 const PRIORITY_LABELS = ['', 'Критический', 'Высокий', 'Средний', 'Низкий', 'Минимальный']
+const PRIORITY_COLORS = ['', 'text-red-600', 'text-orange-600', 'text-yellow-600', 'text-blue-600', 'text-gray-600']
 
+// Column visibility config
+interface ColumnConfig {
+  id: string
+  label: string
+  visible: boolean
+  width?: string
+}
+
+const DEFAULT_COLUMNS: ColumnConfig[] = [
+  { id: 'title', label: 'Название', visible: true, width: 'w-64' },
+  { id: 'status', label: 'Статус', visible: true, width: 'w-32' },
+  { id: 'priority', label: 'Приоритет', visible: true, width: 'w-28' },
+  { id: 'assignee', label: 'Исполнитель', visible: true, width: 'w-36' },
+  { id: 'due_date', label: 'Срок', visible: true, width: 'w-28' },
+  { id: 'tags', label: 'Теги', visible: true, width: 'w-40' },
+  { id: 'comments', label: 'Комментарии', visible: false, width: 'w-20' },
+  { id: 'created_at', label: 'Создана', visible: false, width: 'w-28' },
+]
+
+// Main Component
 export default function TasksPage() {
+  const [tasks, setTasks] = useState<Task[]>([])
   const [kanban, setKanban] = useState<KanbanData | null>(null)
   const [employees, setEmployees] = useState<Employee[]>([])
   const [tags, setTags] = useState<TaskTag[]>([])
   const [loading, setLoading] = useState(true)
+
+  // View state
+  const [viewMode, setViewMode] = useState<ViewMode>('board')
+  const [columns, setColumns] = useState<ColumnConfig[]>(DEFAULT_COLUMNS)
+  const [showColumnSettings, setShowColumnSettings] = useState(false)
+
+  // Filter & Sort
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterAssignee, setFilterAssignee] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
+  const [filterPriority, setFilterPriority] = useState('')
+  const [sortField, setSortField] = useState<SortField>('created_at')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const [showFilters, setShowFilters] = useState(false)
+
+  // Modals
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showTaskModal, setShowTaskModal] = useState(false)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
-  const [filterAssignee, setFilterAssignee] = useState<string>('')
-  const [searchQuery, setSearchQuery] = useState('')
+
+  // DnD state
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [overColumn, setOverColumn] = useState<string | null>(null)
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
   useEffect(() => {
     fetchData()
-  }, [filterAssignee])
+  }, [])
 
   const fetchData = async () => {
     try {
-      const kanbanUrl = filterAssignee 
-        ? `${API_URL}/kanban?assignee_id=${filterAssignee}` 
-        : `${API_URL}/kanban`
-      
-      const [kanbanRes, employeesRes, tagsRes] = await Promise.all([
-        fetch(kanbanUrl),
+      const [tasksRes, kanbanRes, employeesRes, tagsRes] = await Promise.all([
+        fetch(`${API_URL}/tasks`),
+        fetch(`${API_URL}/kanban`),
         fetch(`${API_URL}/employees`),
         fetch(`${API_URL}/tags`)
       ])
-      
+
+      if (tasksRes.ok) setTasks(await tasksRes.json())
       if (kanbanRes.ok) setKanban(await kanbanRes.json())
       if (employeesRes.ok) setEmployees(await employeesRes.json())
       if (tagsRes.ok) setTags(await tagsRes.json())
@@ -160,23 +212,110 @@ export default function TasksPage() {
     }
   }
 
-  const filterTasks = (tasks: Task[]): Task[] => {
-    if (!searchQuery) return tasks
-    return tasks.filter((t: Task) => 
-      t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.description?.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+  // Filter and sort tasks
+  const filteredTasks = useMemo(() => {
+    let result = [...tasks]
+
+    // Search
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      result = result.filter(t =>
+        t.title.toLowerCase().includes(query) ||
+        t.description?.toLowerCase().includes(query)
+      )
+    }
+
+    // Filters
+    if (filterAssignee) {
+      result = result.filter(t => t.assignee?.id === filterAssignee)
+    }
+    if (filterStatus) {
+      result = result.filter(t => t.status === filterStatus)
+    }
+    if (filterPriority) {
+      result = result.filter(t => t.priority === parseInt(filterPriority))
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      let comparison = 0
+      switch (sortField) {
+        case 'title':
+          comparison = a.title.localeCompare(b.title)
+          break
+        case 'status':
+          const statusOrder = ['backlog', 'todo', 'in_progress', 'review', 'done']
+          comparison = statusOrder.indexOf(a.status) - statusOrder.indexOf(b.status)
+          break
+        case 'priority':
+          comparison = a.priority - b.priority
+          break
+        case 'due_date':
+          if (!a.due_date && !b.due_date) comparison = 0
+          else if (!a.due_date) comparison = 1
+          else if (!b.due_date) comparison = -1
+          else comparison = new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
+          break
+        case 'assignee':
+          comparison = (a.assignee?.name || 'zzz').localeCompare(b.assignee?.name || 'zzz')
+          break
+        case 'created_at':
+          comparison = new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+          break
+      }
+      return sortDirection === 'asc' ? comparison : -comparison
+    })
+
+    return result
+  }, [tasks, searchQuery, filterAssignee, filterStatus, filterPriority, sortField, sortDirection])
+
+  // Filtered kanban for board view
+  const filteredKanban = useMemo(() => {
+    if (!kanban) return null
+
+    const filterFn = (task: Task) => {
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase()
+        if (!task.title.toLowerCase().includes(query) &&
+            !task.description?.toLowerCase().includes(query)) {
+          return false
+        }
+      }
+      if (filterAssignee && task.assignee?.id !== filterAssignee) return false
+      if (filterPriority && task.priority !== parseInt(filterPriority)) return false
+      return true
+    }
+
+    return {
+      backlog: kanban.backlog.filter(filterFn),
+      todo: kanban.todo.filter(filterFn),
+      in_progress: kanban.in_progress.filter(filterFn),
+      review: kanban.review.filter(filterFn),
+      done: kanban.done.filter(filterFn),
+    }
+  }, [kanban, searchQuery, filterAssignee, filterPriority])
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
   }
 
+  const toggleColumn = (columnId: string) => {
+    setColumns(prev => prev.map(col =>
+      col.id === columnId ? { ...col, visible: !col.visible } : col
+    ))
+  }
+
+  // DnD handlers
   const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event
-    const taskId = active.id as string
-    
+    const taskId = event.active.id as string
     if (kanban) {
-      const statuses = Object.keys(kanban) as Array<keyof KanbanData>
-      for (const status of statuses) {
-        const tasks = kanban[status]
-        const task = tasks.find((t: Task) => t.id === taskId)
+      for (const status of Object.keys(kanban) as Array<keyof KanbanData>) {
+        const task = kanban[status].find(t => t.id === taskId)
         if (task) {
           setActiveTask(task)
           break
@@ -190,15 +329,11 @@ export default function TasksPage() {
     if (over) {
       if (Object.keys(STATUS_CONFIG).includes(over.id as string)) {
         setOverColumn(over.id as string)
-      } else {
-        if (kanban) {
-          const statuses = Object.keys(kanban) as Array<keyof KanbanData>
-          for (const status of statuses) {
-            const tasks = kanban[status]
-            if (tasks.find((t: Task) => t.id === over.id)) {
-              setOverColumn(status)
-              break
-            }
+      } else if (kanban) {
+        for (const status of Object.keys(kanban) as Array<keyof KanbanData>) {
+          if (kanban[status].find(t => t.id === over.id)) {
+            setOverColumn(status)
+            break
           }
         }
       }
@@ -209,7 +344,6 @@ export default function TasksPage() {
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
-    
     setActiveTask(null)
     setOverColumn(null)
 
@@ -221,10 +355,8 @@ export default function TasksPage() {
     if (Object.keys(STATUS_CONFIG).includes(over.id as string)) {
       newStatus = over.id as keyof KanbanData
     } else {
-      const statuses = Object.keys(kanban) as Array<keyof KanbanData>
-      for (const status of statuses) {
-        const tasks = kanban[status]
-        if (tasks.find((t: Task) => t.id === over.id)) {
+      for (const status of Object.keys(kanban) as Array<keyof KanbanData>) {
+        if (kanban[status].find(t => t.id === over.id)) {
           newStatus = status
           break
         }
@@ -235,11 +367,9 @@ export default function TasksPage() {
 
     let currentTask: Task | null = null
     let currentStatus: keyof KanbanData | null = null
-    
-    const statuses = Object.keys(kanban) as Array<keyof KanbanData>
-    for (const status of statuses) {
-      const tasks = kanban[status]
-      const task = tasks.find((t: Task) => t.id === taskId)
+
+    for (const status of Object.keys(kanban) as Array<keyof KanbanData>) {
+      const task = kanban[status].find(t => t.id === taskId)
       if (task) {
         currentTask = task
         currentStatus = status
@@ -249,20 +379,17 @@ export default function TasksPage() {
 
     if (!currentTask || !currentStatus || currentStatus === newStatus) return
 
-    if ((currentTask.blocked_by?.length ?? 0) > 0 && newStatus === 'done') {
-      alert('Задача заблокирована другими задачами!')
-      return
-    }
-
+    // Update local state optimistically
     const newKanban: KanbanData = { ...kanban }
-    newKanban[currentStatus] = kanban[currentStatus].filter((t: Task) => t.id !== taskId)
+    newKanban[currentStatus] = kanban[currentStatus].filter(t => t.id !== taskId)
     newKanban[newStatus] = [...kanban[newStatus], { ...currentTask, status: newStatus }]
     setKanban(newKanban)
 
+    // Also update tasks array
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus! } : t))
+
     try {
-      await fetch(`${API_URL}/kanban/move?task_id=${taskId}&new_status=${newStatus}`, {
-        method: 'PUT'
-      })
+      await fetch(`${API_URL}/kanban/move?task_id=${taskId}&new_status=${newStatus}`, { method: 'PUT' })
     } catch (error) {
       console.error('Failed to move task:', error)
       fetchData()
@@ -282,10 +409,7 @@ export default function TasksPage() {
     }
   }
 
-  const allTaskIds = useMemo(() => {
-    if (!kanban) return []
-    return Object.values(kanban).flat().map((t: Task) => t.id)
-  }, [kanban])
+  const activeFiltersCount = [filterAssignee, filterStatus, filterPriority].filter(Boolean).length
 
   if (loading) {
     return (
@@ -297,7 +421,8 @@ export default function TasksPage() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex justify-between items-center mb-6">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-gray-900">Задачи</h1>
         <button
           onClick={() => setShowCreateModal(true)}
@@ -308,66 +433,189 @@ export default function TasksPage() {
         </button>
       </div>
 
-      <div className="flex gap-4 mb-6">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+      {/* Toolbar */}
+      <div className="flex flex-wrap gap-3 mb-4 items-center">
+        {/* View Toggle - Slack-style */}
+        <div className="flex bg-gray-100 rounded-lg p-1">
+          <button
+            onClick={() => setViewMode('board')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              viewMode === 'board' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <LayoutGrid size={16} />
+            Доска
+          </button>
+          <button
+            onClick={() => setViewMode('list')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              viewMode === 'list' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <List size={16} />
+            Список
+          </button>
+          <button
+            onClick={() => setViewMode('table')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              viewMode === 'table' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Table2 size={16} />
+            Таблица
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input
             type="text"
-            placeholder="Поиск задач..."
+            placeholder="Поиск..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border rounded-lg"
+            className="w-full pl-9 pr-4 py-2 border rounded-lg text-sm"
           />
         </div>
-        <select
-          value={filterAssignee}
-          onChange={(e) => setFilterAssignee(e.target.value)}
-          className="px-4 py-2 border rounded-lg"
+
+        {/* Filter Button */}
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm ${
+            activeFiltersCount > 0 ? 'border-blue-500 text-blue-600 bg-blue-50' : 'text-gray-600'
+          }`}
         >
-          <option value="">Все исполнители</option>
-          {employees.map((emp: Employee) => (
-            <option key={emp.id} value={emp.id}>{emp.name}</option>
-          ))}
-        </select>
+          <Filter size={16} />
+          Фильтры
+          {activeFiltersCount > 0 && (
+            <span className="ml-1 px-1.5 py-0.5 bg-blue-600 text-white text-xs rounded-full">
+              {activeFiltersCount}
+            </span>
+          )}
+        </button>
+
+        {/* Column Settings (for list/table views) */}
+        {(viewMode === 'list' || viewMode === 'table') && (
+          <div className="relative">
+            <button
+              onClick={() => setShowColumnSettings(!showColumnSettings)}
+              className="flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm text-gray-600"
+            >
+              <Settings2 size={16} />
+              Колонки
+            </button>
+
+            {showColumnSettings && (
+              <div className="absolute right-0 top-full mt-1 w-56 bg-white border rounded-lg shadow-lg z-20 py-2">
+                <div className="px-3 py-1.5 text-xs font-medium text-gray-500 uppercase">Показать колонки</div>
+                {columns.map(col => (
+                  <button
+                    key={col.id}
+                    onClick={() => toggleColumn(col.id)}
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-sm"
+                  >
+                    {col.visible ? <Eye size={16} className="text-blue-600" /> : <EyeOff size={16} className="text-gray-400" />}
+                    {col.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="flex-1 overflow-x-auto">
-          <div className="flex gap-4 h-full min-w-max pb-4">
-            {Object.entries(STATUS_CONFIG).map(([status, config]) => {
-              const tasks = kanban ? filterTasks(kanban[status as keyof KanbanData]) : []
-              const isOver = overColumn === status
-              
-              return (
-                <KanbanColumn
-                  key={status}
-                  id={status}
-                  title={config.label}
-                  color={isOver ? config.bgDrop : config.color}
-                  count={tasks.length}
-                  tasks={tasks}
-                  onTaskClick={openTaskDetails}
-                />
-              )
-            })}
-          </div>
-        </div>
+      {/* Filters Panel */}
+      {showFilters && (
+        <div className="flex flex-wrap gap-3 mb-4 p-3 bg-gray-50 rounded-lg">
+          <select
+            value={filterAssignee}
+            onChange={(e) => setFilterAssignee(e.target.value)}
+            className="px-3 py-1.5 border rounded-lg text-sm"
+          >
+            <option value="">Все исполнители</option>
+            {employees.map(emp => (
+              <option key={emp.id} value={emp.id}>{emp.name}</option>
+            ))}
+          </select>
 
-        <DragOverlay>
-          {activeTask && (
-            <div className="rotate-3 opacity-90">
-              <TaskCard task={activeTask} isDragging />
-            </div>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="px-3 py-1.5 border rounded-lg text-sm"
+          >
+            <option value="">Все статусы</option>
+            {Object.entries(STATUS_CONFIG).map(([value, { label }]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+
+          <select
+            value={filterPriority}
+            onChange={(e) => setFilterPriority(e.target.value)}
+            className="px-3 py-1.5 border rounded-lg text-sm"
+          >
+            <option value="">Все приоритеты</option>
+            {[1, 2, 3, 4, 5].map(p => (
+              <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>
+            ))}
+          </select>
+
+          {activeFiltersCount > 0 && (
+            <button
+              onClick={() => {
+                setFilterAssignee('')
+                setFilterStatus('')
+                setFilterPriority('')
+              }}
+              className="px-3 py-1.5 text-sm text-red-600 hover:text-red-700"
+            >
+              Сбросить фильтры
+            </button>
           )}
-        </DragOverlay>
-      </DndContext>
+        </div>
+      )}
 
+      {/* Content */}
+      <div className="flex-1 overflow-hidden">
+        {viewMode === 'board' && filteredKanban && (
+          <BoardView
+            kanban={filteredKanban}
+            sensors={sensors}
+            activeTask={activeTask}
+            overColumn={overColumn}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            onTaskClick={openTaskDetails}
+          />
+        )}
+
+        {viewMode === 'list' && (
+          <ListView
+            tasks={filteredTasks}
+            columns={columns.filter(c => c.visible)}
+            sortField={sortField}
+            sortDirection={sortDirection}
+            onSort={handleSort}
+            onTaskClick={openTaskDetails}
+          />
+        )}
+
+        {viewMode === 'table' && (
+          <TableView
+            tasks={filteredTasks}
+            columns={columns.filter(c => c.visible)}
+            employees={employees}
+            sortField={sortField}
+            sortDirection={sortDirection}
+            onSort={handleSort}
+            onTaskClick={openTaskDetails}
+            onTaskUpdate={fetchData}
+          />
+        )}
+      </div>
+
+      {/* Modals */}
       {showCreateModal && (
         <CreateTaskModal
           employees={employees}
@@ -399,14 +647,65 @@ export default function TasksPage() {
   )
 }
 
-function KanbanColumn({
-  id,
-  title,
-  color,
-  count,
-  tasks,
+// ============ Board View (Kanban) ============
+function BoardView({
+  kanban,
+  sensors,
+  activeTask,
+  overColumn,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
   onTaskClick
 }: {
+  kanban: KanbanData
+  sensors: ReturnType<typeof useSensors>
+  activeTask: Task | null
+  overColumn: string | null
+  onDragStart: (event: DragStartEvent) => void
+  onDragOver: (event: DragOverEvent) => void
+  onDragEnd: (event: DragEndEvent) => void
+  onTaskClick: (id: string) => void
+}) {
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragEnd={onDragEnd}
+    >
+      <div className="flex gap-4 h-full overflow-x-auto pb-4">
+        {Object.entries(STATUS_CONFIG).map(([status, config]) => {
+          const tasks = kanban[status as keyof KanbanData]
+          const isOver = overColumn === status
+
+          return (
+            <KanbanColumn
+              key={status}
+              id={status}
+              title={config.label}
+              color={isOver ? config.bgDrop : config.color}
+              count={tasks.length}
+              tasks={tasks}
+              onTaskClick={onTaskClick}
+            />
+          )
+        })}
+      </div>
+
+      <DragOverlay>
+        {activeTask && (
+          <div className="rotate-3 opacity-90">
+            <TaskCard task={activeTask} isDragging />
+          </div>
+        )}
+      </DragOverlay>
+    </DndContext>
+  )
+}
+
+function KanbanColumn({ id, title, color, count, tasks, onTaskClick }: {
   id: string
   title: string
   color: string
@@ -414,31 +713,19 @@ function KanbanColumn({
   tasks: Task[]
   onTaskClick: (id: string) => void
 }) {
-  const { setNodeRef } = useSortable({
-    id,
-    data: { type: 'column' }
-  })
+  const { setNodeRef } = useSortable({ id, data: { type: 'column' } })
 
   return (
-    <div
-      ref={setNodeRef}
-      className={`w-80 flex-shrink-0 ${color} rounded-lg p-4 transition-colors duration-200`}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-gray-700">{title}</h3>
-        <span className="text-sm text-gray-500 bg-white px-2 py-1 rounded-full">
-          {count}
-        </span>
+    <div ref={setNodeRef} className={`w-72 flex-shrink-0 ${color} rounded-lg p-3 transition-colors duration-200`}>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-semibold text-gray-700 text-sm">{title}</h3>
+        <span className="text-xs text-gray-500 bg-white px-2 py-0.5 rounded-full">{count}</span>
       </div>
-      
-      <SortableContext items={tasks.map((t: Task) => t.id)} strategy={verticalListSortingStrategy}>
-        <div className="space-y-3 min-h-[100px]">
-          {tasks.map((task: Task) => (
-            <SortableTaskCard
-              key={task.id}
-              task={task}
-              onClick={() => onTaskClick(task.id)}
-            />
+
+      <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+        <div className="space-y-2 min-h-[100px]">
+          {tasks.map(task => (
+            <SortableTaskCard key={task.id} task={task} onClick={() => onTaskClick(task.id)} />
           ))}
         </div>
       </SortableContext>
@@ -446,133 +733,55 @@ function KanbanColumn({
   )
 }
 
-function SortableTaskCard({ 
-  task,
-  onClick
-}: { 
-  task: Task
-  onClick: () => void
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: task.id })
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  }
+function SortableTaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
+  const style = { transform: CSS.Transform.toString(transform), transition }
 
   if (isDragging) {
-    return (
-      <div
-        ref={setNodeRef}
-        style={style}
-        className="bg-blue-50 border-2 border-dashed border-blue-300 rounded-lg p-4 h-[120px]"
-      />
-    )
+    return <div ref={setNodeRef} style={style} className="bg-blue-50 border-2 border-dashed border-blue-300 rounded-lg p-4 h-[100px]" />
   }
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      onClick={onClick}
-      className="touch-none"
-    >
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} onClick={onClick} className="touch-none">
       <TaskCard task={task} />
     </div>
   )
 }
 
-function TaskCard({ 
-  task,
-  isDragging = false
-}: { 
-  task: Task
-  isDragging?: boolean
-}) {
+function TaskCard({ task, isDragging = false }: { task: Task; isDragging?: boolean }) {
   const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done'
   const flagConfig = task.flag_color ? FLAG_COLORS[task.flag_color] : null
-  const taskTags = task.tags ?? []
-  const blockedByCount = task.blocked_by?.length ?? 0
 
   return (
-    <div
-      className={`bg-white rounded-lg p-4 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all ${
-        task.is_blocking ? 'ring-2 ring-red-400' : ''
-      } ${blockedByCount > 0 ? 'opacity-60' : ''} ${isDragging ? 'shadow-xl' : ''}`}
-    >
-      <div className="flex items-center gap-2 mb-2">
-        <GripVertical size={14} className="text-gray-300" />
-        {flagConfig && (
-          <div className={`w-3 h-3 rounded-full ${flagConfig.bg}`} />
-        )}
-        {task.is_epic && (
-          <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">Эпик</span>
-        )}
-        {task.is_blocking && (
-          <span title="Блокирует другие задачи">
-            <Flame size={14} className="text-red-500" />
-          </span>
-        )}
-        {blockedByCount > 0 && (
-          <span title="Заблокирована">
-            <AlertTriangle size={14} className="text-yellow-500" />
-          </span>
-        )}
+    <div className={`bg-white rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all ${isDragging ? 'shadow-xl' : ''}`}>
+      <div className="flex items-center gap-1.5 mb-2">
+        <GripVertical size={12} className="text-gray-300" />
+        {flagConfig && <div className={`w-2 h-2 rounded-full ${flagConfig.bg}`} />}
+        {task.is_epic && <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">Эпик</span>}
       </div>
 
-      <h4 className="font-medium text-gray-900 mb-2 line-clamp-2">{task.title}</h4>
+      <h4 className="font-medium text-gray-900 text-sm mb-2 line-clamp-2">{task.title}</h4>
 
-      {taskTags.length > 0 && (
+      {(task.tags?.length ?? 0) > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
-          {taskTags.slice(0, 3).map((tag: TaskTag) => (
-            <span
-              key={tag.id}
-              className="text-xs px-2 py-0.5 rounded"
-              style={{ backgroundColor: `${tag.color}20`, color: tag.color }}
-            >
+          {task.tags!.slice(0, 2).map(tag => (
+            <span key={tag.id} className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: `${tag.color}20`, color: tag.color }}>
               {tag.name}
             </span>
           ))}
-          {taskTags.length > 3 && (
-            <span className="text-xs text-gray-500">+{taskTags.length - 3}</span>
-          )}
         </div>
       )}
 
-      {task.is_epic && task.progress !== undefined && (
-        <div className="mb-2">
-          <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-green-500 transition-all"
-              style={{ width: `${task.progress}%` }}
-            />
+      <div className="flex items-center justify-between text-xs text-gray-500">
+        {task.assignee && (
+          <div className="flex items-center gap-1">
+            <User size={12} />
+            <span className="truncate max-w-[70px]">{task.assignee.name.split(' ')[0]}</span>
           </div>
-          <span className="text-xs text-gray-500">{task.progress}%</span>
-        </div>
-      )}
-
-      <div className="flex items-center justify-between text-sm text-gray-500">
-        <div className="flex items-center gap-2">
-          {task.assignee && (
-            <div className="flex items-center gap-1">
-              <User size={14} />
-              <span className="truncate max-w-[80px]">{task.assignee.name.split(' ')[0]}</span>
-            </div>
-          )}
-        </div>
-        
+        )}
         {task.due_date && (
           <div className={`flex items-center gap-1 ${isOverdue ? 'text-red-500 font-medium' : ''}`}>
-            <Calendar size={14} />
+            <Calendar size={12} />
             <span>{new Date(task.due_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}</span>
           </div>
         )}
@@ -581,16 +790,323 @@ function TaskCard({
   )
 }
 
-function CreateTaskModal({ 
-  employees, 
-  tags, 
-  onClose, 
-  onCreated 
-}: { 
+// ============ List View ============
+function ListView({
+  tasks,
+  columns,
+  sortField,
+  sortDirection,
+  onSort,
+  onTaskClick
+}: {
+  tasks: Task[]
+  columns: ColumnConfig[]
+  sortField: SortField
+  sortDirection: SortDirection
+  onSort: (field: SortField) => void
+  onTaskClick: (id: string) => void
+}) {
+  return (
+    <div className="bg-white rounded-lg border overflow-hidden h-full flex flex-col">
+      {/* Header */}
+      <div className="flex items-center border-b bg-gray-50 text-xs font-medium text-gray-500 uppercase">
+        {columns.map(col => (
+          <button
+            key={col.id}
+            onClick={() => ['title', 'status', 'priority', 'due_date', 'assignee', 'created_at'].includes(col.id) && onSort(col.id as SortField)}
+            className={`flex items-center gap-1 px-4 py-3 ${col.width} hover:bg-gray-100 text-left`}
+          >
+            {col.label}
+            {sortField === col.id && (
+              sortDirection === 'asc' ? <SortAsc size={14} /> : <SortDesc size={14} />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Rows */}
+      <div className="flex-1 overflow-y-auto">
+        {tasks.map(task => (
+          <div
+            key={task.id}
+            onClick={() => onTaskClick(task.id)}
+            className="flex items-center border-b hover:bg-gray-50 cursor-pointer transition-colors"
+          >
+            {columns.map(col => (
+              <div key={col.id} className={`px-4 py-3 ${col.width} truncate`}>
+                {col.id === 'title' && (
+                  <div className="flex items-center gap-2">
+                    {task.flag_color && <div className={`w-2 h-2 rounded-full ${FLAG_COLORS[task.flag_color]?.bg}`} />}
+                    <span className="font-medium text-gray-900">{task.title}</span>
+                  </div>
+                )}
+                {col.id === 'status' && (
+                  <span className={`inline-flex px-2 py-1 rounded text-xs ${STATUS_CONFIG[task.status]?.color} ${STATUS_CONFIG[task.status]?.textColor}`}>
+                    {STATUS_CONFIG[task.status]?.label}
+                  </span>
+                )}
+                {col.id === 'priority' && (
+                  <span className={`text-sm ${PRIORITY_COLORS[task.priority]}`}>
+                    {PRIORITY_LABELS[task.priority]}
+                  </span>
+                )}
+                {col.id === 'assignee' && (
+                  <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                    {task.assignee ? (
+                      <>
+                        <User size={14} />
+                        {task.assignee.name}
+                      </>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </div>
+                )}
+                {col.id === 'due_date' && (
+                  <span className={`text-sm ${task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done' ? 'text-red-500' : 'text-gray-600'}`}>
+                    {task.due_date ? new Date(task.due_date).toLocaleDateString('ru-RU') : '—'}
+                  </span>
+                )}
+                {col.id === 'tags' && (
+                  <div className="flex gap-1">
+                    {task.tags?.slice(0, 2).map(tag => (
+                      <span key={tag.id} className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: `${tag.color}20`, color: tag.color }}>
+                        {tag.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {col.id === 'comments' && (
+                  <div className="flex items-center gap-1 text-gray-500">
+                    <MessageSquare size={14} />
+                    <span className="text-sm">{task.comments?.length || 0}</span>
+                  </div>
+                )}
+                {col.id === 'created_at' && (
+                  <span className="text-sm text-gray-500">
+                    {task.created_at ? new Date(task.created_at).toLocaleDateString('ru-RU') : '—'}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        ))}
+
+        {tasks.length === 0 && (
+          <div className="flex items-center justify-center h-32 text-gray-400">
+            Нет задач
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ============ Table View (Editable) ============
+function TableView({
+  tasks,
+  columns,
+  employees,
+  sortField,
+  sortDirection,
+  onSort,
+  onTaskClick,
+  onTaskUpdate
+}: {
+  tasks: Task[]
+  columns: ColumnConfig[]
+  employees: Employee[]
+  sortField: SortField
+  sortDirection: SortDirection
+  onSort: (field: SortField) => void
+  onTaskClick: (id: string) => void
+  onTaskUpdate: () => void
+}) {
+  const [editingCell, setEditingCell] = useState<{ taskId: string; field: string } | null>(null)
+  const [editValue, setEditValue] = useState('')
+
+  const handleCellClick = (taskId: string, field: string, currentValue: string) => {
+    if (['status', 'priority', 'assignee'].includes(field)) {
+      setEditingCell({ taskId, field })
+      setEditValue(currentValue)
+    }
+  }
+
+  const handleCellChange = async (taskId: string, field: string, value: string) => {
+    setEditingCell(null)
+
+    try {
+      const updateData: Record<string, string | number | null> = {}
+      if (field === 'status') updateData.status = value
+      if (field === 'priority') updateData.priority = parseInt(value)
+      if (field === 'assignee') updateData.assignee_id = value || null
+
+      await fetch(`${API_URL}/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      })
+      onTaskUpdate()
+    } catch (error) {
+      console.error('Failed to update task:', error)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-lg border overflow-hidden h-full flex flex-col">
+      {/* Header */}
+      <div className="flex items-center border-b bg-gray-50 text-xs font-medium text-gray-500 uppercase sticky top-0">
+        {columns.map(col => (
+          <button
+            key={col.id}
+            onClick={() => ['title', 'status', 'priority', 'due_date', 'assignee', 'created_at'].includes(col.id) && onSort(col.id as SortField)}
+            className={`flex items-center gap-1 px-3 py-2 ${col.width} hover:bg-gray-100 text-left border-r last:border-r-0`}
+          >
+            {col.label}
+            {sortField === col.id && (
+              sortDirection === 'asc' ? <SortAsc size={12} /> : <SortDesc size={12} />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Rows */}
+      <div className="flex-1 overflow-y-auto">
+        {tasks.map(task => (
+          <div key={task.id} className="flex items-center border-b hover:bg-blue-50/30">
+            {columns.map(col => (
+              <div
+                key={col.id}
+                className={`px-3 py-2 ${col.width} border-r last:border-r-0 text-sm`}
+                onClick={() => {
+                  if (col.id === 'title') {
+                    onTaskClick(task.id)
+                  } else if (['status', 'priority', 'assignee'].includes(col.id)) {
+                    const val = col.id === 'status' ? task.status :
+                               col.id === 'priority' ? task.priority.toString() :
+                               task.assignee?.id || ''
+                    handleCellClick(task.id, col.id, val)
+                  }
+                }}
+              >
+                {col.id === 'title' && (
+                  <div className="flex items-center gap-2 cursor-pointer hover:text-blue-600">
+                    {task.flag_color && <div className={`w-2 h-2 rounded-full ${FLAG_COLORS[task.flag_color]?.bg}`} />}
+                    <span className="truncate">{task.title}</span>
+                  </div>
+                )}
+
+                {col.id === 'status' && (
+                  editingCell?.taskId === task.id && editingCell?.field === 'status' ? (
+                    <select
+                      autoFocus
+                      value={editValue}
+                      onChange={(e) => handleCellChange(task.id, 'status', e.target.value)}
+                      onBlur={() => setEditingCell(null)}
+                      className="w-full px-1 py-0.5 border rounded text-xs"
+                    >
+                      {Object.entries(STATUS_CONFIG).map(([value, { label }]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className={`inline-flex px-2 py-0.5 rounded text-xs cursor-pointer ${STATUS_CONFIG[task.status]?.color} ${STATUS_CONFIG[task.status]?.textColor}`}>
+                      {STATUS_CONFIG[task.status]?.label}
+                    </span>
+                  )
+                )}
+
+                {col.id === 'priority' && (
+                  editingCell?.taskId === task.id && editingCell?.field === 'priority' ? (
+                    <select
+                      autoFocus
+                      value={editValue}
+                      onChange={(e) => handleCellChange(task.id, 'priority', e.target.value)}
+                      onBlur={() => setEditingCell(null)}
+                      className="w-full px-1 py-0.5 border rounded text-xs"
+                    >
+                      {[1, 2, 3, 4, 5].map(p => (
+                        <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className={`cursor-pointer ${PRIORITY_COLORS[task.priority]}`}>
+                      {PRIORITY_LABELS[task.priority]}
+                    </span>
+                  )
+                )}
+
+                {col.id === 'assignee' && (
+                  editingCell?.taskId === task.id && editingCell?.field === 'assignee' ? (
+                    <select
+                      autoFocus
+                      value={editValue}
+                      onChange={(e) => handleCellChange(task.id, 'assignee', e.target.value)}
+                      onBlur={() => setEditingCell(null)}
+                      className="w-full px-1 py-0.5 border rounded text-xs"
+                    >
+                      <option value="">Не назначен</option>
+                      {employees.map(emp => (
+                        <option key={emp.id} value={emp.id}>{emp.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="flex items-center gap-1 cursor-pointer text-gray-600">
+                      {task.assignee ? (
+                        <>
+                          <User size={12} />
+                          <span className="truncate">{task.assignee.name}</span>
+                        </>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </div>
+                  )
+                )}
+
+                {col.id === 'due_date' && (
+                  <span className={`${task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done' ? 'text-red-500' : 'text-gray-600'}`}>
+                    {task.due_date ? new Date(task.due_date).toLocaleDateString('ru-RU') : '—'}
+                  </span>
+                )}
+
+                {col.id === 'tags' && (
+                  <div className="flex gap-1 overflow-hidden">
+                    {task.tags?.slice(0, 2).map(tag => (
+                      <span key={tag.id} className="text-xs px-1 py-0.5 rounded whitespace-nowrap" style={{ backgroundColor: `${tag.color}20`, color: tag.color }}>
+                        {tag.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {col.id === 'comments' && (
+                  <div className="flex items-center gap-1 text-gray-500">
+                    <MessageSquare size={12} />
+                    {task.comments?.length || 0}
+                  </div>
+                )}
+
+                {col.id === 'created_at' && (
+                  <span className="text-gray-500">
+                    {task.created_at ? new Date(task.created_at).toLocaleDateString('ru-RU') : '—'}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ============ Create Task Modal ============
+function CreateTaskModal({ employees, tags, onClose, onCreated }: {
   employees: Employee[]
   tags: TaskTag[]
   onClose: () => void
-  onCreated: () => void 
+  onCreated: () => void
 }) {
   const [formData, setFormData] = useState({
     title: '',
@@ -623,10 +1139,7 @@ function CreateTaskModal({
           due_date: formData.due_date || null
         })
       })
-      
-      if (res.ok) {
-        onCreated()
-      }
+      if (res.ok) onCreated()
     } catch (error) {
       console.error('Failed to create task:', error)
     } finally {
@@ -634,23 +1147,12 @@ function CreateTaskModal({
     }
   }
 
-  const toggleTag = (tagName: string) => {
-    setFormData(prev => ({
-      ...prev,
-      tags: prev.tags.includes(tagName)
-        ? prev.tags.filter((t: string) => t !== tagName)
-        : [...prev.tags, tagName]
-    }))
-  }
-
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto m-4">
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="text-lg font-semibold">Новая задача</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X size={24} />
-          </button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
@@ -673,7 +1175,6 @@ function CreateTaskModal({
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               className="w-full px-3 py-2 border rounded-lg"
               rows={3}
-              placeholder="Подробности задачи..."
             />
           </div>
 
@@ -697,7 +1198,7 @@ function CreateTaskModal({
                 onChange={(e) => setFormData({ ...formData, priority: Number(e.target.value) })}
                 className="w-full px-3 py-2 border rounded-lg"
               >
-                {[1, 2, 3, 4, 5].map((p: number) => (
+                {[1, 2, 3, 4, 5].map(p => (
                   <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>
                 ))}
               </select>
@@ -713,27 +1214,11 @@ function CreateTaskModal({
                 className="w-full px-3 py-2 border rounded-lg"
               >
                 <option value="">Не назначен</option>
-                {employees.map((emp: Employee) => (
+                {employees.map(emp => (
                   <option key={emp.id} value={emp.id}>{emp.name}</option>
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Соисполнитель</label>
-              <select
-                value={formData.co_assignee_id}
-                onChange={(e) => setFormData({ ...formData, co_assignee_id: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg"
-              >
-                <option value="">Не назначен</option>
-                {employees.map((emp: Employee) => (
-                  <option key={emp.id} value={emp.id}>{emp.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Срок</label>
               <input
@@ -743,45 +1228,36 @@ function CreateTaskModal({
                 className="w-full px-3 py-2 border rounded-lg"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Флаг</label>
-              <div className="flex gap-2">
-                {Object.entries(FLAG_COLORS).map(([color, { bg, label }]) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setFormData({ ...formData, flag_color: formData.flag_color === color ? '' : color })}
-                    className={`w-8 h-8 rounded-full ${bg} ${formData.flag_color === color ? 'ring-2 ring-offset-2 ring-gray-400' : ''}`}
-                    title={label}
-                  />
-                ))}
-              </div>
-            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="is_epic"
-              checked={formData.is_epic}
-              onChange={(e) => setFormData({ ...formData, is_epic: e.target.checked })}
-              className="w-4 h-4"
-            />
-            <label htmlFor="is_epic" className="text-sm text-gray-700">Это эпик (содержит подзадачи)</label>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Флаг приоритета</label>
+            <div className="flex gap-2">
+              {Object.entries(FLAG_COLORS).map(([color, { bg, label }]) => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, flag_color: formData.flag_color === color ? '' : color })}
+                  className={`w-7 h-7 rounded-full ${bg} ${formData.flag_color === color ? 'ring-2 ring-offset-2 ring-gray-400' : ''}`}
+                  title={label}
+                />
+              ))}
+            </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Теги</label>
             <div className="flex flex-wrap gap-2">
-              {tags.map((tag: TaskTag) => (
+              {tags.map(tag => (
                 <button
                   key={tag.id}
                   type="button"
-                  onClick={() => toggleTag(tag.name)}
-                  className={`px-3 py-1 rounded-full text-sm transition-colors ${
-                    formData.tags.includes(tag.name)
-                      ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-300'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  onClick={() => setFormData(prev => ({
+                    ...prev,
+                    tags: prev.tags.includes(tag.name) ? prev.tags.filter(t => t !== tag.name) : [...prev.tags, tag.name]
+                  }))}
+                  className={`px-3 py-1 rounded-full text-sm ${
+                    formData.tags.includes(tag.name) ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-300' : 'bg-gray-100 text-gray-700'
                   }`}
                 >
                   {tag.name}
@@ -791,18 +1267,8 @@ function CreateTaskModal({
           </div>
 
           <div className="flex gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
-            >
-              Отмена
-            </button>
-            <button
-              type="submit"
-              disabled={saving || !formData.title.trim()}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
+            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border rounded-lg">Отмена</button>
+            <button type="submit" disabled={saving || !formData.title.trim()} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
               {saving ? 'Создание...' : 'Создать'}
             </button>
           </div>
@@ -812,6 +1278,7 @@ function CreateTaskModal({
   )
 }
 
+// ============ Task Details Modal with @mentions ============
 function TaskDetailsModal({
   task,
   employees,
@@ -827,6 +1294,8 @@ function TaskDetailsModal({
 }) {
   const [activeTab, setActiveTab] = useState<'details' | 'comments' | 'history'>('details')
   const [newComment, setNewComment] = useState('')
+  const [showMentions, setShowMentions] = useState(false)
+  const [mentionFilter, setMentionFilter] = useState('')
   const [editing, setEditing] = useState(false)
   const [formData, setFormData] = useState({
     title: task.title,
@@ -835,14 +1304,45 @@ function TaskDetailsModal({
     priority: task.priority,
     flag_color: task.flag_color || '',
     assignee_id: task.assignee?.id || '',
-    co_assignee_id: task.co_assignee?.id || '',
     due_date: task.due_date || ''
   })
+  const commentInputRef = useRef<HTMLTextAreaElement>(null)
 
-  const taskTags = task.tags ?? []
-  const taskSubtasks = task.subtasks ?? []
   const taskComments = task.comments ?? []
   const taskHistory = task.history ?? []
+
+  // Handle @mention
+  const handleCommentChange = (value: string) => {
+    setNewComment(value)
+
+    const lastAt = value.lastIndexOf('@')
+    if (lastAt !== -1 && lastAt === value.length - 1) {
+      setShowMentions(true)
+      setMentionFilter('')
+    } else if (lastAt !== -1) {
+      const textAfterAt = value.substring(lastAt + 1)
+      if (!textAfterAt.includes(' ')) {
+        setShowMentions(true)
+        setMentionFilter(textAfterAt.toLowerCase())
+      } else {
+        setShowMentions(false)
+      }
+    } else {
+      setShowMentions(false)
+    }
+  }
+
+  const insertMention = (employee: Employee) => {
+    const lastAt = newComment.lastIndexOf('@')
+    const newValue = newComment.substring(0, lastAt) + `@${employee.name} `
+    setNewComment(newValue)
+    setShowMentions(false)
+    commentInputRef.current?.focus()
+  }
+
+  const filteredEmployees = employees.filter(emp =>
+    emp.name.toLowerCase().includes(mentionFilter)
+  )
 
   const handleSave = async () => {
     try {
@@ -853,7 +1353,6 @@ function TaskDetailsModal({
           ...formData,
           flag_color: formData.flag_color || null,
           assignee_id: formData.assignee_id || null,
-          co_assignee_id: formData.co_assignee_id || null,
           due_date: formData.due_date || null
         })
       })
@@ -866,7 +1365,7 @@ function TaskDetailsModal({
 
   const handleAddComment = async () => {
     if (!newComment.trim()) return
-    
+
     try {
       await fetch(`${API_URL}/task-comments`, {
         method: 'POST',
@@ -886,7 +1385,6 @@ function TaskDetailsModal({
 
   const handleDelete = async () => {
     if (!confirm('Удалить задачу?')) return
-    
     try {
       await fetch(`${API_URL}/tasks/${task.id}`, { method: 'DELETE' })
       onClose()
@@ -896,35 +1394,37 @@ function TaskDetailsModal({
     }
   }
 
-  const statusConfig = STATUS_CONFIG[task.status]
+  // Render comment with @mentions highlighted
+  const renderCommentContent = (content: string) => {
+    const parts = content.split(/(@\w+(?:\s\w+)?)/g)
+    return parts.map((part, i) => {
+      if (part.startsWith('@')) {
+        return <span key={i} className="text-blue-600 font-medium bg-blue-50 px-0.5 rounded">{part}</span>
+      }
+      return part
+    })
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden m-4 flex flex-col">
+        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center gap-2">
-            {task.is_epic && (
-              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">Эпик</span>
-            )}
-            {statusConfig && (
-              <span className={`text-xs px-2 py-1 rounded ${statusConfig.color}`}>
-                {statusConfig.label}
-              </span>
-            )}
+            {task.is_epic && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">Эпик</span>}
+            <span className={`text-xs px-2 py-1 rounded ${STATUS_CONFIG[task.status]?.color}`}>
+              {STATUS_CONFIG[task.status]?.label}
+            </span>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setEditing(!editing)}
-              className="p-2 text-gray-400 hover:text-gray-600"
-            >
+            <button onClick={() => setEditing(!editing)} className="p-2 text-gray-400 hover:text-gray-600">
               {editing ? <X size={20} /> : <MoreVertical size={20} />}
             </button>
-            <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600">
-              <X size={20} />
-            </button>
+            <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600"><X size={20} /></button>
           </div>
         </div>
 
+        {/* Content */}
         <div className="flex-1 overflow-y-auto p-4">
           {editing ? (
             <div className="space-y-4">
@@ -939,7 +1439,6 @@ function TaskDetailsModal({
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 className="w-full px-3 py-2 border rounded-lg"
                 rows={4}
-                placeholder="Описание..."
               />
               <div className="grid grid-cols-2 gap-4">
                 <select
@@ -957,56 +1456,27 @@ function TaskDetailsModal({
                   className="px-3 py-2 border rounded-lg"
                 >
                   <option value="">Не назначен</option>
-                  {employees.map((emp: Employee) => (
+                  {employees.map(emp => (
                     <option key={emp.id} value={emp.id}>{emp.name}</option>
                   ))}
                 </select>
               </div>
-              <input
-                type="date"
-                value={formData.due_date}
-                onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                className="px-3 py-2 border rounded-lg"
-              />
               <div className="flex gap-3">
-                <button
-                  onClick={() => setEditing(false)}
-                  className="px-4 py-2 border rounded-lg"
-                >
-                  Отмена
-                </button>
-                <button
-                  onClick={handleSave}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg"
-                >
-                  Сохранить
-                </button>
-                <button
-                  onClick={handleDelete}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg ml-auto"
-                >
-                  Удалить
-                </button>
+                <button onClick={() => setEditing(false)} className="px-4 py-2 border rounded-lg">Отмена</button>
+                <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Сохранить</button>
+                <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg ml-auto">Удалить</button>
               </div>
             </div>
           ) : (
             <div>
               <h2 className="text-xl font-semibold mb-2">{task.title}</h2>
-              {task.description && (
-                <p className="text-gray-600 mb-4">{task.description}</p>
-              )}
+              {task.description && <p className="text-gray-600 mb-4">{task.description}</p>}
 
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
                   <span className="text-sm text-gray-500">Исполнитель</span>
                   <p className="font-medium">{task.assignee?.name || 'Не назначен'}</p>
                 </div>
-                {task.co_assignee && (
-                  <div>
-                    <span className="text-sm text-gray-500">Соисполнитель</span>
-                    <p className="font-medium">{task.co_assignee.name}</p>
-                  </div>
-                )}
                 {task.due_date && (
                   <div>
                     <span className="text-sm text-gray-500">Срок</span>
@@ -1015,55 +1485,18 @@ function TaskDetailsModal({
                 )}
                 <div>
                   <span className="text-sm text-gray-500">Приоритет</span>
-                  <p className="font-medium">{PRIORITY_LABELS[task.priority]}</p>
+                  <p className={`font-medium ${PRIORITY_COLORS[task.priority]}`}>{PRIORITY_LABELS[task.priority]}</p>
                 </div>
               </div>
 
-              {taskTags.length > 0 && (
-                <div className="mb-6">
-                  <span className="text-sm text-gray-500 block mb-2">Теги</span>
-                  <div className="flex flex-wrap gap-2">
-                    {taskTags.map((tag: TaskTag) => (
-                      <span
-                        key={tag.id}
-                        className="px-3 py-1 rounded-full text-sm"
-                        style={{ backgroundColor: `${tag.color}20`, color: tag.color }}
-                      >
-                        {tag.name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {task.is_epic && taskSubtasks.length > 0 && (
-                <div className="mb-6">
-                  <span className="text-sm text-gray-500 block mb-2">
-                    Подзадачи ({taskSubtasks.filter((s: Task) => s.status === 'done').length}/{taskSubtasks.length})
-                  </span>
-                  <div className="space-y-2">
-                    {taskSubtasks.map((subtask: Task) => (
-                      <div key={subtask.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                        {subtask.status === 'done' ? (
-                          <Check size={16} className="text-green-500" />
-                        ) : (
-                          <div className="w-4 h-4 border-2 rounded" />
-                        )}
-                        <span className={subtask.status === 'done' ? 'line-through text-gray-400' : ''}>
-                          {subtask.title}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
+              {/* Tabs */}
               <div className="border-t pt-4">
                 <div className="flex gap-4 mb-4">
                   <button
                     onClick={() => setActiveTab('comments')}
-                    className={`text-sm font-medium ${activeTab === 'comments' ? 'text-blue-600' : 'text-gray-500'}`}
+                    className={`flex items-center gap-1.5 text-sm font-medium ${activeTab === 'comments' ? 'text-blue-600' : 'text-gray-500'}`}
                   >
+                    <MessageSquare size={16} />
                     Комментарии ({taskComments.length})
                   </button>
                   <button
@@ -1076,7 +1509,8 @@ function TaskDetailsModal({
 
                 {activeTab === 'comments' && (
                   <div className="space-y-3">
-                    {taskComments.map((comment: Comment) => (
+                    {/* Comments list */}
+                    {taskComments.map(comment => (
                       <div key={comment.id} className="p-3 bg-gray-50 rounded-lg">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-medium text-sm">{comment.author?.name || 'Аноним'}</span>
@@ -1084,35 +1518,66 @@ function TaskDetailsModal({
                             {new Date(comment.created_at).toLocaleString('ru-RU')}
                           </span>
                         </div>
-                        <p className="text-gray-700">{comment.content}</p>
+                        <p className="text-gray-700">{renderCommentContent(comment.content)}</p>
                       </div>
                     ))}
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
+
+                    {/* Comment input with @mentions */}
+                    <div className="relative">
+                      <div className="flex items-center gap-2 mb-2">
+                        <AtSign size={16} className="text-gray-400" />
+                        <span className="text-xs text-gray-500">Используйте @ для упоминания коллег</span>
+                      </div>
+                      <textarea
+                        ref={commentInputRef}
                         value={newComment}
-                        onChange={(e) => setNewComment(e.target.value)}
-                        placeholder="Добавить комментарий..."
-                        className="flex-1 px-3 py-2 border rounded-lg"
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddComment()}
+                        onChange={(e) => handleCommentChange(e.target.value)}
+                        placeholder="Написать комментарий..."
+                        className="w-full px-3 py-2 border rounded-lg resize-none"
+                        rows={2}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            handleAddComment()
+                          }
+                        }}
                       />
-                      <button
-                        onClick={handleAddComment}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg"
-                      >
-                        Отправить
-                      </button>
+
+                      {/* Mentions dropdown */}
+                      {showMentions && filteredEmployees.length > 0 && (
+                        <div className="absolute bottom-full left-0 w-64 bg-white border rounded-lg shadow-lg mb-1 py-1 max-h-48 overflow-y-auto z-10">
+                          {filteredEmployees.map(emp => (
+                            <button
+                              key={emp.id}
+                              onClick={() => insertMention(emp)}
+                              className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-left"
+                            >
+                              <User size={16} className="text-gray-400" />
+                              <span>{emp.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex justify-end mt-2">
+                        <button
+                          onClick={handleAddComment}
+                          disabled={!newComment.trim()}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
+                        >
+                          <Send size={16} />
+                          Отправить
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {activeTab === 'history' && (
                   <div className="space-y-2">
-                    {taskHistory.map((entry: HistoryEntry) => (
+                    {taskHistory.map(entry => (
                       <div key={entry.id} className="text-sm">
-                        <span className="text-gray-400">
-                          {new Date(entry.created_at).toLocaleString('ru-RU')}
-                        </span>
+                        <span className="text-gray-400">{new Date(entry.created_at).toLocaleString('ru-RU')}</span>
                         {' — '}
                         <span className="font-medium">{entry.field_name}</span>
                         {' изменено с '}
@@ -1121,9 +1586,7 @@ function TaskDetailsModal({
                         <span className="text-green-500">{entry.new_value || '(пусто)'}</span>
                       </div>
                     ))}
-                    {taskHistory.length === 0 && (
-                      <p className="text-gray-400 text-sm">История изменений пуста</p>
-                    )}
+                    {taskHistory.length === 0 && <p className="text-gray-400 text-sm">История пуста</p>}
                   </div>
                 )}
               </div>
