@@ -38,10 +38,10 @@ interface Task {
   due_date?: string
   is_epic: boolean
   parent_id?: string
-  tags: TaskTag[]
-  blocks: string[]
-  blocked_by: string[]
-  is_blocking: boolean
+  tags?: TaskTag[]
+  blocks?: string[]
+  blocked_by?: string[]
+  is_blocking?: boolean
   subtasks?: Task[]
   progress?: number
   comments?: Comment[]
@@ -146,7 +146,7 @@ export default function TasksPage() {
       return
     }
 
-    if (draggedTask.blocked_by.length > 0 && newStatus === 'done') {
+    if ((draggedTask.blocked_by?.length ?? 0) > 0 && newStatus === 'done') {
       alert('Задача заблокирована другими задачами!')
       setDraggedTask(null)
       return
@@ -302,6 +302,8 @@ function TaskCard({
 }) {
   const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done'
   const flagConfig = task.flag_color ? FLAG_COLORS[task.flag_color] : null
+  const taskTags = task.tags ?? []
+  const blockedByCount = task.blocked_by?.length ?? 0
 
   return (
     <div
@@ -310,7 +312,7 @@ function TaskCard({
       onClick={onClick}
       className={`bg-white rounded-lg p-4 shadow-sm cursor-pointer hover:shadow-md transition-shadow ${
         task.is_blocking ? 'ring-2 ring-red-400' : ''
-      } ${(task.blocked_by?.length ?? 0) > 0 ? 'opacity-60' : ''}`}
+      } ${blockedByCount > 0 ? 'opacity-60' : ''}`}
     >
       <div className="flex items-center gap-2 mb-2">
         {flagConfig && (
@@ -324,7 +326,7 @@ function TaskCard({
             <Flame size={14} className="text-red-500" />
           </span>
         )}
-        {task.blocked_by?.length > 0 && (
+        {blockedByCount > 0 && (
           <span title="Заблокирована">
             <AlertTriangle size={14} className="text-yellow-500" />
           </span>
@@ -333,9 +335,9 @@ function TaskCard({
 
       <h4 className="font-medium text-gray-900 mb-2 line-clamp-2">{task.title}</h4>
 
-      {task.tags.length > 0 && (
+      {taskTags.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
-          {task.tags.slice(0, 3).map(tag => (
+          {taskTags.slice(0, 3).map(tag => (
             <span
               key={tag.id}
               className="text-xs px-2 py-0.5 rounded"
@@ -344,8 +346,8 @@ function TaskCard({
               {tag.name}
             </span>
           ))}
-          {task.tags.length > 3 && (
-            <span className="text-xs text-gray-500">+{task.tags.length - 3}</span>
+          {taskTags.length > 3 && (
+            <span className="text-xs text-gray-500">+{taskTags.length - 3}</span>
           )}
         </div>
       )}
@@ -641,6 +643,11 @@ function TaskDetailsModal({
     due_date: task.due_date || ''
   })
 
+  const taskTags = task.tags ?? []
+  const taskSubtasks = task.subtasks ?? []
+  const taskComments = task.comments ?? []
+  const taskHistory = task.history ?? []
+
   const handleSave = async () => {
     try {
       await fetch(`${API_URL}/tasks/${task.id}`, {
@@ -816,11 +823,11 @@ function TaskDetailsModal({
                 </div>
               </div>
 
-              {task.tags.length > 0 && (
+              {taskTags.length > 0 && (
                 <div className="mb-6">
                   <span className="text-sm text-gray-500 block mb-2">Теги</span>
                   <div className="flex flex-wrap gap-2">
-                    {task.tags.map(tag => (
+                    {taskTags.map(tag => (
                       <span
                         key={tag.id}
                         className="px-3 py-1 rounded-full text-sm"
@@ -833,13 +840,13 @@ function TaskDetailsModal({
                 </div>
               )}
 
-              {task.is_epic && task.subtasks && task.subtasks.length > 0 && (
+              {task.is_epic && taskSubtasks.length > 0 && (
                 <div className="mb-6">
                   <span className="text-sm text-gray-500 block mb-2">
-                    Подзадачи ({task.subtasks.filter(s => s.status === 'done').length}/{task.subtasks.length})
+                    Подзадачи ({taskSubtasks.filter(s => s.status === 'done').length}/{taskSubtasks.length})
                   </span>
                   <div className="space-y-2">
-                    {task.subtasks.map(subtask => (
+                    {taskSubtasks.map(subtask => (
                       <div key={subtask.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
                         {subtask.status === 'done' ? (
                           <Check size={16} className="text-green-500" />
@@ -861,7 +868,7 @@ function TaskDetailsModal({
                     onClick={() => setActiveTab('comments')}
                     className={`text-sm font-medium ${activeTab === 'comments' ? 'text-blue-600' : 'text-gray-500'}`}
                   >
-                    Комментарии ({task.comments?.length || 0})
+                    Комментарии ({taskComments.length})
                   </button>
                   <button
                     onClick={() => setActiveTab('history')}
@@ -873,7 +880,7 @@ function TaskDetailsModal({
 
                 {activeTab === 'comments' && (
                   <div className="space-y-3">
-                    {task.comments?.map((comment) => (
+                    {taskComments.map((comment) => (
                       <div key={comment.id} className="p-3 bg-gray-50 rounded-lg">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-medium text-sm">{comment.author?.name || 'Аноним'}</span>
@@ -905,7 +912,7 @@ function TaskDetailsModal({
 
                 {activeTab === 'history' && (
                   <div className="space-y-2">
-                    {task.history?.map((entry) => (
+                    {taskHistory.map((entry) => (
                       <div key={entry.id} className="text-sm">
                         <span className="text-gray-400">
                           {new Date(entry.created_at).toLocaleString('ru-RU')}
@@ -918,7 +925,7 @@ function TaskDetailsModal({
                         <span className="text-green-500">{entry.new_value || '(пусто)'}</span>
                       </div>
                     ))}
-                    {!task.history?.length && (
+                    {taskHistory.length === 0 && (
                       <p className="text-gray-400 text-sm">История изменений пуста</p>
                     )}
                   </div>
