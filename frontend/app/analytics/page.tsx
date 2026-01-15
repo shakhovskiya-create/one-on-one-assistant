@@ -106,16 +106,14 @@ function AnalyticsContent() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Filter employees to only show subordinates with departments
+  // Filter employees to only show subordinates
   const employees = useMemo(() => {
     if (authSubordinates.length > 0) {
       const subordinateIds = new Set(authSubordinates.map(s => s.id))
-      return allEmployees.filter(emp =>
-        subordinateIds.has(emp.id) && emp.department
-      )
+      return allEmployees.filter(emp => subordinateIds.has(emp.id))
     }
-    // Fallback: show all employees with departments
-    return allEmployees.filter(emp => emp.department)
+    // Fallback: show all employees
+    return allEmployees
   }, [allEmployees, authSubordinates])
 
   useEffect(() => {

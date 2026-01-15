@@ -5,6 +5,7 @@ import asyncio
 import base64
 from datetime import datetime, date, timedelta
 from typing import Optional, List
+from enum import Enum
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Query, Form, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -1720,15 +1721,50 @@ async def connector_status():
 
 # ============ AD INTEGRATION ============
 
+class SyncMode(str, Enum):
+    FULL = "full"           # Sync all users
+    NEW_ONLY = "new_only"   # Only add new users
+    CHANGES = "changes"     # Update existing + add new
+
+
 @app.post("/ad/sync")
-async def sync_ad_users():
-    """Sync users from Active Directory with pagination"""
+async def sync_ad_users(
+    mode: SyncMode = SyncMode.FULL,
+    include_photos: bool = True,
+    require_department: bool = True
+):
+    """
+    Sync users from Active Directory.
+
+    Args:
+        mode: full | new_only | changes
+        include_photos: Include thumbnailPhoto (slower)
+        require_department: Only sync users with department set
+    """
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not configured")
 
     try:
-        synced = 0
-        total_from_ad = 0
+        # Stats tracking
+        stats = {
+            "mode": mode,
+            "total_in_ad": 0,
+            "with_department": 0,
+            "without_department": 0,
+            "filtered_out": 0,
+            "new_users": 0,
+            "updated_users": 0,
+            "skipped_existing": 0,
+            "managers_updated": 0,
+            "errors": []
+        }
+
+        # Get existing emails for comparison
+        existing_emails = set()
+        if mode in [SyncMode.NEW_ONLY, SyncMode.CHANGES]:
+            existing = supabase.table("employees").select("email").execute()
+            existing_emails = {e["email"].lower() for e in existing.data if e.get("email")}
+
         offset = 0
         batch_size = 100
 
@@ -1736,18 +1772,37 @@ async def sync_ad_users():
         while True:
             result = await connector_manager.send_command("sync_users", {
                 "offset": offset,
-                "limit": batch_size
-            }, timeout=30.0)
+                "limit": batch_size,
+                "include_photo": include_photos,
+                "require_department": require_department,
+                "require_email": True,
+                "mode": mode
+            }, timeout=60.0)
 
             users = result.get("users", [])
-            total_from_ad = result.get("total", 0)
 
-            # Prepare batch for upsert (filter users with email, dedupe by email)
+            # Merge connector stats
+            if result.get("stats"):
+                connector_stats = result["stats"]
+                stats["total_in_ad"] = connector_stats.get("total_in_ad", 0)
+                stats["with_department"] = connector_stats.get("with_department", 0)
+                stats["without_department"] = connector_stats.get("without_department", 0)
+                stats["filtered_out"] = connector_stats.get("filtered_out", 0)
+
+            # Prepare batch based on mode
             batch_dict = {}
             for user in users:
-                if not user.get("email"):
+                email = user.get("email", "").lower()
+                if not email:
                     continue
-                # Use dict to deduplicate by email (last wins)
+
+                is_existing = email in existing_emails
+
+                # Mode-based filtering
+                if mode == SyncMode.NEW_ONLY and is_existing:
+                    stats["skipped_existing"] += 1
+                    continue
+
                 user_data = {
                     "name": user.get("name", ""),
                     "email": user.get("email"),
@@ -1759,16 +1814,22 @@ async def sync_ad_users():
                     "phone": user.get("phone"),
                     "mobile": user.get("mobile"),
                 }
-                # Add photo if present (can be large, so optional)
-                if user.get("photo_base64"):
+
+                if include_photos and user.get("photo_base64"):
                     user_data["photo_base64"] = user.get("photo_base64")
-                batch_dict[user.get("email")] = user_data
+
+                batch_dict[email] = user_data
+
+                if is_existing:
+                    stats["updated_users"] += 1
+                else:
+                    stats["new_users"] += 1
+
             batch = list(batch_dict.values())
 
-            # Batch upsert - one request instead of N
+            # Batch upsert
             if batch:
                 supabase.table("employees").upsert(batch, on_conflict="email").execute()
-                synced += len(batch)
 
             # Check if more pages
             if not result.get("has_more", False):
@@ -1780,18 +1841,17 @@ async def sync_ad_users():
         employees = supabase.table("employees").select("id, ad_dn, manager_dn").execute()
         dn_to_id = {e["ad_dn"]: e["id"] for e in employees.data if e.get("ad_dn")}
 
-        managers_updated = 0
         for emp in employees.data:
             if emp.get("manager_dn") and emp["manager_dn"] in dn_to_id:
                 supabase.table("employees").update(
                     {"manager_id": dn_to_id[emp["manager_dn"]]}
                 ).eq("id", emp["id"]).execute()
-                managers_updated += 1
+                stats["managers_updated"] += 1
 
         return {
-            "synced": synced,
-            "total_from_ad": total_from_ad,
-            "managers_updated": managers_updated
+            "success": True,
+            "imported": stats["new_users"] + stats["updated_users"],
+            **stats
         }
     except Exception as e:
         import traceback

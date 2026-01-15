@@ -177,20 +177,43 @@ class OnPremConnector:
             logger.exception(f"Error processing message: {e}")
 
     def _handle_sync_users(self, params: dict = None) -> dict:
-        """Sync users from AD with pagination"""
+        """
+        Sync users from AD with pagination and filtering.
+
+        Params:
+            offset: Starting position (default 0)
+            limit: Max users per batch (default 100)
+            include_photo: Include photos (default True, but slow)
+            require_department: Only sync users with department (default True)
+            require_email: Only sync users with email (default True)
+            mode: 'full' | 'new_only' | 'changes' (default 'full')
+        """
         params = params or {}
         offset = params.get('offset', 0)
         limit = params.get('limit', 100)
-        include_photo = params.get('include_photo', True)  # Include photos by default
+        include_photo = params.get('include_photo', True)
+        require_department = params.get('require_department', True)
+        require_email = params.get('require_email', True)
+        mode = params.get('mode', 'full')
 
-        users, total = self.ad_client.get_all_users(offset=offset, limit=limit, include_photo=include_photo)
+        logger.info(f"Sync users: mode={mode}, require_dept={require_department}, include_photo={include_photo}")
+
+        users, total, stats = self.ad_client.get_all_users(
+            offset=offset,
+            limit=limit,
+            include_photo=include_photo,
+            require_department=require_department,
+            require_email=require_email
+        )
 
         return {
             'users': users,
             'offset': offset,
             'limit': limit,
             'total': total,
-            'has_more': offset + len(users) < total
+            'has_more': offset + len(users) < total,
+            'stats': stats,
+            'mode': mode
         }
 
     def _handle_get_user(self, params: dict) -> Optional[dict]:
