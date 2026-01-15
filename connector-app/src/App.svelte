@@ -192,12 +192,13 @@
         <div class="form-group">
           <label>API Key</label>
           <div class="password-input">
-            <input
-              type={showApiKey ? 'text' : 'password'}
-              bind:value={config.api_key}
-            />
+            {#if showApiKey}
+              <input type="text" bind:value={config.api_key} />
+            {:else}
+              <input type="password" bind:value={config.api_key} />
+            {/if}
             <button type="button" class="eye-btn" on:click={() => showApiKey = !showApiKey}>
-              {showApiKey ? '👁' : '👁‍🗨'}
+              {showApiKey ? '🙈' : '👁'}
             </button>
           </div>
         </div>
@@ -216,12 +217,13 @@
         <div class="form-group">
           <label>Пароль</label>
           <div class="password-input">
-            <input
-              type={showAdPassword ? 'text' : 'password'}
-              bind:value={config.ad_bind_password}
-            />
+            {#if showAdPassword}
+              <input type="text" bind:value={config.ad_bind_password} />
+            {:else}
+              <input type="password" bind:value={config.ad_bind_password} />
+            {/if}
             <button type="button" class="eye-btn" on:click={() => showAdPassword = !showAdPassword}>
-              {showAdPassword ? '👁' : '👁‍🗨'}
+              {showAdPassword ? '🙈' : '👁'}
             </button>
           </div>
         </div>
@@ -244,12 +246,13 @@
         <div class="form-group">
           <label>Пароль</label>
           <div class="password-input">
-            <input
-              type={showEwsPassword ? 'text' : 'password'}
-              bind:value={config.ews_password}
-            />
+            {#if showEwsPassword}
+              <input type="text" bind:value={config.ews_password} />
+            {:else}
+              <input type="password" bind:value={config.ews_password} />
+            {/if}
             <button type="button" class="eye-btn" on:click={() => showEwsPassword = !showEwsPassword}>
-              {showEwsPassword ? '👁' : '👁‍🗨'}
+              {showEwsPassword ? '🙈' : '👁'}
             </button>
           </div>
         </div>
