@@ -4,11 +4,6 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-# Load environment variables
-if [ -f .env ]; then
-    export $(cat .env | grep -v '^#' | xargs)
-fi
-
 # Check Python version
 python3 --version || { echo "Python 3 is required"; exit 1; }
 
@@ -24,7 +19,7 @@ source venv/bin/activate
 # Install dependencies
 pip install -q -r requirements.txt
 
-# Run connector
+# Run connector (dotenv will load .env automatically)
 echo "Starting On-Prem Connector..."
 echo "Press Ctrl+C to stop"
 echo ""

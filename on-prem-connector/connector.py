@@ -12,6 +12,10 @@ import sys
 from datetime import datetime
 from typing import Optional
 
+# Load .env file first
+from dotenv import load_dotenv
+load_dotenv()
+
 import yaml
 import websockets
 from websockets.exceptions import ConnectionClosed
@@ -64,20 +68,19 @@ class OnPremConnector:
         url = self.config['backend']['url']
         api_key = self.config['backend']['api_key']
 
-        headers = {
-            'Authorization': f'Bearer {api_key}',
-            'X-Connector-Type': 'on-prem',
-            'X-Connector-Version': '1.0.0'
-        }
+        # Add API key as query parameter (more compatible)
+        if '?' in url:
+            url = f"{url}&token={api_key}"
+        else:
+            url = f"{url}?token={api_key}"
 
         try:
             self.ws = await websockets.connect(
                 url,
-                extra_headers=headers,
                 ping_interval=20,
                 ping_timeout=10
             )
-            logger.info(f"Connected to backend: {url}")
+            logger.info(f"Connected to backend: {url.split('?')[0]}")
             return True
         except Exception as e:
             logger.error(f"Failed to connect to backend: {e}")
