@@ -1632,40 +1632,54 @@ async def connector_status():
 
 @app.post("/ad/sync")
 async def sync_ad_users():
-    """Sync users from Active Directory"""
-    result = await connector_manager.send_command("sync_users", timeout=120.0)
-
+    """Sync users from Active Directory with pagination"""
     if not supabase:
-        return result
+        raise HTTPException(status_code=500, detail="Database not configured")
 
-    # Upsert users to database
-    users = result.get("users", [])
     synced = 0
+    total_from_ad = 0
+    offset = 0
+    batch_size = 100
 
-    for user in users:
-        if not user.get("email"):
-            continue
+    # Fetch users in batches
+    while True:
+        result = await connector_manager.send_command("sync_users", {
+            "offset": offset,
+            "limit": batch_size
+        }, timeout=60.0)
 
-        # Check if exists
-        existing = supabase.table("employees").select("id").eq("email", user["email"]).execute()
+        users = result.get("users", [])
+        total_from_ad = result.get("total", 0)
 
-        employee_data = {
-            "name": user.get("name", ""),
-            "email": user.get("email"),
-            "position": user.get("title", ""),
-            "department": user.get("department", ""),
-            "ad_dn": user.get("dn"),
-            "manager_dn": user.get("manager_dn"),
-            "photo_base64": user.get("photo_base64"),
-            "ad_login": user.get("login")
-        }
+        for user in users:
+            if not user.get("email"):
+                continue
 
-        if existing.data:
-            supabase.table("employees").update(employee_data).eq("id", existing.data[0]["id"]).execute()
-        else:
-            supabase.table("employees").insert(employee_data).execute()
+            # Check if exists
+            existing = supabase.table("employees").select("id").eq("email", user["email"]).execute()
 
-        synced += 1
+            employee_data = {
+                "name": user.get("name", ""),
+                "email": user.get("email"),
+                "position": user.get("title", ""),
+                "department": user.get("department", ""),
+                "ad_dn": user.get("dn"),
+                "manager_dn": user.get("manager_dn"),
+                "ad_login": user.get("login")
+            }
+
+            if existing.data:
+                supabase.table("employees").update(employee_data).eq("id", existing.data[0]["id"]).execute()
+            else:
+                supabase.table("employees").insert(employee_data).execute()
+
+            synced += 1
+
+        # Check if more pages
+        if not result.get("has_more", False):
+            break
+
+        offset += batch_size
 
     # Update manager relationships
     employees = supabase.table("employees").select("id, manager_dn").execute()
@@ -1679,7 +1693,7 @@ async def sync_ad_users():
 
     return {
         "synced": synced,
-        "total_from_ad": len(users)
+        "total_from_ad": total_from_ad
     }
 
 

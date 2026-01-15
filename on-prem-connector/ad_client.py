@@ -49,11 +49,11 @@ class ADClient:
             self.conn = None
             logger.info("Disconnected from AD")
 
-    def get_all_users(self) -> list[dict]:
-        """Fetch all users from AD with org structure"""
+    def get_all_users(self, offset: int = 0, limit: int = 100) -> tuple[list[dict], int]:
+        """Fetch users from AD with pagination"""
         if not self.conn:
             if not self.connect():
-                return []
+                return [], 0
 
         try:
             search_filter = "(&(objectClass=user)(objectCategory=person)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
@@ -65,18 +65,24 @@ class ADClient:
                 attributes=self.config['attributes']
             )
 
+            all_entries = self.conn.entries
+            total = len(all_entries)
+
+            # Apply pagination
+            paginated = all_entries[offset:offset + limit]
+
             users = []
-            for entry in self.conn.entries:
+            for entry in paginated:
                 user = self._parse_user(entry)
                 if user:
                     users.append(user)
 
-            logger.info(f"Fetched {len(users)} users from AD")
-            return users
+            logger.info(f"Fetched {len(users)} users from AD (offset={offset}, limit={limit}, total={total})")
+            return users, total
 
         except LDAPException as e:
             logger.error(f"Failed to fetch users: {e}")
-            return []
+            return [], 0
 
     def get_user_by_email(self, email: str) -> Optional[dict]:
         """Fetch single user by email"""

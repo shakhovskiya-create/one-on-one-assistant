@@ -123,7 +123,7 @@ class OnPremConnector:
                     result = {'pong': True, 'timestamp': datetime.now().isoformat()}
 
                 elif command == 'sync_users':
-                    result = self._handle_sync_users()
+                    result = self._handle_sync_users(params)
 
                 elif command == 'get_user':
                     result = self._handle_get_user(params)
@@ -176,14 +176,20 @@ class OnPremConnector:
         except Exception as e:
             logger.exception(f"Error processing message: {e}")
 
-    def _handle_sync_users(self) -> dict:
-        """Sync all users from AD"""
-        users = self.ad_client.get_all_users()
-        # Don't include org_tree - it creates circular references
-        # Backend will build relationships from manager_dn
+    def _handle_sync_users(self, params: dict = None) -> dict:
+        """Sync users from AD with pagination"""
+        params = params or {}
+        offset = params.get('offset', 0)
+        limit = params.get('limit', 100)
+
+        users, total = self.ad_client.get_all_users(offset=offset, limit=limit)
+
         return {
             'users': users,
-            'total': len(users)
+            'offset': offset,
+            'limit': limit,
+            'total': total,
+            'has_more': offset + len(users) < total
         }
 
     def _handle_get_user(self, params: dict) -> Optional[dict]:
