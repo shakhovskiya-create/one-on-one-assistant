@@ -1,0 +1,42 @@
+package config
+
+import (
+	"os"
+)
+
+type Config struct {
+	Port              string
+	SupabaseURL       string
+	SupabaseKey       string
+	OpenAIKey         string
+	AnthropicKey      string
+	TelegramBotToken  string
+	YandexAPIKey      string
+	YandexFolderID    string
+	ConnectorAPIKey   string
+	EWSURL            string
+	EWSDomain         string
+}
+
+func Load() *Config {
+	return &Config{
+		Port:              getEnv("PORT", "8080"),
+		SupabaseURL:       getEnv("SUPABASE_URL", ""),
+		SupabaseKey:       getEnv("SUPABASE_KEY", ""),
+		OpenAIKey:         getEnv("OPENAI_API_KEY", ""),
+		AnthropicKey:      getEnv("ANTHROPIC_API_KEY", ""),
+		TelegramBotToken:  getEnv("TELEGRAM_BOT_TOKEN", ""),
+		YandexAPIKey:      getEnv("YANDEX_API_KEY", ""),
+		YandexFolderID:    getEnv("YANDEX_FOLDER_ID", ""),
+		ConnectorAPIKey:   getEnv("CONNECTOR_API_KEY", ""),
+		EWSURL:            getEnv("EWS_URL", "https://post.ekf.su/EWS/Exchange.asmx"),
+		EWSDomain:         getEnv("EWS_DOMAIN", "ekfgroup"),
+	}
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}

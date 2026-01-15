@@ -1,19 +1,30 @@
-# Claude tokens
-.claude/
+# Dependencies
+node_modules/
+vendor/
+
+# Build artifacts
+build/
+dist/
+.svelte-kit/
+*.exe
+server
 
 # Environment
 .env
-*.env
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-venv/
+.env.local
+.env.*.local
 
 # IDE
 .idea/
 .vscode/
+*.swp
+*.swo
+.DS_Store
 
 # Logs
 *.log
+npm-debug.log*
+
+# OS
+Thumbs.db
+.claude/

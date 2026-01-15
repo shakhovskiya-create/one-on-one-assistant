@@ -1,12 +1,29 @@
-FROM python:3.11-slim
+FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies
+RUN apk add --no-cache git ca-certificates
 
+# Copy go mod files
+COPY go.mod go.sum* ./
+RUN go mod download
+
+# Copy source
 COPY . .
 
-EXPOSE 8000
+# Build
+RUN CGO_ENABLED=0 GOOS=linux go build -o server ./cmd/server
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Final image
+FROM alpine:latest
+
+RUN apk --no-cache add ca-certificates tzdata
+
+WORKDIR /app
+
+COPY --from=builder /app/server .
+
+EXPOSE 8080
+
+CMD ["./server"]

@@ -1,0 +1,157 @@
+package models
+
+import "time"
+
+// Employee represents a team member
+type Employee struct {
+	ID                    string     `json:"id"`
+	Name                  string     `json:"name"`
+	Email                 string     `json:"email,omitempty"`
+	Position              string     `json:"position"`
+	Department            string     `json:"department,omitempty"`
+	ManagerID             *string    `json:"manager_id,omitempty"`
+	MeetingFrequency      string     `json:"meeting_frequency,omitempty"`
+	MeetingDay            *string    `json:"meeting_day,omitempty"`
+	DevelopmentPriorities *string    `json:"development_priorities,omitempty"`
+	PhotoBase64           *string    `json:"photo_base64,omitempty"`
+	ADDN                  *string    `json:"ad_dn,omitempty"`
+	ADLogin               *string    `json:"ad_login,omitempty"`
+	Phone                 *string    `json:"phone,omitempty"`
+	Mobile                *string    `json:"mobile,omitempty"`
+	TelegramUsername      *string    `json:"telegram_username,omitempty"`
+	TelegramChatID        *int64     `json:"telegram_chat_id,omitempty"`
+	CreatedAt             *time.Time `json:"created_at,omitempty"`
+}
+
+// Project represents a team project
+type Project struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Description *string    `json:"description,omitempty"`
+	Status      string     `json:"status"`
+	StartDate   *string    `json:"start_date,omitempty"`
+	EndDate     *string    `json:"end_date,omitempty"`
+	CreatedAt   *time.Time `json:"created_at,omitempty"`
+}
+
+// MeetingCategory represents a type of meeting
+type MeetingCategory struct {
+	ID          string  `json:"id"`
+	Code        string  `json:"code"`
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+}
+
+// Meeting represents a recorded meeting
+type Meeting struct {
+	ID                string                 `json:"id"`
+	Title             *string                `json:"title,omitempty"`
+	EmployeeID        *string                `json:"employee_id,omitempty"`
+	ProjectID         *string                `json:"project_id,omitempty"`
+	CategoryID        *string                `json:"category_id,omitempty"`
+	OrganizerID       *string                `json:"organizer_id,omitempty"`
+	Date              string                 `json:"date"`
+	StartTime         *string                `json:"start_time,omitempty"`
+	EndTime           *string                `json:"end_time,omitempty"`
+	Location          *string                `json:"location,omitempty"`
+	ExchangeID        *string                `json:"exchange_id,omitempty"`
+	ExchangeData      map[string]interface{} `json:"exchange_data,omitempty"`
+	Transcript        *string                `json:"transcript,omitempty"`
+	TranscriptWhisper *string                `json:"transcript_whisper,omitempty"`
+	TranscriptYandex  *string                `json:"transcript_yandex,omitempty"`
+	TranscriptMerged  *string                `json:"transcript_merged,omitempty"`
+	Summary           *string                `json:"summary,omitempty"`
+	MoodScore         *int                   `json:"mood_score,omitempty"`
+	Analysis          map[string]interface{} `json:"analysis,omitempty"`
+	CreatedAt         *time.Time             `json:"created_at,omitempty"`
+
+	// Joined fields
+	Employee *Employee        `json:"employee,omitempty"`
+	Project  *Project         `json:"project,omitempty"`
+	Category *MeetingCategory `json:"meeting_categories,omitempty"`
+}
+
+// MeetingParticipant links employees to meetings
+type MeetingParticipant struct {
+	ID         string    `json:"id"`
+	MeetingID  string    `json:"meeting_id"`
+	EmployeeID string    `json:"employee_id"`
+	Employee   *Employee `json:"employees,omitempty"`
+}
+
+// Agreement represents a commitment from a meeting
+type Agreement struct {
+	ID          string   `json:"id"`
+	MeetingID   string   `json:"meeting_id"`
+	Task        string   `json:"task"`
+	Responsible string   `json:"responsible"`
+	Deadline    *string  `json:"deadline,omitempty"`
+	Status      string   `json:"status"`
+	Meeting     *Meeting `json:"meetings,omitempty"`
+}
+
+// Task represents a work item
+type Task struct {
+	ID              string                 `json:"id"`
+	Title           string                 `json:"title"`
+	Description     *string                `json:"description,omitempty"`
+	Status          string                 `json:"status"`
+	Priority        int                    `json:"priority"`
+	FlagColor       *string                `json:"flag_color,omitempty"`
+	AssigneeID      *string                `json:"assignee_id,omitempty"`
+	CoAssigneeID    *string                `json:"co_assignee_id,omitempty"`
+	CreatorID       *string                `json:"creator_id,omitempty"`
+	MeetingID       *string                `json:"meeting_id,omitempty"`
+	ProjectID       *string                `json:"project_id,omitempty"`
+	ParentID        *string                `json:"parent_id,omitempty"`
+	IsEpic          bool                   `json:"is_epic"`
+	DueDate         *string                `json:"due_date,omitempty"`
+	OriginalDueDate *string                `json:"original_due_date,omitempty"`
+	CompletedAt     *time.Time             `json:"completed_at,omitempty"`
+	CreatedAt       *time.Time             `json:"created_at,omitempty"`
+	Tags            []Tag                  `json:"tags,omitempty"`
+	Assignee        *Employee              `json:"assignee,omitempty"`
+	CoAssignee      *Employee              `json:"co_assignee,omitempty"`
+	Creator         *Employee              `json:"creator,omitempty"`
+	Project         *Project               `json:"project,omitempty"`
+	Subtasks        []Task                 `json:"subtasks,omitempty"`
+	Comments        []TaskComment          `json:"comments,omitempty"`
+	History         []TaskHistory          `json:"history,omitempty"`
+	Progress        int                    `json:"progress,omitempty"`
+}
+
+// Tag represents a label for tasks
+type Tag struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
+// TaskComment represents a comment on a task
+type TaskComment struct {
+	ID        string     `json:"id"`
+	TaskID    string     `json:"task_id"`
+	AuthorID  string     `json:"author_id"`
+	Content   string     `json:"content"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+	Author    *Employee  `json:"author,omitempty"`
+}
+
+// TaskHistory represents a change to a task
+type TaskHistory struct {
+	ID        string     `json:"id"`
+	TaskID    string     `json:"task_id"`
+	FieldName string     `json:"field_name"`
+	OldValue  *string    `json:"old_value,omitempty"`
+	NewValue  *string    `json:"new_value,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+}
+
+// TelegramUser links employees to Telegram
+type TelegramUser struct {
+	ID                   string `json:"id"`
+	EmployeeID           string `json:"employee_id"`
+	TelegramUsername     string `json:"telegram_username"`
+	TelegramChatID       int64  `json:"telegram_chat_id"`
+	NotificationsEnabled bool   `json:"notifications_enabled"`
+}
