@@ -1,5 +1,6 @@
 'use client'
 
+import { Suspense } from 'react';
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
@@ -16,7 +17,7 @@ import {
 } from 'recharts'
 import { TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react'
 
-const API_URL = process.env.API_URL || 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 interface Employee {
   id: string
@@ -51,7 +52,7 @@ interface Analytics {
   total_meetings: number
 }
 
-export default function AnalyticsPage() {
+function AnalyticsContent() {
   const searchParams = useSearchParams()
   const employeeIdParam = searchParams.get('employee')
   
@@ -163,7 +164,6 @@ export default function AnalyticsPage() {
 
       {selectedEmployee && analytics && !loading && (
         <>
-          {/* Header */}
           <div className="bg-white rounded-lg shadow-sm border p-6">
             <h2 className="text-xl font-semibold">{selectedEmployeeData?.name}</h2>
             <p className="text-gray-500">{selectedEmployeeData?.position}</p>
@@ -201,9 +201,7 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Mood Chart */}
             <div className="bg-white rounded-lg shadow-sm border p-6">
               <h3 className="font-semibold mb-4">Динамика настроения</h3>
               {analytics.mood_history.length > 0 ? (
@@ -242,7 +240,6 @@ export default function AnalyticsPage() {
               )}
             </div>
 
-            {/* Agreements Chart */}
             <div className="bg-white rounded-lg shadow-sm border p-6">
               <h3 className="font-semibold mb-4">Статус договоренностей</h3>
               {analytics.agreement_stats.total > 0 ? (
@@ -297,7 +294,6 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          {/* Red Flags History */}
           {analytics.red_flags_history.length > 0 && (
             <div className="bg-white rounded-lg shadow-sm border p-6">
               <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -335,5 +331,13 @@ export default function AnalyticsPage() {
         </>
       )}
     </div>
+  )
+}
+
+export default function AnalyticsPage() {
+  return (
+    <Suspense fallback={<div className="p-8">Загрузка...</div>}>
+      <AnalyticsContent />
+    </Suspense>
   )
 }
