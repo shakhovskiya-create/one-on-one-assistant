@@ -5,9 +5,10 @@ import asyncio
 import base64
 from datetime import datetime, date, timedelta
 from typing import Optional, List
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Query, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Query, Form, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+import uuid
 from pydantic import BaseModel
 from openai import OpenAI
 from anthropic import Anthropic
@@ -34,6 +35,87 @@ supabase: Optional[Client] = None
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 YANDEX_API_KEY = os.getenv("YANDEX_API_KEY", "")
 YANDEX_FOLDER_ID = os.getenv("YANDEX_FOLDER_ID", "")
+CONNECTOR_API_KEY = os.getenv("CONNECTOR_API_KEY", "")
+
+
+# ============ ON-PREM CONNECTOR ============
+
+class ConnectorManager:
+    """Manages WebSocket connection to on-prem connector"""
+
+    def __init__(self):
+        self.connector: Optional[WebSocket] = None
+        self.pending_requests: dict = {}
+        self.connected = False
+
+    async def connect(self, websocket: WebSocket, api_key: str):
+        """Accept connector connection"""
+        if CONNECTOR_API_KEY and api_key != CONNECTOR_API_KEY:
+            await websocket.close(code=4001, reason="Invalid API key")
+            return False
+
+        await websocket.accept()
+        self.connector = websocket
+        self.connected = True
+        print("On-prem connector connected")
+        return True
+
+    def disconnect(self):
+        """Handle connector disconnect"""
+        self.connector = None
+        self.connected = False
+        # Fail all pending requests
+        for request_id, future in self.pending_requests.items():
+            if not future.done():
+                future.set_exception(Exception("Connector disconnected"))
+        self.pending_requests.clear()
+        print("On-prem connector disconnected")
+
+    async def send_command(self, command: str, params: dict = None, timeout: float = 30.0) -> dict:
+        """Send command to connector and wait for response"""
+        if not self.connected or not self.connector:
+            raise HTTPException(status_code=503, detail="On-prem connector not connected")
+
+        request_id = str(uuid.uuid4())
+
+        message = {
+            "command": command,
+            "request_id": request_id,
+            "params": params or {}
+        }
+
+        # Create future for response
+        loop = asyncio.get_event_loop()
+        future = loop.create_future()
+        self.pending_requests[request_id] = future
+
+        try:
+            await self.connector.send_json(message)
+
+            # Wait for response with timeout
+            result = await asyncio.wait_for(future, timeout=timeout)
+            return result
+
+        except asyncio.TimeoutError:
+            self.pending_requests.pop(request_id, None)
+            raise HTTPException(status_code=504, detail="Connector request timeout")
+        except Exception as e:
+            self.pending_requests.pop(request_id, None)
+            raise HTTPException(status_code=500, detail=str(e))
+
+    def handle_response(self, data: dict):
+        """Handle response from connector"""
+        request_id = data.get("request_id")
+        if request_id and request_id in self.pending_requests:
+            future = self.pending_requests.pop(request_id)
+            if not future.done():
+                if data.get("success"):
+                    future.set_result(data.get("result"))
+                else:
+                    future.set_exception(Exception(data.get("error", "Unknown error")))
+
+
+connector_manager = ConnectorManager()
 
 def init_clients():
     global openai_client, anthropic_client, supabase
@@ -1505,6 +1587,309 @@ async def notify_new_task(task_id: str, assignee_id: str, title: str):
             user.data[0]["telegram_chat_id"],
             f"📌 <b>Новая задача:</b>\n\n{title}"
         )
+
+
+# ============ ON-PREM CONNECTOR WEBSOCKET ============
+
+@app.websocket("/ws/connector")
+async def connector_websocket(websocket: WebSocket):
+    """WebSocket endpoint for on-prem connector"""
+    # Get API key from headers
+    api_key = websocket.headers.get("authorization", "").replace("Bearer ", "")
+
+    if not await connector_manager.connect(websocket, api_key):
+        return
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+
+            if data.get("type") == "heartbeat":
+                # Connector heartbeat - just acknowledge
+                continue
+
+            if data.get("type") == "response":
+                # Response to our command
+                connector_manager.handle_response(data)
+
+    except WebSocketDisconnect:
+        connector_manager.disconnect()
+    except Exception as e:
+        print(f"Connector WebSocket error: {e}")
+        connector_manager.disconnect()
+
+
+@app.get("/connector/status")
+async def connector_status():
+    """Check if on-prem connector is connected"""
+    return {
+        "connected": connector_manager.connected,
+        "pending_requests": len(connector_manager.pending_requests)
+    }
+
+
+# ============ AD INTEGRATION ============
+
+@app.post("/ad/sync")
+async def sync_ad_users():
+    """Sync users from Active Directory"""
+    result = await connector_manager.send_command("sync_users", timeout=120.0)
+
+    if not supabase:
+        return result
+
+    # Upsert users to database
+    users = result.get("users", [])
+    synced = 0
+
+    for user in users:
+        if not user.get("email"):
+            continue
+
+        # Check if exists
+        existing = supabase.table("employees").select("id").eq("email", user["email"]).execute()
+
+        employee_data = {
+            "name": user.get("name", ""),
+            "email": user.get("email"),
+            "position": user.get("title", ""),
+            "department": user.get("department", ""),
+            "ad_dn": user.get("dn"),
+            "manager_dn": user.get("manager_dn"),
+            "photo_base64": user.get("photo_base64"),
+            "ad_login": user.get("login")
+        }
+
+        if existing.data:
+            supabase.table("employees").update(employee_data).eq("id", existing.data[0]["id"]).execute()
+        else:
+            supabase.table("employees").insert(employee_data).execute()
+
+        synced += 1
+
+    # Update manager relationships
+    employees = supabase.table("employees").select("id, manager_dn").execute()
+    dn_to_id = {e.get("ad_dn"): e["id"] for e in supabase.table("employees").select("id, ad_dn").execute().data if e.get("ad_dn")}
+
+    for emp in employees.data:
+        if emp.get("manager_dn") and emp["manager_dn"] in dn_to_id:
+            supabase.table("employees").update({
+                "manager_id": dn_to_id[emp["manager_dn"]]
+            }).eq("id", emp["id"]).execute()
+
+    return {
+        "synced": synced,
+        "total_from_ad": len(users)
+    }
+
+
+@app.post("/ad/authenticate")
+async def authenticate_ad_user(username: str = Form(...), password: str = Form(...)):
+    """Authenticate user against AD"""
+    result = await connector_manager.send_command("authenticate", {
+        "username": username,
+        "password": password
+    })
+
+    if result.get("authenticated"):
+        user = result.get("user", {})
+
+        # Find or create employee
+        if supabase and user.get("email"):
+            existing = supabase.table("employees").select("*").eq("email", user["email"]).execute()
+
+            if existing.data:
+                employee = existing.data[0]
+            else:
+                # Auto-create from AD
+                emp_data = {
+                    "name": user.get("name", ""),
+                    "email": user.get("email"),
+                    "position": user.get("title", ""),
+                    "ad_dn": user.get("dn"),
+                    "ad_login": user.get("login")
+                }
+                employee = supabase.table("employees").insert(emp_data).execute().data[0]
+
+            # Generate session token (simplified - use proper JWT in production)
+            session_token = str(uuid.uuid4())
+
+            return {
+                "authenticated": True,
+                "employee": employee,
+                "token": session_token
+            }
+
+    return {"authenticated": False, "error": result.get("error", "Authentication failed")}
+
+
+@app.get("/ad/subordinates/{employee_id}")
+async def get_ad_subordinates(employee_id: str):
+    """Get subordinates for a manager from AD"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database not configured")
+
+    # Get manager's DN
+    employee = supabase.table("employees").select("ad_dn").eq("id", employee_id).single().execute()
+    if not employee.data or not employee.data.get("ad_dn"):
+        raise HTTPException(status_code=404, detail="Employee not found or not synced from AD")
+
+    result = await connector_manager.send_command("get_subordinates", {
+        "manager_dn": employee.data["ad_dn"]
+    })
+
+    return result
+
+
+# ============ EXCHANGE/CALENDAR INTEGRATION ============
+
+@app.get("/calendar/{employee_id}")
+async def get_employee_calendar(
+    employee_id: str,
+    days_back: int = 7,
+    days_forward: int = 30
+):
+    """Get calendar events from Exchange"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database not configured")
+
+    employee = supabase.table("employees").select("email").eq("id", employee_id).single().execute()
+    if not employee.data or not employee.data.get("email"):
+        raise HTTPException(status_code=404, detail="Employee email not found")
+
+    result = await connector_manager.send_command("get_calendar", {
+        "email": employee.data["email"],
+        "days_back": days_back,
+        "days_forward": days_forward
+    }, timeout=60.0)
+
+    return result
+
+
+@app.post("/calendar/meeting")
+async def create_calendar_meeting(
+    organizer_id: str = Form(...),
+    subject: str = Form(...),
+    start: str = Form(...),
+    end: str = Form(...),
+    attendee_ids: str = Form("[]"),  # JSON array
+    body: str = Form(""),
+    location: str = Form("")
+):
+    """Create meeting in Exchange and sync to app"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database not configured")
+
+    # Get organizer email
+    organizer = supabase.table("employees").select("email").eq("id", organizer_id).single().execute()
+    if not organizer.data or not organizer.data.get("email"):
+        raise HTTPException(status_code=404, detail="Organizer not found")
+
+    # Get attendee emails
+    attendee_list = json.loads(attendee_ids)
+    attendee_emails = []
+    if attendee_list:
+        attendees = supabase.table("employees").select("email").in_("id", attendee_list).execute()
+        attendee_emails = [a["email"] for a in attendees.data if a.get("email")]
+
+    # Create in Exchange
+    result = await connector_manager.send_command("create_meeting", {
+        "organizer_email": organizer.data["email"],
+        "subject": subject,
+        "start": start,
+        "end": end,
+        "attendees": attendee_emails,
+        "body": body,
+        "location": location
+    }, timeout=30.0)
+
+    if result:
+        # Also create in our database
+        meeting_data = {
+            "title": subject,
+            "date": start.split("T")[0],
+            "exchange_id": result.get("id"),
+            "category_id": None  # Will be set when processed
+        }
+
+        meeting = supabase.table("meetings").insert(meeting_data).execute()
+
+        # Add participants
+        for aid in attendee_list:
+            supabase.table("meeting_participants").insert({
+                "meeting_id": meeting.data[0]["id"],
+                "employee_id": aid
+            }).execute()
+
+        result["app_meeting_id"] = meeting.data[0]["id"]
+
+    return result
+
+
+@app.get("/calendar/free-slots")
+async def find_free_slots(
+    attendee_ids: str = Query(...),  # Comma-separated IDs
+    duration_minutes: int = Query(60),
+    start: str = Query(...),
+    end: str = Query(...)
+):
+    """Find free time slots for all attendees"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database not configured")
+
+    ids = [id.strip() for id in attendee_ids.split(",")]
+    attendees = supabase.table("employees").select("email").in_("id", ids).execute()
+    emails = [a["email"] for a in attendees.data if a.get("email")]
+
+    if not emails:
+        raise HTTPException(status_code=400, detail="No valid attendee emails found")
+
+    result = await connector_manager.send_command("find_free_slots", {
+        "emails": emails,
+        "duration_minutes": duration_minutes,
+        "start": start,
+        "end": end
+    }, timeout=60.0)
+
+    return result
+
+
+@app.post("/calendar/sync")
+async def sync_calendar_meetings(employee_id: str = Form(...)):
+    """Sync meetings from Exchange to app"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database not configured")
+
+    employee = supabase.table("employees").select("email").eq("id", employee_id).single().execute()
+    if not employee.data or not employee.data.get("email"):
+        raise HTTPException(status_code=404, detail="Employee email not found")
+
+    events = await connector_manager.send_command("get_calendar", {
+        "email": employee.data["email"],
+        "days_back": 30,
+        "days_forward": 60
+    }, timeout=120.0)
+
+    synced = 0
+    for event in events:
+        if not event.get("id"):
+            continue
+
+        # Check if already exists
+        existing = supabase.table("meetings").select("id").eq("exchange_id", event["id"]).execute()
+
+        if not existing.data:
+            meeting_data = {
+                "title": event.get("subject", "Untitled"),
+                "date": event.get("start", "").split("T")[0] if event.get("start") else None,
+                "exchange_id": event["id"],
+                "exchange_data": event
+            }
+
+            supabase.table("meetings").insert(meeting_data).execute()
+            synced += 1
+
+    return {"synced": synced, "total_events": len(events)}
 
 
 if __name__ == "__main__":

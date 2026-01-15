@@ -1,0 +1,51 @@
+# On-Prem Connector Configuration
+# ================================
+
+# Railway Backend
+backend:
+  url: "wss://one-on-one-back.up.railway.app/ws/connector"
+  api_key: "${CONNECTOR_API_KEY}"  # Set via environment variable
+  reconnect_interval: 5  # seconds
+  heartbeat_interval: 30  # seconds
+
+# Active Directory (LDAP)
+ad:
+  server: "ldap://172.20.0.33"
+  port: 389
+  use_ssl: false
+  base_dn: "DC=ekfgroup,DC=ru"
+  users_ou: "OU=EKF-USERS,DC=ekfgroup,DC=ru"
+  # Service account - set via environment variables for security
+  bind_user: "${AD_BIND_USER}"      # e.g., "ekfgroup\\a.shakhovskiy"
+  bind_password: "${AD_BIND_PASSWORD}"
+  # Attributes to sync
+  attributes:
+    - cn                # Full name
+    - mail              # Email
+    - title             # Job title
+    - department        # Department
+    - manager           # Manager DN
+    - thumbnailPhoto    # Photo
+    - sAMAccountName    # Login
+    - userPrincipalName # UPN
+    - telephoneNumber   # Phone
+    - mobile            # Mobile phone
+
+# Exchange Web Services
+ews:
+  url: "https://post.ekf.su/EWS/Exchange.asmx"
+  # Service account - set via environment variables
+  username: "${EWS_USERNAME}"    # e.g., "ekfgroup\\a.shakhovskiy"
+  password: "${EWS_PASSWORD}"
+  auth_type: "NTLM"
+
+# Sync settings
+sync:
+  users_interval: 3600      # Sync users every hour
+  calendar_days_back: 7     # Sync calendar N days back
+  calendar_days_forward: 30 # Sync calendar N days forward
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  file: "connector.log"
