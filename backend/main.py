@@ -1509,11 +1509,3 @@ async def notify_new_task(task_id: str, assignee_id: str, title: str):
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
-```
-
----
-
-## Шаг 3: Добавь переменные в Railway
-```
-YANDEX_API_KEY=твой_ключ
-YANDEX_FOLDER_ID=твой_folder_id
