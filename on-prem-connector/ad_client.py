@@ -165,9 +165,11 @@ class ADClient:
             )
 
             # If successful, get user info
+            # Extract username without domain (can't use backslash in f-string)
+            sam_account = username.split('\\')[-1] if '\\' in username else username
             user_conn.search(
                 search_base=self.config['base_dn'],
-                search_filter=f"(sAMAccountName={username.split('\\')[-1]})",
+                search_filter=f"(sAMAccountName={sam_account})",
                 attributes=self.config['attributes']
             )
 
