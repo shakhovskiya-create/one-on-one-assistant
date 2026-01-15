@@ -20,7 +20,7 @@ function Sidebar() {
   ]
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 min-h-screen p-4">
+    <aside className="w-64 min-w-64 flex-shrink-0 bg-white border-r border-gray-200 min-h-screen p-4">
       <div className="mb-8">
         <h1 className="text-xl font-bold text-blue-600">1-on-1 Assistant</h1>
       </div>
@@ -49,7 +49,7 @@ export default function RootLayout({
     <html lang="ru">
       <body className="flex">
         <Sidebar />
-        <main className="flex-1 p-8">{children}</main>
+        <main className="flex-1 p-8 overflow-x-auto">{children}</main>
       </body>
     </html>
   )
