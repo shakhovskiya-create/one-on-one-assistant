@@ -1,7 +1,7 @@
 import './globals.css'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Users, Calendar, FileText, Upload, BarChart3, Home } from 'lucide-react'
+import { Users, Calendar, FileText, Upload, BarChart3, Home, CheckSquare } from 'lucide-react'
 
 export const metadata: Metadata = {
   title: '1-on-1 Assistant',
@@ -13,6 +13,7 @@ function Sidebar() {
     { href: '/', icon: Home, label: 'Дашборд' },
     { href: '/employees', icon: Users, label: 'Команда' },
     { href: '/meetings', icon: Calendar, label: 'Встречи' },
+    { href: '/tasks', icon: CheckSquare, label: 'Задачи'},
     { href: '/script', icon: FileText, label: 'Скрипт встречи' },
     { href: '/upload', icon: Upload, label: 'Загрузить запись' },
     { href: '/analytics', icon: BarChart3, label: 'Аналитика' },
