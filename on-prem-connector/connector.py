@@ -181,8 +181,9 @@ class OnPremConnector:
         params = params or {}
         offset = params.get('offset', 0)
         limit = params.get('limit', 100)
+        include_photo = params.get('include_photo', True)  # Include photos by default
 
-        users, total = self.ad_client.get_all_users(offset=offset, limit=limit)
+        users, total = self.ad_client.get_all_users(offset=offset, limit=limit, include_photo=include_photo)
 
         return {
             'users': users,
