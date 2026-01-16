@@ -5,7 +5,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ekf/one-on-one-backend/internal/models"
 	"github.com/ekf/one-on-one-backend/pkg/ai"
@@ -86,6 +88,82 @@ func (h *Handler) GetMeeting(c *fiber.Ctx) error {
 		"participants":       extractEmployees(participants),
 		"agreements":         agreements,
 	})
+}
+
+// CreateMeeting creates a new meeting
+func (h *Handler) CreateMeeting(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
+	var req struct {
+		Title      string  `json:"title"`
+		EmployeeID string  `json:"employee_id"`
+		ProjectID  *string `json:"project_id"`
+		CategoryID *string `json:"category_id"`
+		Date       string  `json:"date"`
+		StartTime  *string `json:"start_time"`
+		EndTime    *string `json:"end_time"`
+		Location   *string `json:"location"`
+		Summary    *string `json:"summary"`
+		MoodScore  *int    `json:"mood_score"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	// Validate required fields
+	if req.Title == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Title is required"})
+	}
+	if req.EmployeeID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Employee ID is required"})
+	}
+	if req.Date == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Date is required"})
+	}
+
+	// Create meeting
+	meeting := map[string]interface{}{
+		"title":       req.Title,
+		"employee_id": req.EmployeeID,
+		"date":        req.Date,
+	}
+
+	if req.ProjectID != nil {
+		meeting["project_id"] = *req.ProjectID
+	}
+	if req.CategoryID != nil {
+		meeting["category_id"] = *req.CategoryID
+	}
+	if req.StartTime != nil {
+		meeting["start_time"] = *req.StartTime
+	}
+	if req.EndTime != nil {
+		meeting["end_time"] = *req.EndTime
+	}
+	if req.Location != nil {
+		meeting["location"] = *req.Location
+	}
+	if req.Summary != nil {
+		meeting["summary"] = *req.Summary
+	}
+	if req.MoodScore != nil {
+		meeting["mood_score"] = *req.MoodScore
+	}
+
+	var result []models.Meeting
+	err := h.DB.From("meetings").Insert(meeting).Execute(&result)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to create meeting", "details": err.Error()})
+	}
+
+	if len(result) == 0 {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to create meeting"})
+	}
+
+	return c.Status(201).JSON(result[0])
 }
 
 // ListMeetingCategories returns all meeting categories
@@ -496,10 +574,11 @@ func truncate(s string, n int) string {
 }
 
 func itoa(n int) string {
-	return string(rune('0'+n%10)) + string(rune('0'+n/10%10))
+	// Use standard library for integer to string conversion
+	return strconv.Itoa(n)
 }
 
 func getCurrentDate() string {
-	// Simple date for comparison
-	return "2025-01-15"
+	// Return current date in ISO 8601 format
+	return time.Now().Format("2006-01-02")
 }
