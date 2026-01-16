@@ -9,18 +9,28 @@
 	let loading = $state(true);
 	let searchQuery = $state('');
 	let viewMode = $state<'my' | 'all'>('my');
-	let displayMode = $state<'grid' | 'list' | 'hierarchy' | 'department'>('grid');
+	let displayMode = $state<'grid' | 'list' | 'hierarchy' | 'department'>('hierarchy');
 	let collapsedDepts: Set<string> = $state(new Set());
-	let collapsedNodes: Set<string> = $state(new Set());
+	let expandedNodes: Set<string> = $state(new Set()); // Changed: track expanded, not collapsed
 
-	// Helper: get all descendants recursively
-	function getAllDescendants(managerId: string, allEmps: Employee[]): Employee[] {
-		const direct = allEmps.filter(e => e.manager_id === managerId);
-		const all: Employee[] = [...direct];
+	// Get ONLY direct subordinates of a manager
+	function getDirectSubordinates(managerId: string): Employee[] {
+		return allEmployees.filter(e => e.manager_id === managerId);
+	}
+
+	// Count all subordinates recursively (for badge)
+	function countAllSubordinates(managerId: string): number {
+		const direct = allEmployees.filter(e => e.manager_id === managerId);
+		let count = direct.length;
 		for (const emp of direct) {
-			all.push(...getAllDescendants(emp.id, allEmps));
+			count += countAllSubordinates(emp.id);
 		}
-		return all;
+		return count;
+	}
+
+	// Get direct subordinate count
+	function getDirectSubordinateCount(employeeId: string): number {
+		return allEmployees.filter(e => e.manager_id === employeeId).length;
 	}
 
 	// Filter employees based on view mode and department presence
@@ -28,9 +38,9 @@
 		let employees: Employee[];
 
 		if (viewMode === 'my') {
-			// Show full tree: user's subordinates + their subordinates recursively
+			// In "Мои" mode: show ONLY direct subordinates (not recursive)
 			if ($user?.id) {
-				employees = getAllDescendants($user.id, allEmployees);
+				employees = getDirectSubordinates($user.id);
 			} else {
 				employees = $subordinates;
 			}
@@ -74,36 +84,10 @@
 		return sorted;
 	});
 
-	// Build hierarchy tree (manager -> subordinates)
-	let hierarchyTree = $derived(() => {
-		const employees = visibleEmployees();
-		const byId = new Map(employees.map(e => [e.id, e]));
-		const children: Map<string, Employee[]> = new Map();
-
-		// Build children map for all employees
-		for (const emp of allEmployees) {
-			if (emp.manager_id) {
-				if (!children.has(emp.manager_id)) {
-					children.set(emp.manager_id, []);
-				}
-				children.get(emp.manager_id)!.push(emp);
-			}
-		}
-
-		// Sort children by name
-		children.forEach(list => list.sort((a, b) => a.name.localeCompare(b.name)));
-
-		// Find roots: employees whose manager is not in the visible set or is the current user
-		const roots: Employee[] = [];
-		for (const emp of employees) {
-			const isDirectReport = emp.manager_id === $user?.id;
-			const managerNotVisible = !emp.manager_id || !byId.has(emp.manager_id);
-			if (isDirectReport || managerNotVisible) {
-				roots.push(emp);
-			}
-		}
-
-		return { roots: roots.sort((a, b) => a.name.localeCompare(b.name)), children };
+	// Direct subordinates for hierarchy view (lazy loaded on expand)
+	let myDirectSubordinates = $derived(() => {
+		if (!$user?.id) return [];
+		return getDirectSubordinates($user.id).sort((a, b) => a.name.localeCompare(b.name));
 	});
 
 	function toggleDept(dept: string) {
@@ -116,12 +100,12 @@
 	}
 
 	function toggleNode(id: string) {
-		if (collapsedNodes.has(id)) {
-			collapsedNodes.delete(id);
+		if (expandedNodes.has(id)) {
+			expandedNodes.delete(id);
 		} else {
-			collapsedNodes.add(id);
+			expandedNodes.add(id);
 		}
-		collapsedNodes = new Set(collapsedNodes);
+		expandedNodes = new Set(expandedNodes);
 	}
 
 	onMount(async () => {
@@ -157,7 +141,7 @@
 					class="px-4 py-2 text-sm font-medium transition-colors
 						{viewMode === 'my' ? 'bg-ekf-red text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}"
 				>
-					Мои ({$subordinates.length})
+					Мои ({myDirectSubordinates().length})
 				</button>
 				<button
 					onclick={() => viewMode = 'all'}
@@ -327,13 +311,19 @@
 			</table>
 		</div>
 	{:else if displayMode === 'hierarchy'}
-		<!-- Hierarchy View by Manager -->
+		<!-- Hierarchy View - Direct Subordinates with Expandable Tree -->
 		<div class="bg-white rounded-xl shadow-sm p-6">
-			<div class="space-y-1">
-				{#each hierarchyTree().roots as employee (employee.id)}
-					{@render employeeNode(employee, 0)}
-				{/each}
-			</div>
+			{#if viewMode === 'my'}
+				<!-- My subordinates - show direct reports only, expand on demand -->
+				<div class="space-y-1">
+					{#each myDirectSubordinates() as employee (employee.id)}
+						{@render employeeNode(employee, 0)}
+					{/each}
+				</div>
+			{:else}
+				<!-- All employees - grouped by department -->
+				<p class="text-gray-500 text-center py-4">Используйте вид "По департаментам" для просмотра всех сотрудников</p>
+			{/if}
 		</div>
 	{:else if displayMode === 'department'}
 		<!-- Department View with Collapsible Groups -->
@@ -396,20 +386,23 @@
 </div>
 
 {#snippet employeeNode(employee: Employee, level: number)}
-	{@const hasChildren = hierarchyTree().children.get(employee.id)?.length ?? 0}
-	{@const isCollapsed = collapsedNodes.has(employee.id)}
+	{@const subordinateCount = getDirectSubordinateCount(employee.id)}
+	{@const totalSubordinates = countAllSubordinates(employee.id)}
+	{@const isExpanded = expandedNodes.has(employee.id)}
+	{@const directSubs = isExpanded ? getDirectSubordinates(employee.id).sort((a, b) => a.name.localeCompare(b.name)) : []}
 	<div class="relative" style="margin-left: {level * 28}px">
 		{#if level > 0}
 			<div class="absolute -left-5 top-6 w-4 border-t-2 border-gray-200"></div>
 			<div class="absolute -left-5 top-0 h-6 border-l-2 border-gray-200"></div>
 		{/if}
 		<div class="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 transition-colors group">
-			{#if hasChildren > 0}
+			{#if subordinateCount > 0}
 				<button
 					onclick={(e) => { e.preventDefault(); e.stopPropagation(); toggleNode(employee.id); }}
 					class="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-200 transition-colors flex-shrink-0"
+					title="{isExpanded ? 'Свернуть' : 'Развернуть'} ({subordinateCount} прямых)"
 				>
-					<svg class="w-4 h-4 text-gray-500 transition-transform {isCollapsed ? '' : 'rotate-90'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<svg class="w-4 h-4 text-gray-500 transition-transform {isExpanded ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 					</svg>
 				</button>
@@ -428,17 +421,19 @@
 					<p class="font-medium text-gray-900 group-hover:text-ekf-red transition-colors">{employee.name}</p>
 					<p class="text-sm text-gray-500">{employee.position}</p>
 				</div>
-				{#if hasChildren > 0}
-					<span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">{hasChildren}</span>
+				{#if totalSubordinates > 0}
+					<span class="text-xs text-white bg-ekf-red px-2 py-1 rounded-full font-medium" title="Всего подчинённых: {totalSubordinates}">
+						+{totalSubordinates}
+					</span>
 				{/if}
 			</a>
 		</div>
-		{#if hasChildren > 0 && !isCollapsed}
+		{#if subordinateCount > 0 && isExpanded}
 			<div class="relative">
 				{#if level > 0}
 					<div class="absolute -left-5 top-0 h-full border-l-2 border-gray-200"></div>
 				{/if}
-				{#each hierarchyTree().children.get(employee.id) || [] as child (child.id)}
+				{#each directSubs as child (child.id)}
 					{@render employeeNode(child, level + 1)}
 				{/each}
 			</div>

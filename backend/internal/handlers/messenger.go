@@ -485,7 +485,7 @@ func (h *Handler) SendMessage(c *fiber.Ctx) error {
 		"updated_at": time.Now().Format(time.RFC3339),
 	})
 
-	// Broadcast via WebSocket
+	// Broadcast via WebSocket to OTHER participants (not the sender - they get the response)
 	var participants []struct {
 		EmployeeID string `json:"employee_id"`
 	}
@@ -493,14 +493,19 @@ func (h *Handler) SendMessage(c *fiber.Ctx) error {
 
 	recipients := make([]string, 0, len(participants))
 	for _, p := range participants {
-		recipients = append(recipients, p.EmployeeID)
+		// Exclude sender - they already get the message from the HTTP response
+		if p.EmployeeID != req.SenderID {
+			recipients = append(recipients, p.EmployeeID)
+		}
 	}
 
-	hub.broadcast <- WSMessage{
-		Type:           "new_message",
-		ConversationID: req.ConversationID,
-		Message:        newMsg,
-		Recipients:     recipients,
+	if len(recipients) > 0 {
+		hub.broadcast <- WSMessage{
+			Type:           "new_message",
+			ConversationID: req.ConversationID,
+			Message:        newMsg,
+			Recipients:     recipients,
+		}
 	}
 
 	return c.Status(201).JSON(newMsg)
