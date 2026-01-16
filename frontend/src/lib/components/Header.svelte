@@ -1,7 +1,13 @@
 <script lang="ts">
-	import { sidebarOpen, currentUser, notifications } from '$lib/stores/app';
+	import { sidebarOpen, notifications } from '$lib/stores/app';
+	import type { User } from '$lib/stores/auth';
 
-	export let title = 'EKF Team Hub';
+	interface Props {
+		user?: User | null;
+		title?: string;
+	}
+
+	let { user = null, title = 'EKF Team Hub' }: Props = $props();
 
 	function toggleSidebar() {
 		sidebarOpen.update(v => !v);
@@ -31,12 +37,16 @@
 			</button>
 
 			<!-- User Menu -->
-			{#if $currentUser}
+			{#if user}
 				<div class="flex items-center gap-2">
-					<span class="text-sm text-gray-600">{$currentUser.name}</span>
-					<div class="w-8 h-8 rounded-full bg-ekf-red text-white flex items-center justify-center text-sm font-medium">
-						{$currentUser.name.charAt(0)}
-					</div>
+					<span class="text-sm text-gray-600 hidden sm:block">{user.name}</span>
+					{#if user.photo_base64}
+						<img src="data:image/jpeg;base64,{user.photo_base64}" alt="" class="w-8 h-8 rounded-full object-cover" />
+					{:else}
+						<div class="w-8 h-8 rounded-full bg-ekf-red text-white flex items-center justify-center text-sm font-medium">
+							{user.name.charAt(0)}
+						</div>
+					{/if}
 				</div>
 			{:else}
 				<a href="/login" class="text-sm text-ekf-red hover:underline">Войти</a>
