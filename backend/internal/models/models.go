@@ -65,9 +65,9 @@ type Meeting struct {
 	Analysis          map[string]interface{} `json:"analysis,omitempty"`
 	CreatedAt         *time.Time             `json:"created_at,omitempty"`
 
-	// Joined fields
-	Employee *Employee        `json:"employee,omitempty"`
-	Project  *Project         `json:"project,omitempty"`
+	// Joined fields - tags must match Supabase relation names
+	Employee *Employee        `json:"employees,omitempty"`
+	Project  *Project         `json:"projects,omitempty"`
 	Category *MeetingCategory `json:"meeting_categories,omitempty"`
 }
 
