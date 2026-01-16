@@ -21,6 +21,7 @@ type Client struct {
 type User struct {
 	DN              string   `json:"dn"`
 	Username        string   `json:"username"`
+	Login           string   `json:"login"` // Same as Username, for backend compatibility
 	Email           string   `json:"email"`
 	Name            string   `json:"name"`
 	DisplayName     string   `json:"display_name"`
@@ -242,9 +243,11 @@ func (c *Client) GetSubordinates(managerDN string) ([]*User, error) {
 }
 
 func (c *Client) parseUser(entry *ldap.Entry, includePhoto bool) *User {
+	username := entry.GetAttributeValue("sAMAccountName")
 	user := &User{
 		DN:          entry.DN,
-		Username:    entry.GetAttributeValue("sAMAccountName"),
+		Username:    username,
+		Login:       username, // Same as Username for backend compatibility
 		Email:       entry.GetAttributeValue("mail"),
 		DisplayName: entry.GetAttributeValue("displayName"),
 		GivenName:   entry.GetAttributeValue("givenName"),
