@@ -1,0 +1,26 @@
+[Unit]
+Description=EKF One-on-One AD Connector
+After=network.target
+
+[Service]
+Type=simple
+User=ekf-connector
+Group=ekf-connector
+WorkingDirectory=/opt/ekf-connector
+EnvironmentFile=/opt/ekf-connector/.env
+ExecStart=/opt/ekf-connector/connector -config /opt/ekf-connector/config.yaml
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ekf-connector
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/ekf-connector/logs
+
+[Install]
+WantedBy=multi-user.target
