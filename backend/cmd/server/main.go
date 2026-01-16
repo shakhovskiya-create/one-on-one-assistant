@@ -115,7 +115,7 @@ func main() {
 	protectedAPI.Post("/calendar/sync", h.SyncCalendar)
 	protectedAPI.Post("/calendar/free-slots", h.FindFreeSlots)
 	protectedAPI.Get("/calendar/free-slots/simple", h.FreeSlotsSimple)
-	protectedAPI.Post("/calendar/:id", h.GetCalendar)
+	protectedAPI.Get("/calendar/:id", h.GetCalendar)
 	protectedAPI.Get("/calendar/:id/simple", h.GetCalendarSimple)
 
 	// Analytics
