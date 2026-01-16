@@ -260,19 +260,18 @@
 					{@const pending = employeeAnalytics.agreement_stats.pending}
 					{@const overdue = employeeAnalytics.agreement_stats.overdue}
 
+					{@const completedDash = (completed / total) * 440}
+					{@const pendingDash = (pending / total) * 440}
+					{@const overdueDash = (overdue / total) * 440}
 					<div class="flex items-center justify-center">
 						<svg class="w-48 h-48" viewBox="0 0 200 200">
-							{@const completedAngle = (completed / total) * 360}
-							{@const pendingAngle = (pending / total) * 360}
-							{@const overdueAngle = (overdue / total) * 360}
-
 							<!-- Completed -->
 							{#if completed > 0}
 								<circle
 									cx="100" cy="100" r="70"
 									fill="transparent"
 									stroke="#22c55e" stroke-width="30"
-									stroke-dasharray="{(completed / total) * 440} 440"
+									stroke-dasharray="{completedDash} 440"
 									transform="rotate(-90 100 100)" />
 							{/if}
 
@@ -282,8 +281,8 @@
 									cx="100" cy="100" r="70"
 									fill="transparent"
 									stroke="#f59e0b" stroke-width="30"
-									stroke-dasharray="{(pending / total) * 440} 440"
-									stroke-dashoffset="{-(completed / total) * 440}"
+									stroke-dasharray="{pendingDash} 440"
+									stroke-dashoffset="{-completedDash}"
 									transform="rotate(-90 100 100)" />
 							{/if}
 
@@ -293,8 +292,8 @@
 									cx="100" cy="100" r="70"
 									fill="transparent"
 									stroke="#ef4444" stroke-width="30"
-									stroke-dasharray="{(overdue / total) * 440} 440"
-									stroke-dashoffset="{-((completed + pending) / total) * 440}"
+									stroke-dasharray="{overdueDash} 440"
+									stroke-dashoffset="{-(completedDash + pendingDash)}"
 									transform="rotate(-90 100 100)" />
 							{/if}
 
