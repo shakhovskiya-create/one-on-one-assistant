@@ -6,6 +6,7 @@ import (
 	"github.com/ekf/one-on-one-backend/internal/services"
 	"github.com/ekf/one-on-one-backend/pkg/ai"
 	"github.com/ekf/one-on-one-backend/pkg/auth"
+	"github.com/ekf/one-on-one-backend/pkg/camunda"
 	"github.com/ekf/one-on-one-backend/pkg/ews"
 	"github.com/ekf/one-on-one-backend/pkg/telegram"
 )
@@ -19,6 +20,7 @@ type Handler struct {
 	Telegram  *telegram.Client
 	Connector *services.ConnectorManager
 	JWT       *auth.JWTManager
+	Camunda   *camunda.Client
 }
 
 // NewHandler creates a new handler with all dependencies
@@ -39,6 +41,7 @@ func NewHandler(cfg *config.Config) *Handler {
 	tgClient := telegram.NewClient(cfg.TelegramBotToken)
 	connector := services.NewConnectorManager(cfg.ConnectorAPIKey)
 	jwtManager := auth.NewJWTManager(cfg.JWTSecret, 24) // 24 hours expiration
+	camundaClient := camunda.NewClient(cfg.CamundaURL, cfg.CamundaUser, cfg.CamundaPassword)
 
 	return &Handler{
 		Config:    cfg,
@@ -48,5 +51,6 @@ func NewHandler(cfg *config.Config) *Handler {
 		Telegram:  tgClient,
 		Connector: connector,
 		JWT:       jwtManager,
+		Camunda:   camundaClient,
 	}
 }

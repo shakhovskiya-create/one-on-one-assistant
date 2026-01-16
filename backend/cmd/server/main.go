@@ -122,6 +122,20 @@ func main() {
 	api.Delete("/files/:id", h.DeleteFile)
 	api.Post("/files/attach", h.AttachFileToEntity)
 
+	// BPMN / Camunda
+	api.Get("/bpmn/status", h.BPMNStatus)
+	api.Get("/bpmn/definitions", h.ListProcessDefinitions)
+	api.Get("/bpmn/definitions/:key", h.GetProcessDefinition)
+	api.Post("/bpmn/processes", h.StartProcess)
+	api.Get("/bpmn/processes", h.ListProcessInstances)
+	api.Get("/bpmn/processes/:id", h.GetProcessInstance)
+	api.Delete("/bpmn/processes/:id", h.DeleteProcessInstance)
+	api.Get("/bpmn/tasks", h.ListBPMNTasks)
+	api.Get("/bpmn/tasks/:id", h.GetBPMNTask)
+	api.Post("/bpmn/tasks/:id/complete", h.CompleteBPMNTask)
+	api.Post("/bpmn/tasks/:id/claim", h.ClaimBPMNTask)
+	api.Post("/bpmn/tasks/:id/unclaim", h.UnclaimBPMNTask)
+
 	// Messenger
 	api.Get("/conversations", h.ListConversations)
 	api.Post("/conversations", h.CreateConversation)

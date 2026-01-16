@@ -18,6 +18,9 @@ type Config struct {
 	EWSDomain          string
 	EWSSkipTLSVerify   bool   // Only for internal/self-signed certs
 	JWTSecret          string // For signing auth tokens
+	CamundaURL         string // Camunda BPMN engine URL
+	CamundaUser        string // Camunda username
+	CamundaPassword    string // Camunda password
 }
 
 func Load() *Config {
@@ -35,6 +38,9 @@ func Load() *Config {
 		EWSDomain:         getEnv("EWS_DOMAIN", "ekfgroup"),
 		EWSSkipTLSVerify:  getEnv("EWS_SKIP_TLS_VERIFY", "false") == "true",
 		JWTSecret:         getEnv("JWT_SECRET", "change-me-in-production"),
+		CamundaURL:        getEnv("CAMUNDA_URL", ""),
+		CamundaUser:       getEnv("CAMUNDA_USER", ""),
+		CamundaPassword:   getEnv("CAMUNDA_PASSWORD", ""),
 	}
 }
 

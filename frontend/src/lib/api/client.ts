@@ -196,7 +196,79 @@ export const files = {
 		request('/files/attach', { method: 'POST', body: { file_id: fileId, entity_type: entityType, entity_id: entityId } }),
 };
 
+// BPMN / Camunda
+export const bpmn = {
+	status: () => request<BPMNStatus>('/bpmn/status'),
+	getDefinitions: () => request<ProcessDefinition[]>('/bpmn/definitions'),
+	getDefinition: (key: string) => request<ProcessDefinition>(`/bpmn/definitions/${key}`),
+	startProcess: (processKey: string, businessKey?: string, variables?: Record<string, unknown>) =>
+		request<ProcessInstance>('/bpmn/processes', {
+			method: 'POST',
+			body: { process_key: processKey, business_key: businessKey, variables }
+		}),
+	getProcesses: (processKey?: string, active?: boolean) => {
+		const params = new URLSearchParams();
+		if (processKey) params.append('process_key', processKey);
+		if (active !== undefined) params.append('active', String(active));
+		return request<ProcessInstance[]>(`/bpmn/processes${params.toString() ? `?${params}` : ''}`);
+	},
+	getProcess: (id: string) => request<{ instance: ProcessInstance; variables: Record<string, unknown> }>(`/bpmn/processes/${id}`),
+	cancelProcess: (id: string) => request(`/bpmn/processes/${id}`, { method: 'DELETE' }),
+	getTasks: (assignee?: string, processInstanceId?: string) => {
+		const params = new URLSearchParams();
+		if (assignee) params.append('assignee', assignee);
+		if (processInstanceId) params.append('process_instance_id', processInstanceId);
+		return request<BPMNTask[]>(`/bpmn/tasks${params.toString() ? `?${params}` : ''}`);
+	},
+	getTask: (id: string) => request<BPMNTask>(`/bpmn/tasks/${id}`),
+	completeTask: (id: string, variables?: Record<string, unknown>) =>
+		request(`/bpmn/tasks/${id}/complete`, { method: 'POST', body: { variables } }),
+	claimTask: (id: string, userId: string) =>
+		request(`/bpmn/tasks/${id}/claim`, { method: 'POST', body: { user_id: userId } }),
+	unclaimTask: (id: string) =>
+		request(`/bpmn/tasks/${id}/unclaim`, { method: 'POST' }),
+};
+
 // Types
+export interface BPMNStatus {
+	configured: boolean;
+	status: string;
+	message?: string;
+	url?: string;
+	error?: string;
+}
+
+export interface ProcessDefinition {
+	id: string;
+	key: string;
+	name: string;
+	description?: string;
+	version: number;
+	suspended: boolean;
+}
+
+export interface ProcessInstance {
+	id: string;
+	definitionId: string;
+	businessKey?: string;
+	suspended: boolean;
+	ended?: boolean;
+}
+
+export interface BPMNTask {
+	id: string;
+	name: string;
+	assignee?: string;
+	created: string;
+	due?: string;
+	description?: string;
+	priority: number;
+	processDefinitionId?: string;
+	processInstanceId?: string;
+	taskDefinitionKey?: string;
+	formKey?: string;
+}
+
 export interface FileUploadResult {
 	id: string;
 	name: string;
@@ -430,5 +502,6 @@ export const api = {
 	calendar,
 	messenger,
 	connector,
-	files
+	files,
+	bpmn
 };
