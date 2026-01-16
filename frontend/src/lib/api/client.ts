@@ -106,7 +106,8 @@ export const calendar = {
 	getSimple: (employeeId: string) => request<CalendarEvent[]>(`/calendar/${employeeId}/simple`),
 	findFreeSlots: (data: FreeSlotsRequest) =>
 		request('/calendar/free-slots', { method: 'POST', body: data }),
-	sync: () => request('/calendar/sync', { method: 'POST' }),
+	sync: (data: { employee_id: string; username: string; password: string; days_back?: number; days_forward?: number }) =>
+		request('/calendar/sync', { method: 'POST', body: data }),
 };
 
 // Messenger
