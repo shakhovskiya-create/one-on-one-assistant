@@ -26,19 +26,38 @@ func (h *Handler) GetCalendar(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Username and password required"})
 	}
 
-	// Get employee email
+	// Get employee info
 	var employee struct {
-		Email string `json:"email"`
+		Email   string `json:"email"`
+		ADLogin string `json:"ad_login"`
 	}
-	err := h.DB.From("employees").Select("email").Eq("id", employeeID).Single().Execute(&employee)
-	if err != nil || employee.Email == "" {
-		return c.Status(404).JSON(fiber.Map{"error": "Employee email not found"})
+	err := h.DB.From("employees").Select("email, ad_login").Eq("id", employeeID).Single().Execute(&employee)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Сотрудник не найден"})
+	}
+
+	// Determine email to use
+	ewsEmail := employee.Email
+	if ewsEmail == "" && strings.Contains(auth.Username, "@") {
+		ewsEmail = auth.Username
+	}
+	if ewsEmail == "" && strings.Contains(employee.ADLogin, "@") {
+		ewsEmail = employee.ADLogin
+	}
+	if ewsEmail == "" && strings.Contains(auth.Username, "\\") {
+		parts := strings.Split(auth.Username, "\\")
+		if len(parts) == 2 {
+			ewsEmail = parts[1] + "@ekfgroup.com"
+		}
+	}
+	if ewsEmail == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Email сотрудника не найден. Укажите email в профиле."})
 	}
 
 	daysBack := c.QueryInt("days_back", 7)
 	daysForward := c.QueryInt("days_forward", 30)
 
-	events, err := h.EWS.GetCalendarEvents(employee.Email, auth.Username, auth.Password, daysBack, daysForward)
+	events, err := h.EWS.GetCalendarEvents(ewsEmail, auth.Username, auth.Password, daysBack, daysForward)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "EWS error: " + err.Error()})
 	}
