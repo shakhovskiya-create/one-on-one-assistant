@@ -162,6 +162,65 @@ export const connector = {
 	},
 };
 
+// Files
+export const files = {
+	upload: async (file: File, options?: { entityType?: string; entityId?: string; uploadedBy?: string }) => {
+		const formData = new FormData();
+		formData.append('file', file);
+		if (options?.entityType) formData.append('entity_type', options.entityType);
+		if (options?.entityId) formData.append('entity_id', options.entityId);
+		if (options?.uploadedBy) formData.append('uploaded_by', options.uploadedBy);
+
+		const response = await fetch(`${API_URL}/files`, {
+			method: 'POST',
+			headers: getAuthHeaders(),
+			body: formData
+		});
+		if (!response.ok) {
+			const error = await response.json().catch(() => ({ error: response.statusText }));
+			throw new Error(error.error || 'Upload failed');
+		}
+		return response.json() as Promise<FileUploadResult>;
+	},
+	list: (params?: { entityType?: string; entityId?: string; uploadedBy?: string }) => {
+		const query = new URLSearchParams();
+		if (params?.entityType) query.append('entity_type', params.entityType);
+		if (params?.entityId) query.append('entity_id', params.entityId);
+		if (params?.uploadedBy) query.append('uploaded_by', params.uploadedBy);
+		return request<FileMetadata[]>(`/files${query.toString() ? `?${query}` : ''}`);
+	},
+	get: (id: string) => request<FileMetadata>(`/files/${id}`),
+	getUrl: (id: string) => request<{ id: string; name: string; url: string; content_type: string }>(`/files/${id}/url`),
+	delete: (id: string) => request(`/files/${id}`, { method: 'DELETE' }),
+	attach: (fileId: string, entityType: string, entityId: string) =>
+		request('/files/attach', { method: 'POST', body: { file_id: fileId, entity_type: entityType, entity_id: entityId } }),
+};
+
+// Types
+export interface FileUploadResult {
+	id: string;
+	name: string;
+	url: string;
+	content_type: string;
+	size_bytes: number;
+	storage_path: string;
+}
+
+export interface FileMetadata {
+	id: string;
+	name: string;
+	original_name: string;
+	storage_path: string;
+	bucket: string;
+	content_type: string;
+	size_bytes: number;
+	uploaded_by?: string;
+	entity_type?: string;
+	entity_id?: string;
+	url?: string;
+	created_at: string;
+}
+
 // Types
 export interface Employee {
 	id: string;
@@ -370,5 +429,6 @@ export const api = {
 	analytics,
 	calendar,
 	messenger,
-	connector
+	connector,
+	files
 };

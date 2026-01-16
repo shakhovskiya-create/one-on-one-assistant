@@ -329,3 +329,154 @@ func (c *SupabaseClient) Delete(table, column, value string) error {
 
 	return nil
 }
+
+// ==================== Storage Methods ====================
+
+// StorageUpload uploads a file to Supabase storage
+func (c *SupabaseClient) StorageUpload(bucket, path string, data io.Reader, contentType string) (string, error) {
+	reqURL := fmt.Sprintf("%s/storage/v1/object/%s/%s", c.URL, bucket, path)
+
+	req, err := http.NewRequest("POST", reqURL, data)
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("apikey", c.Key)
+	req.Header.Set("Authorization", "Bearer "+c.Key)
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("x-upsert", "true")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("storage upload error %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Return public URL
+	publicURL := fmt.Sprintf("%s/storage/v1/object/public/%s/%s", c.URL, bucket, path)
+	return publicURL, nil
+}
+
+// StorageDownload downloads a file from Supabase storage
+func (c *SupabaseClient) StorageDownload(bucket, path string) ([]byte, string, error) {
+	reqURL := fmt.Sprintf("%s/storage/v1/object/%s/%s", c.URL, bucket, path)
+
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		return nil, "", err
+	}
+
+	req.Header.Set("apikey", c.Key)
+	req.Header.Set("Authorization", "Bearer "+c.Key)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, "", fmt.Errorf("storage download error %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", err
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	return body, contentType, nil
+}
+
+// StorageDelete deletes a file from Supabase storage
+func (c *SupabaseClient) StorageDelete(bucket, path string) error {
+	reqURL := fmt.Sprintf("%s/storage/v1/object/%s/%s", c.URL, bucket, path)
+
+	req, err := http.NewRequest("DELETE", reqURL, nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("apikey", c.Key)
+	req.Header.Set("Authorization", "Bearer "+c.Key)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("storage delete error %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// StorageList lists files in a bucket path
+func (c *SupabaseClient) StorageList(bucket, prefix string) ([]StorageObject, error) {
+	reqURL := fmt.Sprintf("%s/storage/v1/object/list/%s", c.URL, bucket)
+
+	requestBody := map[string]interface{}{
+		"prefix": prefix,
+		"limit":  100,
+	}
+	jsonData, _ := json.Marshal(requestBody)
+
+	req, err := http.NewRequest("POST", reqURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("apikey", c.Key)
+	req.Header.Set("Authorization", "Bearer "+c.Key)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("storage list error %d: %s", resp.StatusCode, string(body))
+	}
+
+	var objects []StorageObject
+	if err := json.Unmarshal(body, &objects); err != nil {
+		return nil, err
+	}
+
+	return objects, nil
+}
+
+// StorageGetPublicURL returns the public URL for a file
+func (c *SupabaseClient) StorageGetPublicURL(bucket, path string) string {
+	return fmt.Sprintf("%s/storage/v1/object/public/%s/%s", c.URL, bucket, path)
+}
+
+// StorageObject represents a file in storage
+type StorageObject struct {
+	Name           string `json:"name"`
+	ID             string `json:"id,omitempty"`
+	UpdatedAt      string `json:"updated_at,omitempty"`
+	CreatedAt      string `json:"created_at,omitempty"`
+	LastAccessedAt string `json:"last_accessed_at,omitempty"`
+	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+}

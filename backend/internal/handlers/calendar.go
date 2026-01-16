@@ -192,23 +192,64 @@ func (h *Handler) SyncCalendar(c *fiber.Ctx) error {
 		req.DaysForward = 30
 	}
 
-	// Get employee email
+	// Get employee info
 	var employee struct {
-		ID    string `json:"id"`
-		Email string `json:"email"`
+		ID      string `json:"id"`
+		Email   string `json:"email"`
+		ADLogin string `json:"ad_login"`
+		Name    string `json:"name"`
 	}
-	h.DB.From("employees").Select("id, email").Eq("id", req.EmployeeID).Single().Execute(&employee)
-	if employee.Email == "" {
-		return c.Status(404).JSON(fiber.Map{"error": "Employee email not found"})
+	err := h.DB.From("employees").Select("id, email, ad_login, name").Eq("id", req.EmployeeID).Single().Execute(&employee)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Employee not found", "employee_id": req.EmployeeID})
 	}
 
-	events, err := h.EWS.GetCalendarEvents(employee.Email, req.Username, req.Password, req.DaysBack, req.DaysForward)
+	// Determine the email to use for EWS
+	ewsEmail := employee.Email
+
+	// If no email, try to extract from username (could be email format)
+	if ewsEmail == "" && strings.Contains(req.Username, "@") {
+		ewsEmail = req.Username
+	}
+
+	// Or use ad_login if it's in email format
+	if ewsEmail == "" && strings.Contains(employee.ADLogin, "@") {
+		ewsEmail = employee.ADLogin
+	}
+
+	// If still no email, try to construct from domain\user format
+	if ewsEmail == "" && strings.Contains(req.Username, "\\") {
+		parts := strings.Split(req.Username, "\\")
+		if len(parts) == 2 {
+			// Try common email domain patterns
+			ewsEmail = parts[1] + "@ekfgroup.com"
+		}
+	}
+
+	if ewsEmail == "" {
+		return c.Status(400).JSON(fiber.Map{
+			"error":       "Не удалось определить email для синхронизации. Укажите email в профиле сотрудника.",
+			"employee_id": employee.ID,
+			"name":        employee.Name,
+		})
+	}
+
+	events, err := h.EWS.GetCalendarEvents(ewsEmail, req.Username, req.Password, req.DaysBack, req.DaysForward)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "EWS error: " + err.Error()})
+		return c.Status(500).JSON(fiber.Map{
+			"error":      "Ошибка подключения к Exchange: " + err.Error(),
+			"ews_email":  ewsEmail,
+			"ews_url":    h.Config.EWSURL,
+		})
+	}
+
+	// If we successfully connected and employee had no email, save it
+	if employee.Email == "" && ewsEmail != "" {
+		h.DB.Update("employees", "id", employee.ID, map[string]string{"email": ewsEmail})
 	}
 
 	if len(events) == 0 {
-		return c.JSON(fiber.Map{"synced": 0, "message": "No events found"})
+		return c.JSON(fiber.Map{"synced": 0, "message": "No events found", "ews_email": ewsEmail})
 	}
 
 	// Build email lookup

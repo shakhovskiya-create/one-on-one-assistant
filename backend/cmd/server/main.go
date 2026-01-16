@@ -114,6 +114,14 @@ func main() {
 	api.Post("/auth/refresh", h.RefreshToken)
 	api.Get("/auth/me", h.GetMe)
 
+	// File Storage
+	api.Post("/files", h.UploadFile)
+	api.Get("/files", h.ListFiles)
+	api.Get("/files/:id", h.GetFile)
+	api.Get("/files/:id/url", h.GetFileURL)
+	api.Delete("/files/:id", h.DeleteFile)
+	api.Post("/files/attach", h.AttachFileToEntity)
+
 	// Messenger
 	api.Get("/conversations", h.ListConversations)
 	api.Post("/conversations", h.CreateConversation)
