@@ -108,6 +108,7 @@ func main() {
 	// Local User Management (works without connector)
 	api.Post("/users/local", h.CreateLocalUser)
 	api.Post("/users/set-password", h.SetLocalPassword)
+	api.Post("/users/change-password", h.ChangePassword)
 
 	// Messenger
 	api.Get("/conversations", h.ListConversations)

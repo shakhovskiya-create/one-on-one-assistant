@@ -63,7 +63,7 @@ function createAuthStore() {
 		}
 	}
 
-	async function login(username: string, password: string): Promise<{ success: boolean; error?: string }> {
+	async function login(username: string, password: string): Promise<{ success: boolean; error?: string; forcePasswordChange?: boolean; userId?: string }> {
 		try {
 			const formData = new FormData();
 			formData.append('username', username);
@@ -79,6 +79,11 @@ function createAuthStore() {
 			if (data.authenticated && data.employee) {
 				const user = data.employee;
 				const token = data.token || 'authenticated';
+
+				// Check if password change is required
+				if (data.force_password_change) {
+					return { success: true, forcePasswordChange: true, userId: user.id };
+				}
 
 				update(state => ({ ...state, user, token, isLoading: false }));
 
@@ -96,6 +101,31 @@ function createAuthStore() {
 			}
 		} catch (error) {
 			console.error('Login error:', error);
+			return { success: false, error: 'Ошибка подключения к серверу' };
+		}
+	}
+
+	async function changePassword(userId: string, oldPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
+		try {
+			const res = await fetch(`${API_URL}/api/v1/users/change-password`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					user_id: userId,
+					old_password: oldPassword,
+					new_password: newPassword
+				})
+			});
+
+			const data = await res.json();
+
+			if (data.success) {
+				return { success: true };
+			} else {
+				return { success: false, error: data.error || 'Не удалось изменить пароль' };
+			}
+		} catch (error) {
+			console.error('Change password error:', error);
 			return { success: false, error: 'Ошибка подключения к серверу' };
 		}
 	}
@@ -122,7 +152,8 @@ function createAuthStore() {
 		login,
 		logout,
 		canAccessEmployee,
-		fetchSubordinates
+		fetchSubordinates,
+		changePassword
 	};
 }
 

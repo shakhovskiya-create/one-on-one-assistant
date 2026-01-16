@@ -232,10 +232,13 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 		employee, authErr := h.authenticateLocal(username, password)
 		if authErr == nil && employee != nil {
 			sessionToken := generateToken()
+			forceChange, _ := employee["force_password_change"].(bool)
+			delete(employee, "force_password_change")
 			return c.JSON(fiber.Map{
-				"authenticated": true,
-				"employee":      employee,
-				"token":         sessionToken,
+				"authenticated":         true,
+				"employee":              employee,
+				"token":                 sessionToken,
+				"force_password_change": forceChange,
 			})
 		}
 	}
@@ -383,6 +386,69 @@ func (h *Handler) SetLocalPassword(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"success": true,
 		"message": "Password set successfully",
+	})
+}
+
+// ChangePassword allows user to change their own password
+func (h *Handler) ChangePassword(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
+	var req struct {
+		UserID      string `json:"user_id"`
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.UserID == "" || req.NewPassword == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "User ID and new password required"})
+	}
+
+	if len(req.NewPassword) < 6 {
+		return c.Status(400).JSON(fiber.Map{"error": "Password must be at least 6 characters"})
+	}
+
+	// Verify old password if provided
+	if req.OldPassword != "" {
+		var employees []map[string]interface{}
+		h.DB.From("employees").Select("password_hash").Eq("id", req.UserID).Execute(&employees)
+
+		if len(employees) == 0 {
+			return c.Status(404).JSON(fiber.Map{"error": "User not found"})
+		}
+
+		oldHash, _ := employees[0]["password_hash"].(string)
+		if oldHash != "" {
+			if err := bcrypt.CompareHashAndPassword([]byte(oldHash), []byte(req.OldPassword)); err != nil {
+				return c.Status(401).JSON(fiber.Map{"error": "Неверный текущий пароль"})
+			}
+		}
+	}
+
+	// Hash the new password
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to hash password"})
+	}
+
+	// Update password and clear force_password_change flag
+	_, err = h.DB.Update("employees", "id", req.UserID, map[string]interface{}{
+		"password_hash":         string(hash),
+		"force_password_change": false,
+	})
+
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to update password"})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": "Пароль успешно изменён",
 	})
 }
 
