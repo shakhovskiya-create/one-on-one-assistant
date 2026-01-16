@@ -28,4 +28,3 @@ npm-debug.log*
 # OS
 Thumbs.db
 .claude/
-chat-history.jsonl
