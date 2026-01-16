@@ -229,16 +229,27 @@ export interface Task {
 	title: string;
 	description?: string;
 	status: string;
-	priority?: string;
+	priority?: number;
 	flag_color?: string;
 	assignee_id?: string;
 	assignee_name?: string;
 	project_id?: string;
+	parent_id?: string;
+	start_date?: string;
 	due_date?: string;
+	progress?: number;
 	is_epic?: boolean;
 	assignee?: Employee;
 	project?: Project;
 	tags?: { name: string; color: string }[];
+	dependencies?: TaskDependency[];
+}
+
+export interface TaskDependency {
+	id: string;
+	task_id: string;
+	depends_on_task_id: string;
+	dependency_type: string;
 }
 
 export interface KanbanBoard {

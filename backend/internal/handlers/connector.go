@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // ConnectorStatus returns connector status
@@ -217,7 +218,7 @@ func (h *Handler) SyncADUsers(c *fiber.Ctx) error {
 	})
 }
 
-// AuthenticateAD authenticates a user against AD
+// AuthenticateAD authenticates a user against AD or local database
 func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 	username := c.FormValue("username")
 	password := c.FormValue("password")
@@ -226,58 +227,220 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Username and password required"})
 	}
 
-	result, err := h.Connector.SendCommand("authenticate", map[string]interface{}{
-		"username": username,
-		"password": password,
-	}, 30*time.Second)
-
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"authenticated": false, "error": err.Error()})
-	}
-
-	authenticated, _ := result["authenticated"].(bool)
-	if !authenticated {
-		errMsg, _ := result["error"].(string)
-		return c.JSON(fiber.Map{"authenticated": false, "error": errMsg})
-	}
-
-	user, _ := result["user"].(map[string]interface{})
-	email, _ := user["email"].(string)
-
-	var employee map[string]interface{}
-
-	if h.DB != nil && email != "" {
-		var existing []map[string]interface{}
-		h.DB.From("employees").Select("*").Eq("email", email).Execute(&existing)
-
-		if len(existing) > 0 {
-			employee = existing[0]
-		} else {
-			// Auto-create from AD
-			empData := map[string]interface{}{
-				"name":     user["name"],
-				"email":    email,
-				"position": user["title"],
-				"ad_dn":    user["dn"],
-				"ad_login": user["login"],
-			}
-			result, _ := h.DB.Insert("employees", empData)
-			var created []map[string]interface{}
-			json.Unmarshal(result, &created)
-			if len(created) > 0 {
-				employee = created[0]
-			}
+	// First, try local authentication (works without connector)
+	if h.DB != nil {
+		employee, authErr := h.authenticateLocal(username, password)
+		if authErr == nil && employee != nil {
+			sessionToken := generateToken()
+			return c.JSON(fiber.Map{
+				"authenticated": true,
+				"employee":      employee,
+				"token":         sessionToken,
+			})
 		}
 	}
 
-	// Generate simple session token
-	sessionToken := generateToken()
+	// Fall back to connector-based AD authentication
+	if h.Connector.IsConnected() {
+		result, err := h.Connector.SendCommand("authenticate", map[string]interface{}{
+			"username": username,
+			"password": password,
+		}, 30*time.Second)
+
+		if err == nil {
+			authenticated, _ := result["authenticated"].(bool)
+			if authenticated {
+				user, _ := result["user"].(map[string]interface{})
+				email, _ := user["email"].(string)
+
+				var employee map[string]interface{}
+
+				if h.DB != nil && email != "" {
+					var existing []map[string]interface{}
+					h.DB.From("employees").Select("*").Eq("email", email).Execute(&existing)
+
+					if len(existing) > 0 {
+						employee = existing[0]
+					} else {
+						// Auto-create from AD
+						empData := map[string]interface{}{
+							"name":     user["name"],
+							"email":    email,
+							"position": user["title"],
+							"ad_dn":    user["dn"],
+							"ad_login": user["login"],
+						}
+						insertResult, _ := h.DB.Insert("employees", empData)
+						var created []map[string]interface{}
+						json.Unmarshal(insertResult, &created)
+						if len(created) > 0 {
+							employee = created[0]
+						}
+					}
+				}
+
+				sessionToken := generateToken()
+				return c.JSON(fiber.Map{
+					"authenticated": true,
+					"employee":      employee,
+					"token":         sessionToken,
+				})
+			}
+			errMsg, _ := result["error"].(string)
+			return c.JSON(fiber.Map{"authenticated": false, "error": errMsg})
+		}
+	}
+
+	// Both local and AD auth failed
+	return c.JSON(fiber.Map{
+		"authenticated": false,
+		"error":         "Неверные учётные данные",
+	})
+}
+
+// authenticateLocal checks local password hash in database
+func (h *Handler) authenticateLocal(username, password string) (map[string]interface{}, error) {
+	// Normalize username - handle domain\user format
+	loginName := username
+	if strings.Contains(username, "\\") {
+		parts := strings.SplitN(username, "\\", 2)
+		loginName = parts[1]
+	}
+
+	// Try to find user by email or ad_login
+	var employees []map[string]interface{}
+
+	// First try by email
+	h.DB.From("employees").Select("*").Ilike("email", loginName+"%").Execute(&employees)
+
+	if len(employees) == 0 {
+		// Try by ad_login
+		h.DB.From("employees").Select("*").Ilike("ad_login", loginName).Execute(&employees)
+	}
+
+	if len(employees) == 0 {
+		// Try exact email match
+		h.DB.From("employees").Select("*").Eq("email", loginName).Execute(&employees)
+	}
+
+	if len(employees) == 0 {
+		return nil, fiber.NewError(401, "User not found")
+	}
+
+	employee := employees[0]
+	passwordHash, _ := employee["password_hash"].(string)
+
+	if passwordHash == "" {
+		return nil, fiber.NewError(401, "No local password set")
+	}
+
+	// Compare password with hash
+	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)); err != nil {
+		return nil, fiber.NewError(401, "Invalid password")
+	}
+
+	// Remove password_hash from response
+	delete(employee, "password_hash")
+
+	return employee, nil
+}
+
+// SetLocalPassword sets a local password for a user (admin endpoint)
+func (h *Handler) SetLocalPassword(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.Email == "" || req.Password == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Email and password required"})
+	}
+
+	// Hash the password
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to hash password"})
+	}
+
+	// Update employee with password hash
+	_, err = h.DB.Update("employees", "email", req.Email, map[string]interface{}{
+		"password_hash": string(hash),
+		"is_local_user": true,
+	})
+
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to update password"})
+	}
 
 	return c.JSON(fiber.Map{
-		"authenticated": true,
-		"employee":      employee,
-		"token":         sessionToken,
+		"success": true,
+		"message": "Password set successfully",
 	})
+}
+
+// CreateLocalUser creates a new local user (not from AD)
+func (h *Handler) CreateLocalUser(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
+	var req struct {
+		Name       string `json:"name"`
+		Email      string `json:"email"`
+		Password   string `json:"password"`
+		Position   string `json:"position"`
+		Department string `json:"department"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.Email == "" || req.Password == "" || req.Name == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Name, email and password required"})
+	}
+
+	// Hash the password
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to hash password"})
+	}
+
+	// Create employee
+	empData := map[string]interface{}{
+		"name":          req.Name,
+		"email":         req.Email,
+		"password_hash": string(hash),
+		"position":      req.Position,
+		"department":    req.Department,
+		"is_local_user": true,
+	}
+
+	result, err := h.DB.Insert("employees", empData)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to create user: " + err.Error()})
+	}
+
+	var created []map[string]interface{}
+	json.Unmarshal(result, &created)
+
+	if len(created) > 0 {
+		delete(created[0], "password_hash")
+		return c.JSON(fiber.Map{
+			"success":  true,
+			"employee": created[0],
+		})
+	}
+
+	return c.JSON(fiber.Map{"success": true})
 }
 
 // GetSubordinates returns subordinates for a manager

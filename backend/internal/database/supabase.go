@@ -96,6 +96,24 @@ func (q *Query) IsNull(column string) *Query {
 	return q
 }
 
+// Ilike adds a case-insensitive LIKE filter
+func (q *Query) Ilike(column, pattern string) *Query {
+	q.filters = append(q.filters, fmt.Sprintf("%s=ilike.%s", column, url.QueryEscape(pattern)))
+	return q
+}
+
+// Like adds a case-sensitive LIKE filter
+func (q *Query) Like(column, pattern string) *Query {
+	q.filters = append(q.filters, fmt.Sprintf("%s=like.%s", column, url.QueryEscape(pattern)))
+	return q
+}
+
+// Or adds an OR filter with multiple conditions
+func (q *Query) Or(conditions string) *Query {
+	q.filters = append(q.filters, fmt.Sprintf("or=(%s)", conditions))
+	return q
+}
+
 // Order adds ordering
 func (q *Query) Order(column string, desc bool) *Query {
 	order := "asc"
