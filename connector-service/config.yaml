@@ -2,7 +2,7 @@ backend:
   url: ${BACKEND_WS_URL}
   api_key: ${CONNECTOR_API_KEY}
   reconnect_interval: 5
-  heartbeat_interval: 30
+  heartbeat_interval: 15
   insecure_skip_verify: false
 
 ad:
