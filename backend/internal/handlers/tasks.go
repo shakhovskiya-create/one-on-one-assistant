@@ -172,19 +172,19 @@ func (h *Handler) CreateTask(c *fiber.Ctx) error {
 	}
 
 	taskData := map[string]interface{}{
-		"title":        input.Title,
-		"description":  input.Description,
-		"status":       input.Status,
-		"priority":     input.Priority,
-		"flag_color":   input.FlagColor,
-		"assignee_id":  input.AssigneeID,
+		"title":          input.Title,
+		"description":    input.Description,
+		"status":         input.Status,
+		"priority":       input.Priority,
+		"flag_color":     input.FlagColor,
+		"assignee_id":    input.AssigneeID,
 		"co_assignee_id": input.CoAssigneeID,
-		"creator_id":   input.CreatorID,
-		"meeting_id":   input.MeetingID,
-		"project_id":   input.ProjectID,
-		"parent_id":    input.ParentID,
-		"is_epic":      input.IsEpic,
-		"due_date":     input.DueDate,
+		"creator_id":     input.CreatorID,
+		"meeting_id":     input.MeetingID,
+		"project_id":     input.ProjectID,
+		"parent_id":      input.ParentID,
+		"is_epic":        input.IsEpic,
+		"due_date":       input.DueDate,
 	}
 
 	if input.DueDate != nil {

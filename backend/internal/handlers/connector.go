@@ -77,16 +77,16 @@ func (h *Handler) SyncADUsers(c *fiber.Ctx) error {
 
 	// Stats tracking
 	stats := fiber.Map{
-		"mode":             mode,
-		"total_in_ad":      0,
-		"with_department":  0,
+		"mode":               mode,
+		"total_in_ad":        0,
+		"with_department":    0,
 		"without_department": 0,
-		"filtered_out":     0,
-		"new_users":        0,
-		"updated_users":    0,
-		"skipped_existing": 0,
-		"managers_updated": 0,
-		"errors":           []string{},
+		"filtered_out":       0,
+		"new_users":          0,
+		"updated_users":      0,
+		"skipped_existing":   0,
+		"managers_updated":   0,
+		"errors":             []string{},
 	}
 
 	// Get existing emails

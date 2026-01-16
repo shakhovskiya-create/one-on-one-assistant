@@ -189,8 +189,8 @@ func (h *Handler) GetEmployeeDossier(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"employee":              employee,
-		"one_on_one_count":      len(meetings),
+		"employee":               employee,
+		"one_on_one_count":       len(meetings),
 		"project_meetings_count": 0,
 		"tasks": fiber.Map{
 			"total":       len(tasks),

@@ -52,13 +52,13 @@ type ProcessDefinition struct {
 
 // ProcessInstance represents a running process instance
 type ProcessInstance struct {
-	ID                  string `json:"id"`
-	DefinitionID        string `json:"definitionId"`
-	BusinessKey         string `json:"businessKey,omitempty"`
-	CaseInstanceID      string `json:"caseInstanceId,omitempty"`
-	Suspended           bool   `json:"suspended"`
-	TenantID            string `json:"tenantId,omitempty"`
-	Ended               bool   `json:"ended,omitempty"`
+	ID             string `json:"id"`
+	DefinitionID   string `json:"definitionId"`
+	BusinessKey    string `json:"businessKey,omitempty"`
+	CaseInstanceID string `json:"caseInstanceId,omitempty"`
+	Suspended      bool   `json:"suspended"`
+	TenantID       string `json:"tenantId,omitempty"`
+	Ended          bool   `json:"ended,omitempty"`
 }
 
 // Task represents a user task
@@ -325,7 +325,7 @@ func (c *Client) DeployProcess(name string, bpmnXML []byte) (map[string]interfac
 	// For deployment we need multipart/form-data, but for simplicity we'll use a different approach
 	// This is a simplified version - in production you'd want proper multipart handling
 	body, err := c.doRequest("POST", "/engine-rest/deployment/create", map[string]interface{}{
-		"deployment-name": name,
+		"deployment-name":   name,
 		"deployment-source": "ekf-team-hub",
 	})
 	if err != nil {

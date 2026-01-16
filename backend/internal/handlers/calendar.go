@@ -264,9 +264,9 @@ func (h *Handler) SyncCalendar(c *fiber.Ctx) error {
 	events, err := h.EWS.GetCalendarEvents(ewsEmail, req.Username, req.Password, req.DaysBack, req.DaysForward)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{
-			"error":      "Ошибка подключения к Exchange: " + err.Error(),
-			"ews_email":  ewsEmail,
-			"ews_url":    h.Config.EWSURL,
+			"error":     "Ошибка подключения к Exchange: " + err.Error(),
+			"ews_email": ewsEmail,
+			"ews_url":   h.Config.EWSURL,
 		})
 	}
 

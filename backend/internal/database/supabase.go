@@ -473,10 +473,10 @@ func (c *SupabaseClient) StorageGetPublicURL(bucket, path string) string {
 
 // StorageObject represents a file in storage
 type StorageObject struct {
-	Name           string `json:"name"`
-	ID             string `json:"id,omitempty"`
-	UpdatedAt      string `json:"updated_at,omitempty"`
-	CreatedAt      string `json:"created_at,omitempty"`
-	LastAccessedAt string `json:"last_accessed_at,omitempty"`
+	Name           string                 `json:"name"`
+	ID             string                 `json:"id,omitempty"`
+	UpdatedAt      string                 `json:"updated_at,omitempty"`
+	CreatedAt      string                 `json:"created_at,omitempty"`
+	LastAccessedAt string                 `json:"last_accessed_at,omitempty"`
 	Metadata       map[string]interface{} `json:"metadata,omitempty"`
 }

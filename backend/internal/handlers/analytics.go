@@ -241,7 +241,7 @@ func (h *Handler) GetEmployeeAnalytics(c *fiber.Ctx) error {
 
 	// Task stats
 	var tasks []struct {
-		Status string `json:"status"`
+		Status string  `json:"status"`
 		Due    *string `json:"due_date"`
 	}
 	h.DB.From("tasks").Select("status, due_date").Eq("assignee_id", employeeID).Execute(&tasks)
@@ -394,15 +394,15 @@ func (h *Handler) GetEmployeeAnalyticsByCategory(c *fiber.Ctx) error {
 		}
 
 		result = append(result, fiber.Map{
-			"category":            cat,
-			"meetings_count":      len(catMeetings),
-			"avg_mood":            avgMood,
-			"mood_trend":          nil,
-			"agreements_created":  0,
+			"category":             cat,
+			"meetings_count":       len(catMeetings),
+			"avg_mood":             avgMood,
+			"mood_trend":           nil,
+			"agreements_created":   0,
 			"agreements_completed": 0,
-			"common_topics":       []string{},
-			"red_flags_count":     redFlagsCount,
-			"specific_metrics":    fiber.Map{},
+			"common_topics":        []string{},
+			"red_flags_count":      redFlagsCount,
+			"specific_metrics":     fiber.Map{},
 		})
 	}
 
