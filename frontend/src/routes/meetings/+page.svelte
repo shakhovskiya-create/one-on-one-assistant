@@ -1,15 +1,21 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { meetings as meetingsApi } from '$lib/api/client';
-	import type { Meeting } from '$lib/api/client';
+	import type { Meeting, MeetingCategory } from '$lib/api/client';
 
 	let meetings: Meeting[] = $state([]);
+	let categories: MeetingCategory[] = $state([]);
 	let loading = $state(true);
 	let filter = $state('all');
 
 	onMount(async () => {
 		try {
-			meetings = await meetingsApi.list();
+			const [meetingsData, categoriesData] = await Promise.all([
+				meetingsApi.list(),
+				meetingsApi.getCategories()
+			]);
+			meetings = meetingsData || [];
+			categories = categoriesData || [];
 		} catch (e) {
 			console.error(e);
 		} finally {
@@ -19,8 +25,29 @@
 
 	const filteredMeetings = $derived(() => {
 		if (filter === 'all') return meetings;
-		return meetings.filter(m => m.category === filter);
+		return meetings.filter(m => {
+			const catCode = m.meeting_categories?.code || m.category;
+			return catCode === filter;
+		});
 	});
+
+	function getCategoryName(meeting: Meeting): string {
+		if (meeting.meeting_categories?.name) {
+			return meeting.meeting_categories.name;
+		}
+		// Fallback for category code
+		const code = meeting.category || '';
+		const cat = categories.find(c => c.code === code);
+		if (cat) return cat.name;
+		switch (code) {
+			case 'one_on_one': return '1-на-1';
+			case 'project': return 'Проект';
+			case 'team': return 'Команда';
+			case 'planning': return 'Планирование';
+			case 'retro': return 'Ретро';
+			default: return code;
+		}
+	}
 
 	function formatDate(dateStr: string): string {
 		const date = new Date(dateStr);
@@ -44,21 +71,23 @@
 	</div>
 
 	<!-- Filters -->
-	<div class="flex gap-2">
-		{#each [
-			{ key: 'all', label: 'Все' },
-			{ key: 'one_on_one', label: '1-на-1' },
-			{ key: 'project', label: 'Проектные' },
-			{ key: 'team', label: 'Командные' }
-		] as tab}
+	<div class="flex gap-2 flex-wrap">
+		<button
+			onclick={() => filter = 'all'}
+			class="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+				{filter === 'all' ? 'bg-ekf-red text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}"
+		>
+			Все
+		</button>
+		{#each categories as cat}
 			<button
-				onclick={() => filter = tab.key}
+				onclick={() => filter = cat.code}
 				class="px-4 py-2 rounded-lg text-sm font-medium transition-colors
-					{filter === tab.key
+					{filter === cat.code
 						? 'bg-ekf-red text-white'
 						: 'bg-white text-gray-600 hover:bg-gray-100'}"
 			>
-				{tab.label}
+				{cat.name}
 			</button>
 		{/each}
 	</div>
@@ -87,10 +116,9 @@
 								<h3 class="text-lg font-semibold text-gray-900">
 									{meeting.title || 'Без названия'}
 								</h3>
-								{#if meeting.category}
+								{#if meeting.meeting_categories || meeting.category}
 									<span class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600">
-										{meeting.category === 'one_on_one' ? '1-на-1' :
-										meeting.category === 'project' ? 'Проект' : 'Команда'}
+										{getCategoryName(meeting)}
 									</span>
 								{/if}
 							</div>
