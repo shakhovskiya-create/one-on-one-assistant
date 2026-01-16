@@ -106,6 +106,9 @@
 		});
 	});
 
+	// Tasks without epic (derived)
+	let noEpicTasks = $derived(() => filteredTasks().filter(t => !t.epic));
+
 	// Tasks by column
 	function getTasksByStatus(status: string) {
 		return filteredTasks().filter(t => t.status === status);
@@ -499,14 +502,13 @@
 						</div>
 					</div>
 				{/each}
-				{@const noEpicTasks = filteredTasks().filter(t => !t.epic)}
-				{#if noEpicTasks.length > 0}
+				{#if noEpicTasks().length > 0}
 					<div class="bg-white rounded-xl shadow-sm overflow-hidden">
 						<div class="p-4 bg-gray-50 border-b">
 							<h3 class="font-semibold text-gray-700">Без эпика</h3>
 						</div>
 						<div class="p-4 space-y-2">
-							{#each noEpicTasks as task (task.id)}
+							{#each noEpicTasks() as task (task.id)}
 								<div class="flex items-center gap-4 p-3 rounded-lg hover:bg-gray-50 cursor-pointer" onclick={() => openTaskDetail(task)}>
 									<div class="w-2 h-2 rounded-full {getPriorityColor(task.priority || 'medium')}"></div>
 									<div class="flex-1">
