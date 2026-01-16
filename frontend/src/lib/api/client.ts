@@ -109,6 +109,25 @@ export const calendar = {
 	sync: () => request('/calendar/sync', { method: 'POST' }),
 };
 
+// Messenger
+export const messenger = {
+	listConversations: (userId: string) => request<Conversation[]>(`/conversations?user_id=${userId}`),
+	getConversation: (id: string, limit?: number, offset?: number) => {
+		const params = new URLSearchParams();
+		if (limit) params.append('limit', limit.toString());
+		if (offset) params.append('offset', offset.toString());
+		return request<{ conversation: Conversation; messages: Message[] }>(`/conversations/${id}?${params}`);
+	},
+	createConversation: (data: { type?: string; name?: string; participants: string[] }) =>
+		request<Conversation>('/conversations', { method: 'POST', body: data }),
+	sendMessage: (data: { conversation_id: string; sender_id: string; content: string; reply_to_id?: string }) =>
+		request<Message>('/messages', { method: 'POST', body: data }),
+	getWebSocketUrl: (userId: string) => {
+		const wsBase = BASE_URL.replace('http', 'ws');
+		return `${wsBase}/ws/messenger?user_id=${userId}`;
+	},
+};
+
 // Connector
 export const connector = {
 	status: () => request<ConnectorStatus>('/connector/status'),
@@ -289,4 +308,29 @@ export interface CalendarSyncRequest {
 	password: string;
 	days_back?: number;
 	days_forward?: number;
+}
+
+// Messenger types
+export interface Conversation {
+	id: string;
+	type: 'direct' | 'group';
+	name?: string;
+	created_at?: string;
+	updated_at?: string;
+	participants?: Employee[];
+	last_message?: Message;
+	unread_count?: number;
+}
+
+export interface Message {
+	id: string;
+	conversation_id: string;
+	sender_id: string;
+	content: string;
+	message_type: 'text' | 'file' | 'system';
+	reply_to_id?: string;
+	edited_at?: string;
+	created_at?: string;
+	sender?: Employee;
+	reply_to?: Message;
 }

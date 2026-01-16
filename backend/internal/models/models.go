@@ -155,3 +155,39 @@ type TelegramUser struct {
 	TelegramChatID       int64  `json:"telegram_chat_id"`
 	NotificationsEnabled bool   `json:"notifications_enabled"`
 }
+
+// Conversation represents a chat between users
+type Conversation struct {
+	ID           string     `json:"id"`
+	Type         string     `json:"type"` // "direct" or "group"
+	Name         *string    `json:"name,omitempty"`
+	CreatedAt    *time.Time `json:"created_at,omitempty"`
+	UpdatedAt    *time.Time `json:"updated_at,omitempty"`
+	Participants []Employee `json:"participants,omitempty"`
+	LastMessage  *Message   `json:"last_message,omitempty"`
+	UnreadCount  int        `json:"unread_count,omitempty"`
+}
+
+// ConversationParticipant links users to conversations
+type ConversationParticipant struct {
+	ID             string     `json:"id"`
+	ConversationID string     `json:"conversation_id"`
+	EmployeeID     string     `json:"employee_id"`
+	JoinedAt       *time.Time `json:"joined_at,omitempty"`
+	LastReadAt     *time.Time `json:"last_read_at,omitempty"`
+	Employee       *Employee  `json:"employee,omitempty"`
+}
+
+// Message represents a chat message
+type Message struct {
+	ID             string     `json:"id"`
+	ConversationID string     `json:"conversation_id"`
+	SenderID       string     `json:"sender_id"`
+	Content        string     `json:"content"`
+	MessageType    string     `json:"message_type"` // "text", "file", "system"
+	ReplyToID      *string    `json:"reply_to_id,omitempty"`
+	EditedAt       *time.Time `json:"edited_at,omitempty"`
+	CreatedAt      *time.Time `json:"created_at,omitempty"`
+	Sender         *Employee  `json:"sender,omitempty"`
+	ReplyTo        *Message   `json:"reply_to,omitempty"`
+}
