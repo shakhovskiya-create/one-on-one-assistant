@@ -130,6 +130,38 @@ function createAuthStore() {
 		}
 	}
 
+	async function refreshToken(): Promise<boolean> {
+		try {
+			const currentState = get({ subscribe });
+			if (!currentState.token || currentState.token === 'authenticated') {
+				return false;
+			}
+
+			const res = await fetch(`${API_URL}/api/v1/auth/refresh`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${currentState.token}`
+				}
+			});
+
+			if (res.ok) {
+				const data = await res.json();
+				if (data.token) {
+					update(state => ({ ...state, token: data.token }));
+					if (browser) {
+						localStorage.setItem('auth_token', data.token);
+					}
+					return true;
+				}
+			}
+			return false;
+		} catch (error) {
+			console.error('Token refresh error:', error);
+			return false;
+		}
+	}
+
 	function logout() {
 		update(state => ({ ...state, user: null, token: null, subordinates: [] }));
 
@@ -153,7 +185,8 @@ function createAuthStore() {
 		logout,
 		canAccessEmployee,
 		fetchSubordinates,
-		changePassword
+		changePassword,
+		refreshToken
 	};
 }
 

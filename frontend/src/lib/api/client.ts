@@ -9,6 +9,17 @@ interface RequestOptions {
 	headers?: Record<string, string>;
 }
 
+function getAuthHeaders(): Record<string, string> {
+	const headers: Record<string, string> = {};
+	if (browser) {
+		const token = localStorage.getItem('auth_token');
+		if (token && token !== 'authenticated') {
+			headers['Authorization'] = `Bearer ${token}`;
+		}
+	}
+	return headers;
+}
+
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
 	const { method = 'GET', body, headers = {} } = options;
 
@@ -16,6 +27,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 		method,
 		headers: {
 			'Content-Type': 'application/json',
+			...getAuthHeaders(),
 			...headers
 		}
 	};
@@ -64,6 +76,7 @@ export const meetings = {
 	process: async (formData: FormData) => {
 		const response = await fetch(`${API_URL}/process-meeting`, {
 			method: 'POST',
+			headers: getAuthHeaders(),
 			body: formData
 		});
 		if (!response.ok) {

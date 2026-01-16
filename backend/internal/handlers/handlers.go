@@ -5,6 +5,7 @@ import (
 	"github.com/ekf/one-on-one-backend/internal/database"
 	"github.com/ekf/one-on-one-backend/internal/services"
 	"github.com/ekf/one-on-one-backend/pkg/ai"
+	"github.com/ekf/one-on-one-backend/pkg/auth"
 	"github.com/ekf/one-on-one-backend/pkg/ews"
 	"github.com/ekf/one-on-one-backend/pkg/telegram"
 )
@@ -17,6 +18,7 @@ type Handler struct {
 	EWS       *ews.Client
 	Telegram  *telegram.Client
 	Connector *services.ConnectorManager
+	JWT       *auth.JWTManager
 }
 
 // NewHandler creates a new handler with all dependencies
@@ -36,6 +38,7 @@ func NewHandler(cfg *config.Config) *Handler {
 	ewsClient := ews.NewClient(cfg.EWSURL, cfg.EWSDomain, cfg.EWSSkipTLSVerify)
 	tgClient := telegram.NewClient(cfg.TelegramBotToken)
 	connector := services.NewConnectorManager(cfg.ConnectorAPIKey)
+	jwtManager := auth.NewJWTManager(cfg.JWTSecret, 24) // 24 hours expiration
 
 	return &Handler{
 		Config:    cfg,
@@ -44,5 +47,6 @@ func NewHandler(cfg *config.Config) *Handler {
 		EWS:       ewsClient,
 		Telegram:  tgClient,
 		Connector: connector,
+		JWT:       jwtManager,
 	}
 }

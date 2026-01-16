@@ -110,6 +110,10 @@ func main() {
 	api.Post("/users/set-password", h.SetLocalPassword)
 	api.Post("/users/change-password", h.ChangePassword)
 
+	// JWT Token Management
+	api.Post("/auth/refresh", h.RefreshToken)
+	api.Get("/auth/me", h.GetMe)
+
 	// Messenger
 	api.Get("/conversations", h.ListConversations)
 	api.Post("/conversations", h.CreateConversation)

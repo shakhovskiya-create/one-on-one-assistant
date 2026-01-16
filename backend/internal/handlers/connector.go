@@ -231,13 +231,24 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 	if h.DB != nil {
 		employee, authErr := h.authenticateLocal(username, password)
 		if authErr == nil && employee != nil {
-			sessionToken := generateToken()
 			forceChange, _ := employee["force_password_change"].(bool)
 			delete(employee, "force_password_change")
+
+			// Generate JWT token
+			userID, _ := employee["id"].(string)
+			email, _ := employee["email"].(string)
+			name, _ := employee["name"].(string)
+			department, _ := employee["department"].(string)
+
+			token, err := h.JWT.GenerateToken(userID, email, name, department)
+			if err != nil {
+				token = generateToken() // Fallback to simple token
+			}
+
 			return c.JSON(fiber.Map{
 				"authenticated":         true,
 				"employee":              employee,
-				"token":                 sessionToken,
+				"token":                 token,
 				"force_password_change": forceChange,
 			})
 		}
@@ -282,11 +293,20 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 					}
 				}
 
-				sessionToken := generateToken()
+				// Generate JWT token
+				userID, _ := employee["id"].(string)
+				name, _ := employee["name"].(string)
+				department, _ := employee["department"].(string)
+
+				token, tokenErr := h.JWT.GenerateToken(userID, email, name, department)
+				if tokenErr != nil {
+					token = generateToken() // Fallback to simple token
+				}
+
 				return c.JSON(fiber.Map{
 					"authenticated": true,
 					"employee":      employee,
-					"token":         sessionToken,
+					"token":         token,
 				})
 			}
 			errMsg, _ := result["error"].(string)
@@ -507,6 +527,54 @@ func (h *Handler) CreateLocalUser(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"success": true})
+}
+
+// RefreshToken refreshes a JWT token
+func (h *Handler) RefreshToken(c *fiber.Ctx) error {
+	authHeader := c.Get("Authorization")
+	if authHeader == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "Missing authorization header"})
+	}
+
+	tokenString := authHeader
+	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+		tokenString = authHeader[7:]
+	}
+
+	newToken, err := h.JWT.RefreshToken(tokenString)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": "Invalid or expired token"})
+	}
+
+	return c.JSON(fiber.Map{
+		"token": newToken,
+	})
+}
+
+// GetMe returns current user info from JWT token
+func (h *Handler) GetMe(c *fiber.Ctx) error {
+	userID := c.Locals("user_id")
+	if userID == nil || userID.(string) == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "Not authenticated"})
+	}
+
+	if h.DB == nil {
+		return c.JSON(fiber.Map{
+			"id":         userID,
+			"email":      c.Locals("email"),
+			"name":       c.Locals("name"),
+			"department": c.Locals("department"),
+		})
+	}
+
+	var employees []map[string]interface{}
+	h.DB.From("employees").Select("id, name, email, position, department, manager_id, photo_base64").Eq("id", userID.(string)).Execute(&employees)
+
+	if len(employees) == 0 {
+		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
+	}
+
+	return c.JSON(employees[0])
 }
 
 // GetSubordinates returns subordinates for a manager
