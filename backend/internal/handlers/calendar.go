@@ -27,14 +27,18 @@ func (h *Handler) GetCalendar(c *fiber.Ctx) error {
 	}
 
 	// Get employee info
-	var employee struct {
+	var employees []struct {
 		Email   string `json:"email"`
 		ADLogin string `json:"ad_login"`
 	}
-	err := h.DB.From("employees").Select("email, ad_login").Eq("id", employeeID).Single().Execute(&employee)
+	err := h.DB.From("employees").Select("email, ad_login").Eq("id", employeeID).Limit(1).Execute(&employees)
 	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Ошибка базы данных: " + err.Error()})
+	}
+	if len(employees) == 0 {
 		return c.Status(404).JSON(fiber.Map{"error": "Сотрудник не найден"})
 	}
+	employee := employees[0]
 
 	// Determine email to use
 	ewsEmail := employee.Email
@@ -211,17 +215,21 @@ func (h *Handler) SyncCalendar(c *fiber.Ctx) error {
 		req.DaysForward = 30
 	}
 
-	// Get employee info
-	var employee struct {
+	// Get employee info - use array query instead of Single() for better error handling
+	var employees []struct {
 		ID      string `json:"id"`
 		Email   string `json:"email"`
 		ADLogin string `json:"ad_login"`
 		Name    string `json:"name"`
 	}
-	err := h.DB.From("employees").Select("id, email, ad_login, name").Eq("id", req.EmployeeID).Single().Execute(&employee)
+	err := h.DB.From("employees").Select("id, email, ad_login, name").Eq("id", req.EmployeeID).Limit(1).Execute(&employees)
 	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Employee not found", "employee_id": req.EmployeeID})
+		return c.Status(500).JSON(fiber.Map{"error": "Ошибка базы данных: " + err.Error(), "employee_id": req.EmployeeID})
 	}
+	if len(employees) == 0 {
+		return c.Status(404).JSON(fiber.Map{"error": "Сотрудник не найден", "employee_id": req.EmployeeID})
+	}
+	employee := employees[0]
 
 	// Determine the email to use for EWS
 	ewsEmail := employee.Email
