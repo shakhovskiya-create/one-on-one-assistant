@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"strings"
 	"time"
 
@@ -68,7 +69,12 @@ func (h *Handler) GetCalendar(c *fiber.Ctx) error {
 			if err == nil {
 				username = "ekfgroup\\" + employee.ADLogin
 				password = decrypted
+				log.Printf("Using user's own credentials for calendar: %s", username)
+			} else {
+				log.Printf("ERROR: Failed to decrypt password for %s: %v", employee.Email, err)
 			}
+		} else {
+			log.Printf("WARNING: No encrypted password for %s", employee.Email)
 		}
 
 		result, err := h.Connector.SendCommand("get_calendar", map[string]interface{}{
