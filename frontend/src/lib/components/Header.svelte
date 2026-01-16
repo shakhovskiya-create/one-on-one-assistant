@@ -5,12 +5,19 @@
 	interface Props {
 		user?: User | null;
 		title?: string;
+		onProfileClick?: () => void;
 	}
 
-	let { user = null, title = 'EKF Team Hub' }: Props = $props();
+	let { user = null, title = 'EKF Team Hub', onProfileClick }: Props = $props();
 
 	function toggleSidebar() {
 		sidebarOpen.update(v => !v);
+	}
+
+	function handleProfileClick() {
+		if (onProfileClick) {
+			onProfileClick();
+		}
 	}
 </script>
 
@@ -38,7 +45,10 @@
 
 			<!-- User Menu -->
 			{#if user}
-				<div class="flex items-center gap-2">
+				<button
+					onclick={handleProfileClick}
+					class="flex items-center gap-2 hover:bg-gray-100 rounded-lg px-2 py-1 transition-colors cursor-pointer"
+				>
 					<span class="text-sm text-gray-600 hidden sm:block">{user.name}</span>
 					{#if user.photo_base64}
 						<img src="data:image/jpeg;base64,{user.photo_base64}" alt="" class="w-8 h-8 rounded-full object-cover" />
@@ -47,7 +57,7 @@
 							{user.name.charAt(0)}
 						</div>
 					{/if}
-				</div>
+				</button>
 			{:else}
 				<a href="/login" class="text-sm text-ekf-red hover:underline">Войти</a>
 			{/if}

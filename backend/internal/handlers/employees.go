@@ -172,6 +172,22 @@ func (h *Handler) GetEmployeeDossier(c *fiber.Ctx) error {
 		}
 	}
 
+	// Get recent meetings safely
+	var recentMeetings []models.Meeting
+	if len(meetings) > 0 {
+		recentMeetings = meetings[:min(5, len(meetings))]
+	} else {
+		recentMeetings = []models.Meeting{}
+	}
+
+	// Ensure arrays are not nil
+	if moodHistory == nil {
+		moodHistory = []map[string]interface{}{}
+	}
+	if redFlags == nil {
+		redFlags = []map[string]interface{}{}
+	}
+
 	return c.JSON(fiber.Map{
 		"employee":              employee,
 		"one_on_one_count":      len(meetings),
@@ -183,7 +199,7 @@ func (h *Handler) GetEmployeeDossier(c *fiber.Ctx) error {
 		},
 		"mood_history":      moodHistory,
 		"red_flags_history": redFlags,
-		"recent_meetings":   meetings[:min(5, len(meetings))],
+		"recent_meetings":   recentMeetings,
 	})
 }
 

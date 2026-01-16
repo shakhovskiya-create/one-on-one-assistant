@@ -72,10 +72,69 @@ func (h *Handler) GetDashboard(c *fiber.Ctx) error {
 		}
 	}
 
+	// Calculate average mood
+	var avgMood float64
+	var moodCount int
+	var moodTrend []fiber.Map
+	for _, m := range meetings {
+		if m.MoodScore != nil {
+			avgMood += float64(*m.MoodScore)
+			moodCount++
+			moodTrend = append(moodTrend, fiber.Map{
+				"date":  m.Date,
+				"score": float64(*m.MoodScore),
+			})
+		}
+	}
+	if moodCount > 0 {
+		avgMood /= float64(moodCount)
+	}
+
+	// Get meetings this month
+	startOfMonth := time.Now().Format("2006-01") + "-01"
+	var meetingsThisMonth int
+	for _, m := range meetings {
+		if m.Date >= startOfMonth {
+			meetingsThisMonth++
+		}
+	}
+
+	// Meetings by category
+	meetingsByCategory := make(map[string]int)
+	for _, m := range meetings {
+		if m.MeetingCategory != nil {
+			meetingsByCategory[m.MeetingCategory.Code]++
+		}
+	}
+
+	// Employees needing attention (no meetings for a while)
+	var employeesNeedingAttention []fiber.Map
+	// TODO: calculate based on last meeting date
+
+	// Ensure arrays are not nil
+	if redFlags == nil {
+		redFlags = []fiber.Map{}
+	}
+	if moodTrend == nil {
+		moodTrend = []fiber.Map{}
+	}
+
 	return c.JSON(fiber.Map{
-		"employees":       employees,
-		"projects":        projects,
-		"recent_meetings": meetings,
+		"employees":                   employees,
+		"projects":                    projects,
+		"recent_meetings":             meetings,
+		"total_employees":             len(employees),
+		"meetings_this_month":         meetingsThisMonth,
+		"average_mood":                avgMood,
+		"tasks_completed":             doneTasks,
+		"tasks_todo":                  totalTasks - doneTasks - inProgressTasks,
+		"tasks_in_progress":           inProgressTasks,
+		"mood_trend":                  moodTrend,
+		"employees_needing_attention": employeesNeedingAttention,
+		"meetings_by_category":        meetingsByCategory,
+		"agreements_total":            0,
+		"agreements_completed":        0,
+		"agreements_overdue":          0,
 		"task_summary": fiber.Map{
 			"total":       totalTasks,
 			"done":        doneTasks,
@@ -173,6 +232,14 @@ func (h *Handler) GetEmployeeAnalytics(c *fiber.Ctx) error {
 				overdueAgreements++
 			}
 		}
+	}
+
+	// Ensure arrays are not nil
+	if moodHistory == nil {
+		moodHistory = []fiber.Map{}
+	}
+	if redFlagsHistory == nil {
+		redFlagsHistory = []fiber.Map{}
 	}
 
 	return c.JSON(fiber.Map{
