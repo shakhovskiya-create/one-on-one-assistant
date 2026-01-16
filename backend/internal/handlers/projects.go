@@ -86,16 +86,41 @@ func (h *Handler) CreateProject(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
 	}
 
-	var project models.Project
-	if err := c.BodyParser(&project); err != nil {
+	var input struct {
+		Name        string  `json:"name"`
+		Description *string `json:"description"`
+		Status      string  `json:"status"`
+		StartDate   *string `json:"start_date"`
+		EndDate     *string `json:"end_date"`
+	}
+	if err := c.BodyParser(&input); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	if project.Status == "" {
-		project.Status = "active"
+	if input.Name == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Name is required"})
 	}
 
-	result, err := h.DB.Insert("projects", project)
+	// Build insert data without ID (let database generate it)
+	data := map[string]interface{}{
+		"name": input.Name,
+	}
+	if input.Description != nil {
+		data["description"] = *input.Description
+	}
+	if input.Status != "" {
+		data["status"] = input.Status
+	} else {
+		data["status"] = "active"
+	}
+	if input.StartDate != nil {
+		data["start_date"] = *input.StartDate
+	}
+	if input.EndDate != nil {
+		data["end_date"] = *input.EndDate
+	}
+
+	result, err := h.DB.Insert("projects", data)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}

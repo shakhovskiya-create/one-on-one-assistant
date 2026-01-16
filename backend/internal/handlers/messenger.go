@@ -295,6 +295,20 @@ func (h *Handler) GetConversation(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"error": "Conversation not found"})
 	}
 
+	// Get participants
+	var participantsData []struct {
+		EmployeeID string          `json:"employee_id"`
+		Employee   models.Employee `json:"employees"`
+	}
+	h.DB.From("conversation_participants").
+		Select("employee_id, employees(id, name, photo_base64, position)").
+		Eq("conversation_id", id).Execute(&participantsData)
+
+	participants := make([]models.Employee, len(participantsData))
+	for i, p := range participantsData {
+		participants[i] = p.Employee
+	}
+
 	// Get messages
 	var messages []models.Message
 	h.DB.From("messages").
@@ -312,6 +326,7 @@ func (h *Handler) GetConversation(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"conversation": conversation,
+		"participants": participants,
 		"messages":     messages,
 	})
 }

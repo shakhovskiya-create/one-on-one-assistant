@@ -62,15 +62,19 @@
 		switch (data.type) {
 			case 'new_message':
 				if (data.message) {
+					// Avoid duplicates - don't add if message already exists
 					if (currentConversation?.id === data.conversation_id) {
-						messages = [...messages, data.message];
-						scrollToBottom();
+						const exists = messages.some(m => m.id === data.message!.id);
+						if (!exists) {
+							messages = [...messages, data.message];
+							scrollToBottom();
+						}
 					}
 					updateConversationLastMessage(data.conversation_id!, data.message);
 				}
 				break;
 			case 'typing':
-				if (data.conversation_id && data.data?.user_id) {
+				if (data.conversation_id && data.data?.user_id && data.data.user_id !== $user?.id) {
 					typingUsers = { ...typingUsers, [data.conversation_id]: data.data.user_id };
 					setTimeout(() => {
 						const { [data.conversation_id!]: _, ...rest } = typingUsers;
@@ -114,10 +118,19 @@
 		loadingMessages = true;
 		try {
 			const result = await messenger.getConversation(conv.id);
-			messages = result.messages;
+			messages = result.messages || [];
+			// Update currentConversation with participants from API
+			if (result.participants) {
+				currentConversation = { ...conv, participants: result.participants };
+				// Also update in the list
+				conversations = conversations.map(c =>
+					c.id === conv.id ? { ...c, participants: result.participants } : c
+				);
+			}
 			scrollToBottom();
 		} catch (e) {
 			console.error('Failed to load messages:', e);
+			messages = [];
 		} finally {
 			loadingMessages = false;
 		}
