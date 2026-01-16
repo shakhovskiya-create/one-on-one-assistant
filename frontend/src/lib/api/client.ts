@@ -449,6 +449,9 @@ export interface ConnectorStatus {
 	calendar_integration?: string;
 	ews_url?: string;
 	ews_configured?: boolean;
+	yandex_configured?: boolean;
+	openai_configured?: boolean;
+	anthropic_configured?: boolean;
 }
 
 export interface CalendarEvent {

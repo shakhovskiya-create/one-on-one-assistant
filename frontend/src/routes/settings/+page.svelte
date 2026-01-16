@@ -74,7 +74,7 @@
 			<div class="space-y-3 mb-6">
 				<div class="flex items-center justify-between p-3 rounded-lg bg-gray-50">
 					<div class="flex items-center gap-3">
-						<div class="w-3 h-3 rounded-full bg-green-500"></div>
+						<div class="w-3 h-3 rounded-full {status?.openai_configured ? 'bg-green-500' : 'bg-gray-400'}"></div>
 						<div>
 							<div class="font-medium text-gray-900">OpenAI API</div>
 							<div class="text-sm text-gray-500">Транскрибация Whisper</div>
@@ -84,7 +84,7 @@
 
 				<div class="flex items-center justify-between p-3 rounded-lg bg-gray-50">
 					<div class="flex items-center gap-3">
-						<div class="w-3 h-3 rounded-full bg-green-500"></div>
+						<div class="w-3 h-3 rounded-full {status?.anthropic_configured ? 'bg-green-500' : 'bg-gray-400'}"></div>
 						<div>
 							<div class="font-medium text-gray-900">Anthropic API</div>
 							<div class="text-sm text-gray-500">Анализ встреч (Claude)</div>
@@ -104,7 +104,7 @@
 
 				<div class="flex items-center justify-between p-3 rounded-lg bg-gray-50">
 					<div class="flex items-center gap-3">
-						<div class="w-3 h-3 rounded-full bg-gray-400"></div>
+						<div class="w-3 h-3 rounded-full {status?.yandex_configured ? 'bg-green-500' : 'bg-gray-400'}"></div>
 						<div>
 							<div class="font-medium text-gray-900">Yandex SpeechKit</div>
 							<div class="text-sm text-gray-500">Альтернативная транскрибация</div>

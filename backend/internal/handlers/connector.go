@@ -39,7 +39,10 @@ func (h *Handler) ConnectorStatus(c *fiber.Ctx) error {
 		"employee_count":       employeeCount,
 		"calendar_integration": "ews",
 		"ews_url":              h.Config.EWSURL,
-		"ews_configured":       h.Config.EWSURL != "",
+		"ews_configured":       h.Config.EWSURL != "" && h.Config.EWSUsername != "" && h.Config.EWSPassword != "",
+		"yandex_configured":    h.Config.YandexAPIKey != "" && h.Config.YandexFolderID != "",
+		"openai_configured":    h.Config.OpenAIKey != "",
+		"anthropic_configured": h.Config.AnthropicKey != "",
 	})
 }
 
