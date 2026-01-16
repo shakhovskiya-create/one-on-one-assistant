@@ -471,8 +471,6 @@ export interface FreeSlotsRequest {
 
 export interface CalendarSyncRequest {
 	employee_id: string;
-	username: string;
-	password: string;
 	days_back?: number;
 	days_forward?: number;
 }

@@ -13,10 +13,6 @@
 	let currentDate = $state(new Date());
 	let viewMode = $state<'week' | 'month'>('month');
 
-	// Exchange credentials (stored in localStorage)
-	let exchangeUser = $state('');
-	let exchangePass = $state('');
-
 	// New event form
 	let newEvent = $state({
 		title: '',
@@ -34,8 +30,6 @@
 	];
 
 	onMount(async () => {
-		// Load saved credentials
-		exchangeUser = localStorage.getItem('exchange_user') || '';
 		if ($user?.id) {
 			await loadCalendar();
 		}
@@ -60,15 +54,12 @@
 	}
 
 	async function syncCalendar() {
-		if (!$user?.id || !exchangeUser || !exchangePass) return;
+		if (!$user?.id) return;
 
 		syncing = true;
 		try {
-			localStorage.setItem('exchange_user', exchangeUser);
 			await calendarApi.sync({
 				employee_id: $user.id,
-				username: exchangeUser,
-				password: exchangePass,
 				days_back: 30,
 				days_forward: 60
 			});
@@ -76,7 +67,7 @@
 			showSyncDialog = false;
 		} catch (e: any) {
 			console.error(e);
-			alert('Ошибка синхронизации: ' + (e.message || 'Проверьте учётные данные'));
+			alert('Ошибка синхронизации: ' + (e.message || 'Unknown error'));
 		} finally {
 			syncing = false;
 		}
@@ -379,25 +370,9 @@
 	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
 		<div class="bg-white rounded-xl p-6 w-full max-w-md">
 			<h3 class="text-lg font-semibold text-gray-900 mb-4">Синхронизация с Exchange</h3>
-			<div class="space-y-4">
-				<div>
-					<label class="block text-sm font-medium text-gray-700 mb-1">Логин Exchange</label>
-					<input
-						type="text"
-						bind:value={exchangeUser}
-						placeholder="domain\username или email"
-						class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ekf-red/20"
-					/>
-				</div>
-				<div>
-					<label class="block text-sm font-medium text-gray-700 mb-1">Пароль</label>
-					<input
-						type="password"
-						bind:value={exchangePass}
-						class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ekf-red/20"
-					/>
-				</div>
-			</div>
+			<p class="text-gray-600 mb-6">
+				Будет выполнена синхронизация вашего календаря из Exchange Server (последние 30 дней и 60 дней вперёд).
+			</p>
 			<div class="mt-6 flex justify-end gap-3">
 				<button
 					onclick={() => showSyncDialog = false}
@@ -407,7 +382,7 @@
 				</button>
 				<button
 					onclick={syncCalendar}
-					disabled={!exchangeUser || !exchangePass || syncing}
+					disabled={syncing}
 					class="px-4 py-2 bg-ekf-red text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
 				>
 					{syncing ? 'Синхронизация...' : 'Синхронизировать'}

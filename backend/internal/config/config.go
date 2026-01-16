@@ -16,6 +16,8 @@ type Config struct {
 	ConnectorAPIKey  string
 	EWSURL           string
 	EWSDomain        string
+	EWSUsername      string // Service account for EWS
+	EWSPassword      string // Service account password
 	EWSSkipTLSVerify bool   // Only for internal/self-signed certs
 	JWTSecret        string // For signing auth tokens
 	CamundaURL       string // Camunda BPMN engine URL
@@ -36,6 +38,8 @@ func Load() *Config {
 		ConnectorAPIKey:  getEnv("CONNECTOR_API_KEY", ""),
 		EWSURL:           getEnv("EWS_URL", "https://post.ekf.su/EWS/Exchange.asmx"),
 		EWSDomain:        getEnv("EWS_DOMAIN", "ekfgroup"),
+		EWSUsername:      getEnv("EWS_USERNAME", ""),
+		EWSPassword:      getEnv("EWS_PASSWORD", ""),
 		EWSSkipTLSVerify: getEnv("EWS_SKIP_TLS_VERIFY", "false") == "true",
 		JWTSecret:        getEnv("JWT_SECRET", "change-me-in-production"),
 		CamundaURL:       getEnv("CAMUNDA_URL", ""),
