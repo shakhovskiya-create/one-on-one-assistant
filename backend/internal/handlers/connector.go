@@ -225,49 +225,80 @@ func (h *Handler) SyncADUsers(c *fiber.Ctx) error {
 	})
 }
 
-// AuthenticateAD authenticates a user against AD or local database
+// AuthenticateAD authenticates a user against AD only
 func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
-	username := c.FormValue("username")
-	password := c.FormValue("password")
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+
+	// Try JSON first, then form data
+	if err := c.BodyParser(&req); err != nil {
+		req.Username = c.FormValue("username")
+		req.Password = c.FormValue("password")
+	}
+
+	username := req.Username
+	password := req.Password
 
 	if username == "" || password == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "Username and password required"})
 	}
 
-	// First, try local authentication (works without connector)
-	if h.DB != nil {
-		employee, authErr := h.authenticateLocal(username, password)
-		if authErr == nil && employee != nil {
-			forceChange, _ := employee["force_password_change"].(bool)
-			delete(employee, "force_password_change")
+	// Try direct AD authentication (no connector needed)
+	if h.AD != nil {
+		adUser, authErr := h.AD.Authenticate(username, password)
+		if authErr == nil && adUser != nil {
+			email := adUser.Email
+			name := adUser.Name
 
-			// Encrypt and store password for EWS access (for local auth too)
-			userID, _ := employee["id"].(string)
-			if userID != "" {
+			var employee map[string]interface{}
+
+			if h.DB != nil && email != "" {
+				var existing []map[string]interface{}
+				h.DB.From("employees").Select("*").Eq("email", email).Limit(1).Execute(&existing)
+
+				// Encrypt and store password for EWS access
 				encryptedPassword, encErr := utils.EncryptPassword(password, h.Config.JWTSecret)
-				if encErr == nil && encryptedPassword != "" {
-					updateData := map[string]interface{}{
-						"encrypted_password": encryptedPassword,
+				if encErr != nil {
+					encryptedPassword = ""
+				}
+
+				if len(existing) > 0 {
+					employee = existing[0]
+					employeeID, _ := employee["id"].(string)
+
+					// Update encrypted password
+					if encryptedPassword != "" {
+						updateData := map[string]interface{}{
+							"encrypted_password": encryptedPassword,
+						}
+						h.DB.Update("employees", "id", employeeID, updateData)
 					}
-					h.DB.Update("employees", "id", userID, updateData)
 				}
 			}
 
-			// Generate JWT token
-			email, _ := employee["email"].(string)
-			name, _ := employee["name"].(string)
-			department, _ := employee["department"].(string)
+			if employee != nil {
+				employeeID, _ := employee["id"].(string)
+				department, _ := employee["department"].(string)
 
-			token, err := h.JWT.GenerateToken(userID, email, name, department)
-			if err != nil {
-				token = generateToken() // Fallback to simple token
+				token, err := h.JWT.GenerateToken(employeeID, email, name, department)
+				if err != nil {
+					token = generateToken()
+				}
+
+				return c.JSON(fiber.Map{
+					"authenticated":         true,
+					"employee":              employee,
+					"token":                 token,
+					"force_password_change": false,
+				})
 			}
 
-			return c.JSON(fiber.Map{
-				"authenticated":         true,
-				"employee":              employee,
-				"token":                 token,
-				"force_password_change": forceChange,
+			// User authenticated in AD but not in database - return error
+			return c.Status(403).JSON(fiber.Map{
+				"error":         "User not found in system. Please contact administrator.",
+				"authenticated": false,
 			})
 		}
 	}
@@ -348,7 +379,7 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 		}
 	}
 
-	// Both local and AD auth failed
+	// AD auth failed
 	return c.JSON(fiber.Map{
 		"authenticated": false,
 		"error":         "Неверные учётные данные",

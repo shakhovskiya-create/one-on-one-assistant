@@ -219,11 +219,15 @@ func (c *Connector) handleGetCalendar(params map[string]interface{}) (interface{
 	daysBack := int(getFloat64(params, "days_back", 7))
 	daysForward := int(getFloat64(params, "days_forward", 30))
 
+	log.Printf("DEBUG: Received username='%s', password_length=%d", username, len(password))
+
 	// Use connector credentials if not provided
 	if username == "" {
+		log.Printf("DEBUG: No username provided, using connector credentials")
 		username = c.config.EWS.Username
 	}
 	if password == "" {
+		log.Printf("DEBUG: No password provided, using connector credentials")
 		password = c.config.EWS.Password
 	}
 

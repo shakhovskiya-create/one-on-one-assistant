@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -73,19 +74,21 @@ func NewClient(url, domain string, skipTLSVerify bool) *Client {
 // GetCalendarEvents fetches calendar events from Exchange
 func (c *Client) GetCalendarEvents(email, username, password string, daysBack, daysForward int) ([]CalendarEvent, error) {
 	now := time.Now().UTC()
-	startDate := now.AddDate(0, 0, -daysBack).Format("2006-01-02T00:00:00Z")
-	endDate := now.AddDate(0, 0, daysForward).Format("2006-01-02T23:59:59Z")
+	startDate := now.AddDate(0, 0, -daysBack).Format("2006-01-02T15:04:05Z")
+	startDate = strings.Replace(startDate, now.Format("15:04:05"), "00:00:00", 1)
+	endDate := now.AddDate(0, 0, daysForward).Format("2006-01-02T15:04:05Z")
+	endDate = strings.Replace(endDate, now.AddDate(0, 0, daysForward).Format("15:04:05"), "23:59:59", 1)
 
-	// If email parameter is provided and different from username, use impersonation
-	// Otherwise request own calendar
-	var headerImpersonation string
-	if email != "" && !strings.Contains(username, strings.Split(email, "@")[0]) {
-		headerImpersonation = fmt.Sprintf(`
-    <t:ExchangeImpersonation>
-      <t:ConnectingSID>
-        <t:SmtpAddress>%s</t:SmtpAddress>
-      </t:ConnectingSID>
-    </t:ExchangeImpersonation>`, email)
+	// Always specify the mailbox explicitly to avoid ambiguity
+	var folderSpec string
+	if email != "" {
+		folderSpec = fmt.Sprintf(`<t:DistinguishedFolderId Id="calendar">
+          <t:Mailbox>
+            <t:EmailAddress>%s</t:EmailAddress>
+          </t:Mailbox>
+        </t:DistinguishedFolderId>`, email)
+	} else {
+		folderSpec = `<t:DistinguishedFolderId Id="calendar"/>`
 	}
 
 	soap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
@@ -93,7 +96,7 @@ func (c *Client) GetCalendarEvents(email, username, password string, daysBack, d
                xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
                xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
   <soap:Header>
-    <t:RequestServerVersion Version="Exchange2013"/>%s
+    <t:RequestServerVersion Version="Exchange2013"/>
   </soap:Header>
   <soap:Body>
     <m:FindItem Traversal="Shallow">
@@ -114,18 +117,25 @@ func (c *Client) GetCalendarEvents(email, username, password string, daysBack, d
       </m:ItemShape>
       <m:CalendarView MaxEntriesReturned="200" StartDate="%s" EndDate="%s"/>
       <m:ParentFolderIds>
-        <t:DistinguishedFolderId Id="calendar"/>
+        %s
       </m:ParentFolderIds>
     </m:FindItem>
   </soap:Body>
-</soap:Envelope>`, headerImpersonation, startDate, endDate)
+</soap:Envelope>`, startDate, endDate, folderSpec)
+
+	log.Printf("DEBUG SOAP Request for email=%s, username=%s:\n%s", email, username, soap)
 
 	body, err := c.doRequest(soap, username, password)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.parseCalendarResponse(string(body)), nil
+	log.Printf("DEBUG Exchange Response (first 2000 chars):\n%s", string(body[:min(2000, len(body))]))
+
+	events := c.parseCalendarResponse(string(body))
+	log.Printf("DEBUG Parsed %d events from Exchange response", len(events))
+
+	return events, nil
 }
 
 // GetFreeBusy gets free/busy information for multiple users
@@ -209,22 +219,34 @@ func (c *Client) doRequest(soap, username, password string) ([]byte, error) {
 func (c *Client) parseCalendarResponse(xml string) []CalendarEvent {
 	var events []CalendarEvent
 
-	items := strings.Split(xml, "<t:CalendarItem")
-	for _, item := range items[1:] { // Skip first split
+	items := strings.Split(xml, "<t:CalendarItem>")
+	log.Printf("DEBUG Parser: Split XML into %d parts by '<t:CalendarItem>'", len(items))
+
+	for i, item := range items[1:] { // Skip first split
 		endIdx := strings.Index(item, "</t:CalendarItem>")
 		if endIdx == -1 {
+			log.Printf("DEBUG Parser: Item %d has no closing tag </t:CalendarItem>", i)
 			continue
 		}
 		itemXML := item[:endIdx]
 
+		// Log first item for debugging
+		if i == 0 {
+			log.Printf("DEBUG Parser: First item XML (first 500 chars):\n%s", itemXML[:min(500, len(itemXML))])
+		}
+
 		event := CalendarEvent{
-			ID:          extractValue(itemXML, `ItemId Id="`, `"`),
+			ID:          extractValue(itemXML, `<t:ItemId Id="`, `"`),
 			Subject:     extractValue(itemXML, "<t:Subject>", "</t:Subject>"),
 			Start:       extractValue(itemXML, "<t:Start>", "</t:Start>"),
 			End:         extractValue(itemXML, "<t:End>", "</t:End>"),
 			Location:    extractValue(itemXML, "<t:Location>", "</t:Location>"),
 			IsRecurring: strings.Contains(strings.ToLower(itemXML), "<t:isrecurring>true"),
 			IsCancelled: strings.Contains(strings.ToLower(itemXML), "<t:iscancelled>true"),
+		}
+
+		if i == 0 {
+			log.Printf("DEBUG Parser: First item - ID='%s', Subject='%s', Start='%s'", event.ID, event.Subject, event.Start)
 		}
 
 		if event.Subject == "" {
