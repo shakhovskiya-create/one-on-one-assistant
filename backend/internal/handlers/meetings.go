@@ -103,6 +103,56 @@ func (h *Handler) ListMeetingCategories(c *fiber.Ctx) error {
 	return c.JSON(categories)
 }
 
+// CreateMeeting creates a meeting manually
+func (h *Handler) CreateMeeting(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
+	var input struct {
+		Title      *string `json:"title"`
+		EmployeeID *string `json:"employee_id"`
+		ProjectID  *string `json:"project_id"`
+		CategoryID *string `json:"category_id"`
+		Date       string  `json:"date"`
+		StartTime  *string `json:"start_time"`
+		EndTime    *string `json:"end_time"`
+		Location   *string `json:"location"`
+	}
+
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if input.Date == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Date is required"})
+	}
+
+	meetingData := map[string]interface{}{
+		"title":       input.Title,
+		"employee_id": input.EmployeeID,
+		"project_id":  input.ProjectID,
+		"category_id": input.CategoryID,
+		"date":        input.Date,
+		"start_time":  input.StartTime,
+		"end_time":    input.EndTime,
+		"location":    input.Location,
+	}
+
+	result, err := h.DB.Insert("meetings", meetingData)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	var created []models.Meeting
+	json.Unmarshal(result, &created)
+	if len(created) > 0 {
+		return c.Status(201).JSON(created[0])
+	}
+
+	return c.Status(201).JSON(fiber.Map{"status": "created"})
+}
+
 // ProcessMeeting processes an audio file and creates a meeting
 func (h *Handler) ProcessMeeting(c *fiber.Ctx) error {
 	if h.DB == nil {

@@ -9,14 +9,14 @@
 		title: string;
 		description?: string;
 		status: 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
-		priority?: 'low' | 'medium' | 'high' | 'urgent';
+		priority?: number;
 		assignee_id?: string;
 		assignee?: any;
 		project_id?: string;
 		project?: any;
 		epic_id?: string;
 		epic?: string;
-		tags?: string[];
+		tags?: { name: string; color: string }[];
 		due_date?: string;
 		parent_id?: string;
 		created_at: string;
@@ -26,8 +26,8 @@
 	interface Comment {
 		id: string;
 		task_id: string;
-		user_id: string;
-		user?: any;
+		author_id: string;
+		author?: any;
 		content: string;
 		created_at: string;
 	}
@@ -48,7 +48,7 @@
 	// Filters
 	let filterProject = $state('all');
 	let filterAssignee = $state('all');
-	let filterPriority = $state('all');
+	let filterPriority = $state<'all' | number>('all');
 	let filterEpic = $state('all');
 	let searchQuery = $state('');
 
@@ -62,7 +62,7 @@
 		title: '',
 		description: '',
 		status: 'backlog' as const,
-		priority: 'medium' as const,
+		priority: 3,
 		assignee_id: '',
 		project_id: '',
 		epic: '',
@@ -90,16 +90,17 @@
 
 	// Filtered tasks
 	let filteredTasks = $derived(() => {
+		const priorityFilter = filterPriority === 'all' ? null : Number(filterPriority);
 		return tasks.filter(t => {
 			if (filterProject !== 'all' && t.project_id !== filterProject) return false;
 			if (filterAssignee !== 'all' && t.assignee_id !== filterAssignee) return false;
-			if (filterPriority !== 'all' && t.priority !== filterPriority) return false;
+			if (priorityFilter !== null && (t.priority ?? 3) !== priorityFilter) return false;
 			if (filterEpic !== 'all' && t.epic !== filterEpic) return false;
 			if (searchQuery) {
 				const q = searchQuery.toLowerCase();
 				const inTitle = t.title.toLowerCase().includes(q);
 				const inDesc = t.description?.toLowerCase().includes(q);
-				const inTags = t.tags?.some(tag => tag.toLowerCase().includes(q));
+				const inTags = t.tags?.some(tag => tag.name.toLowerCase().includes(q));
 				if (!inTitle && !inDesc && !inTags) return false;
 			}
 			return true;
@@ -137,7 +138,7 @@
 
 	async function createTask() {
 		try {
-			const task = await api.tasks.create(newTask);
+			const task = await api.tasks.create({ ...newTask, priority: Number(newTask.priority) });
 			tasks = [task, ...tasks];
 			showCreateModal = false;
 			resetNewTask();
@@ -165,16 +166,16 @@
 
 	async function addComment() {
 		if (!selectedTask || !newComment.trim()) return;
-		const comment: Comment = {
-			id: Date.now().toString(),
-			task_id: selectedTask.id,
-			user_id: $user?.id || '',
-			user: $user,
-			content: newComment,
-			created_at: new Date().toISOString()
-		};
-		selectedTask.comments = [...(selectedTask.comments || []), comment];
-		newComment = '';
+		try {
+			const comment = await api.tasks.addComment(selectedTask.id, {
+				author_id: $user?.id || '',
+				content: newComment
+			});
+			selectedTask.comments = [...(selectedTask.comments || []), comment as Comment];
+			newComment = '';
+		} catch (e) {
+			console.error('Error adding comment:', e);
+		}
 	}
 
 	function resetNewTask() {
@@ -182,7 +183,7 @@
 			title: '',
 			description: '',
 			status: 'backlog',
-			priority: 'medium',
+			priority: 3,
 			assignee_id: '',
 			project_id: '',
 			epic: '',
@@ -259,13 +260,25 @@
 		draggedTask = null;
 	}
 
-	function getPriorityColor(priority: string) {
+	function getPriorityColor(priority: number) {
 		switch (priority) {
-			case 'urgent': return 'bg-red-500';
-			case 'high': return 'bg-orange-500';
-			case 'medium': return 'bg-yellow-500';
-			case 'low': return 'bg-green-500';
-			default: return 'bg-gray-400';
+			case 1: return 'bg-red-500';
+			case 2: return 'bg-orange-500';
+			case 3: return 'bg-yellow-500';
+			case 4: return 'bg-blue-500';
+			case 5: return 'bg-gray-400';
+			default: return 'bg-yellow-500';
+		}
+	}
+
+	function getPriorityLabel(priority: number) {
+		switch (priority) {
+			case 1: return 'Очень высокий';
+			case 2: return 'Высокий';
+			case 3: return 'Средний';
+			case 4: return 'Низкий';
+			case 5: return 'Минимальный';
+			default: return 'Средний';
 		}
 	}
 </script>
@@ -346,10 +359,11 @@
 			</select>
 			<select bind:value={filterPriority} class="px-3 py-2 border border-gray-200 rounded-lg">
 				<option value="all">Все приоритеты</option>
-				<option value="urgent">Срочный</option>
-				<option value="high">Высокий</option>
-				<option value="medium">Средний</option>
-				<option value="low">Низкий</option>
+				<option value={1}>Очень высокий</option>
+				<option value={2}>Высокий</option>
+				<option value={3}>Средний</option>
+				<option value={4}>Низкий</option>
+				<option value={5}>Минимальный</option>
 			</select>
 		</div>
 	</div>
@@ -381,7 +395,7 @@
 									onclick={() => openTaskDetail(task)}
 								>
 									<div class="flex items-start justify-between mb-2">
-										<div class="w-2 h-2 rounded-full {getPriorityColor(task.priority || 'medium')}"></div>
+										<div class="w-2 h-2 rounded-full {getPriorityColor(task.priority || 3)}"></div>
 										{#if task.epic}
 											<span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">{task.epic}</span>
 										{/if}
@@ -393,7 +407,7 @@
 									{#if task.tags && task.tags.length > 0}
 										<div class="flex flex-wrap gap-1 mb-3">
 											{#each task.tags as tag}
-												<span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{tag}</span>
+												<span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{tag.name}</span>
 											{/each}
 										</div>
 									{/if}
@@ -441,7 +455,7 @@
 									{#if task.tags && task.tags.length > 0}
 										<div class="flex gap-1 mt-1">
 											{#each task.tags.slice(0, 3) as tag}
-												<span class="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{tag}</span>
+												<span class="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{tag.name}</span>
 											{/each}
 										</div>
 									{/if}
@@ -459,8 +473,8 @@
 								</td>
 								<td class="px-4 py-3">
 									<div class="flex items-center gap-2">
-										<div class="w-2 h-2 rounded-full {getPriorityColor(task.priority || 'medium')}"></div>
-										<span class="text-sm text-gray-600 capitalize">{task.priority || 'medium'}</span>
+										<div class="w-2 h-2 rounded-full {getPriorityColor(task.priority || 3)}"></div>
+										<span class="text-sm text-gray-600">{getPriorityLabel(task.priority || 3)}</span>
 									</div>
 								</td>
 								<td class="px-4 py-3 text-sm text-gray-600">{task.assignee_id ? getAssigneeName(task.assignee_id) : '-'}</td>
@@ -483,7 +497,7 @@
 						<div class="p-4 space-y-2">
 							{#each filteredTasks().filter(t => t.epic === epic) as task (task.id)}
 								<div class="flex items-center gap-4 p-3 rounded-lg hover:bg-gray-50 cursor-pointer" onclick={() => openTaskDetail(task)}>
-									<div class="w-2 h-2 rounded-full {getPriorityColor(task.priority || 'medium')}"></div>
+									<div class="w-2 h-2 rounded-full {getPriorityColor(task.priority || 3)}"></div>
 									<div class="flex-1">
 										<div class="font-medium text-gray-900">{task.title}</div>
 										<div class="text-sm text-gray-500">{getAssigneeName(task.assignee_id || '')}</div>
@@ -510,7 +524,7 @@
 						<div class="p-4 space-y-2">
 							{#each noEpicTasks() as task (task.id)}
 								<div class="flex items-center gap-4 p-3 rounded-lg hover:bg-gray-50 cursor-pointer" onclick={() => openTaskDetail(task)}>
-									<div class="w-2 h-2 rounded-full {getPriorityColor(task.priority || 'medium')}"></div>
+									<div class="w-2 h-2 rounded-full {getPriorityColor(task.priority || 3)}"></div>
 									<div class="flex-1">
 										<div class="font-medium text-gray-900">{task.title}</div>
 										<div class="text-sm text-gray-500">{getAssigneeName(task.assignee_id || '')}</div>
@@ -584,10 +598,11 @@
 					<div>
 						<label class="block text-sm font-medium text-gray-700 mb-1">Приоритет</label>
 						<select bind:value={newTask.priority} class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-							<option value="low">Низкий</option>
-							<option value="medium">Средний</option>
-							<option value="high">Высокий</option>
-							<option value="urgent">Срочный</option>
+							<option value={1}>Очень высокий</option>
+							<option value={2}>Высокий</option>
+							<option value={3}>Средний</option>
+							<option value={4}>Низкий</option>
+							<option value={5}>Минимальный</option>
 						</select>
 					</div>
 				</div>
@@ -621,7 +636,7 @@
 			<div class="p-6 border-b flex items-start justify-between">
 				<div class="flex-1">
 					<div class="flex items-center gap-3 mb-2">
-						<div class="w-3 h-3 rounded-full {getPriorityColor(selectedTask.priority || 'medium')}"></div>
+						<div class="w-3 h-3 rounded-full {getPriorityColor(selectedTask.priority || 3)}"></div>
 						{#if selectedTask.epic}
 							<span class="text-sm bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">{selectedTask.epic}</span>
 						{/if}
@@ -655,7 +670,7 @@
 								<h3 class="text-sm font-semibold text-gray-700 mb-2">Теги</h3>
 								<div class="flex flex-wrap gap-2">
 									{#each selectedTask.tags as tag}
-										<span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-sm">{tag}</span>
+										<span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-sm">{tag.name}</span>
 									{/each}
 								</div>
 							</div>
@@ -666,10 +681,10 @@
 								{#if selectedTask.comments && selectedTask.comments.length > 0}
 									{#each selectedTask.comments as comment}
 										<div class="flex gap-3">
-											<div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium flex-shrink-0">{comment.user?.name?.charAt(0) || '?'}</div>
+											<div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium flex-shrink-0">{comment.author?.name?.charAt(0) || '?'}</div>
 											<div class="flex-1">
 												<div class="flex items-center gap-2 mb-1">
-													<span class="font-medium text-gray-900">{comment.user?.name || 'Пользователь'}</span>
+													<span class="font-medium text-gray-900">{comment.author?.name || 'Пользователь'}</span>
 													<span class="text-xs text-gray-400">{formatDateTime(comment.created_at)}</span>
 												</div>
 												<p class="text-gray-600">{@html parseContent(comment.content)}</p>

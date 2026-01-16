@@ -13,6 +13,9 @@ func (h *Handler) GetDashboard(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
 	}
 
+	period := c.Query("period", "month")
+	startDate := getPeriodStart(period)
+
 	// Get employees
 	var employees []models.Employee
 	h.DB.From("employees").Select("*").Execute(&employees)
@@ -32,6 +35,13 @@ func (h *Handler) GetDashboard(c *fiber.Ctx) error {
 	}
 	h.DB.From("tasks").Select("status, due_date").Execute(&tasks)
 
+	// Get agreement stats
+	var agreements []struct {
+		Status   string  `json:"status"`
+		Deadline *string `json:"deadline"`
+	}
+	h.DB.From("agreements").Select("status, deadline").Execute(&agreements)
+
 	today := time.Now().Format("2006-01-02")
 	totalTasks := len(tasks)
 	doneTasks := 0
@@ -39,6 +49,9 @@ func (h *Handler) GetDashboard(c *fiber.Ctx) error {
 	overdueTasks := 0
 
 	for _, t := range tasks {
+		if t.DueDate != nil && startDate != "" && *t.DueDate < startDate {
+			continue
+		}
 		switch t.Status {
 		case "done":
 			doneTasks++
@@ -53,6 +66,9 @@ func (h *Handler) GetDashboard(c *fiber.Ctx) error {
 	// Find red flags
 	var redFlags []fiber.Map
 	for _, m := range meetings {
+		if startDate != "" && m.Date < startDate {
+			continue
+		}
 		if m.Analysis != nil {
 			if flags, ok := m.Analysis["red_flags"].(map[string]interface{}); ok {
 				burnout, _ := flags["burnout_signs"].(string)
@@ -77,6 +93,9 @@ func (h *Handler) GetDashboard(c *fiber.Ctx) error {
 	var moodCount int
 	var moodTrend []fiber.Map
 	for _, m := range meetings {
+		if startDate != "" && m.Date < startDate {
+			continue
+		}
 		if m.MoodScore != nil {
 			avgMood += float64(*m.MoodScore)
 			moodCount++
@@ -94,6 +113,9 @@ func (h *Handler) GetDashboard(c *fiber.Ctx) error {
 	startOfMonth := time.Now().Format("2006-01") + "-01"
 	var meetingsThisMonth int
 	for _, m := range meetings {
+		if startDate != "" && m.Date < startDate {
+			continue
+		}
 		if m.Date >= startOfMonth {
 			meetingsThisMonth++
 		}
@@ -102,8 +124,28 @@ func (h *Handler) GetDashboard(c *fiber.Ctx) error {
 	// Meetings by category
 	meetingsByCategory := make(map[string]int)
 	for _, m := range meetings {
+		if startDate != "" && m.Date < startDate {
+			continue
+		}
 		if m.Category != nil {
 			meetingsByCategory[m.Category.Code]++
+		}
+	}
+
+	totalAgreements := 0
+	completedAgreements := 0
+	overdueAgreements := 0
+	for _, a := range agreements {
+		if a.Deadline != nil && startDate != "" && *a.Deadline < startDate {
+			continue
+		}
+		totalAgreements++
+		if a.Status == "completed" || a.Status == "done" {
+			completedAgreements++
+			continue
+		}
+		if a.Deadline != nil && *a.Deadline < today {
+			overdueAgreements++
 		}
 	}
 
@@ -132,9 +174,9 @@ func (h *Handler) GetDashboard(c *fiber.Ctx) error {
 		"mood_trend":                  moodTrend,
 		"employees_needing_attention": employeesNeedingAttention,
 		"meetings_by_category":        meetingsByCategory,
-		"agreements_total":            0,
-		"agreements_completed":        0,
-		"agreements_overdue":          0,
+		"agreements_total":            totalAgreements,
+		"agreements_completed":        completedAgreements,
+		"agreements_overdue":          overdueAgreements,
 		"task_summary": fiber.Map{
 			"total":       totalTasks,
 			"done":        doneTasks,
@@ -151,15 +193,24 @@ func (h *Handler) GetEmployeeAnalytics(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
 	}
 
+	period := c.Query("period", "month")
+	startDate := getPeriodStart(period)
+
 	employeeID := c.Params("id")
 
 	// Get meetings
 	var meetings []models.Meeting
 	h.DB.From("meetings").Select("id, date, mood_score, analysis").Eq("employee_id", employeeID).Order("date", false).Execute(&meetings)
 
+	filteredMeetingsCount := 0
+
 	// Mood history
 	var moodHistory []fiber.Map
 	for _, m := range meetings {
+		if startDate != "" && m.Date < startDate {
+			continue
+		}
+		filteredMeetingsCount++
 		if m.MoodScore != nil {
 			moodHistory = append(moodHistory, fiber.Map{
 				"date":  m.Date,
@@ -171,6 +222,9 @@ func (h *Handler) GetEmployeeAnalytics(c *fiber.Ctx) error {
 	// Red flags history
 	var redFlagsHistory []fiber.Map
 	for _, m := range meetings {
+		if startDate != "" && m.Date < startDate {
+			continue
+		}
 		if m.Analysis != nil {
 			if flags, ok := m.Analysis["red_flags"].(map[string]interface{}); ok {
 				burnout, _ := flags["burnout_signs"].(string)
@@ -188,13 +242,18 @@ func (h *Handler) GetEmployeeAnalytics(c *fiber.Ctx) error {
 	// Task stats
 	var tasks []struct {
 		Status string `json:"status"`
+		Due    *string `json:"due_date"`
 	}
-	h.DB.From("tasks").Select("status").Eq("assignee_id", employeeID).Execute(&tasks)
+	h.DB.From("tasks").Select("status, due_date").Eq("assignee_id", employeeID).Execute(&tasks)
 
-	totalTasks := len(tasks)
+	totalTasks := 0
 	doneTasks := 0
 	inProgressTasks := 0
 	for _, t := range tasks {
+		if t.Due != nil && startDate != "" && *t.Due < startDate {
+			continue
+		}
+		totalTasks++
 		switch t.Status {
 		case "done":
 			doneTasks++
@@ -206,6 +265,9 @@ func (h *Handler) GetEmployeeAnalytics(c *fiber.Ctx) error {
 	// Agreement stats
 	var meetingIDs []string
 	for _, m := range meetings {
+		if startDate != "" && m.Date < startDate {
+			continue
+		}
 		meetingIDs = append(meetingIDs, m.ID)
 	}
 
@@ -224,7 +286,7 @@ func (h *Handler) GetEmployeeAnalytics(c *fiber.Ctx) error {
 	overdueAgreements := 0
 
 	for _, a := range agreements {
-		if a.Status == "completed" {
+		if a.Status == "completed" || a.Status == "done" {
 			completedAgreements++
 		} else if a.Status == "pending" {
 			pendingAgreements++
@@ -256,8 +318,30 @@ func (h *Handler) GetEmployeeAnalytics(c *fiber.Ctx) error {
 			"pending":   pendingAgreements - overdueAgreements,
 			"overdue":   overdueAgreements,
 		},
-		"total_meetings": len(meetings),
+		"total_meetings": filteredMeetingsCount,
 	})
+}
+
+func getPeriodStart(period string) string {
+	now := time.Now()
+	switch period {
+	case "week":
+		start := now.AddDate(0, 0, -7)
+		return start.Format("2006-01-02")
+	case "month":
+		start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		return start.Format("2006-01-02")
+	case "quarter":
+		quarter := (now.Month()-1)/3 + 1
+		startMonth := time.Month((quarter-1)*3 + 1)
+		start := time.Date(now.Year(), startMonth, 1, 0, 0, 0, 0, now.Location())
+		return start.Format("2006-01-02")
+	case "year":
+		start := time.Date(now.Year(), time.January, 1, 0, 0, 0, 0, now.Location())
+		return start.Format("2006-01-02")
+	default:
+		return ""
+	}
 }
 
 // GetEmployeeAnalyticsByCategory returns analytics by meeting category

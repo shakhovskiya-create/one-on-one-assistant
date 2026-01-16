@@ -15,7 +15,7 @@
 	onMount(async () => {
 		try {
 			const [dashboardData, categoriesData] = await Promise.all([
-				analyticsApi.getDashboard().catch(() => null),
+				analyticsApi.getDashboard(selectedPeriod).catch(() => null),
 				meetings.getCategories().catch(() => [])
 			]);
 			dashboard = dashboardData;
@@ -27,13 +27,13 @@
 		}
 	});
 
-	async function loadEmployeeAnalytics(employeeId: string) {
+	async function loadEmployeeAnalytics(employeeId: string, period: string) {
 		if (!employeeId) {
 			employeeAnalytics = null;
 			return;
 		}
 		try {
-			employeeAnalytics = await analyticsApi.getEmployee(employeeId);
+			employeeAnalytics = await analyticsApi.getEmployee(employeeId, period);
 		} catch (e) {
 			console.error(e);
 			employeeAnalytics = null;
@@ -41,8 +41,15 @@
 	}
 
 	$effect(() => {
+		const period = selectedPeriod;
 		if (selectedEmployee) {
-			loadEmployeeAnalytics(selectedEmployee);
+			loadEmployeeAnalytics(selectedEmployee, period);
+		} else {
+			analyticsApi.getDashboard(period).then((data) => {
+				dashboard = data;
+			}).catch((e) => {
+				console.error(e);
+			});
 		}
 	});
 

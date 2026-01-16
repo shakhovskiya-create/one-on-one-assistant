@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"strings"
 	"sync"
 	"time"
 
@@ -82,7 +83,19 @@ func (h *MessengerHub) run() {
 // MessengerWebSocket handles WebSocket connections for messenger
 func (h *Handler) MessengerWebSocket(conn *websocket.Conn) {
 	userID := conn.Query("user_id")
+	tokenString := conn.Query("token")
 	if userID == "" {
+		conn.Close()
+		return
+	}
+	if tokenString == "" {
+		conn.Close()
+		return
+	}
+
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+	claims, err := h.JWT.ValidateToken(tokenString)
+	if err != nil || claims.UserID != userID {
 		conn.Close()
 		return
 	}
@@ -226,9 +239,9 @@ func (h *Handler) ListConversations(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
 	}
 
-	userID := c.Query("user_id")
+	userID, _ := c.Locals("user_id").(string)
 	if userID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "user_id required"})
+		return c.Status(401).JSON(fiber.Map{"error": "Not authenticated"})
 	}
 
 	// Get conversation IDs for user
@@ -286,9 +299,12 @@ func (h *Handler) GetConversation(c *fiber.Ctx) error {
 	}
 
 	id := c.Params("id")
-	userID := c.Query("user_id") // Required for access control
+	userID, _ := c.Locals("user_id").(string)
 	limit := c.QueryInt("limit", 50)
 	offset := c.QueryInt("offset", 0)
+	if userID == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "Not authenticated"})
+	}
 
 	var conversation models.Conversation
 	err := h.DB.From("conversations").Select("*").Eq("id", id).Single().Execute(&conversation)
@@ -313,7 +329,7 @@ func (h *Handler) GetConversation(c *fiber.Ctx) error {
 			break
 		}
 	}
-	if !isParticipant && userID != "" {
+	if !isParticipant {
 		return c.Status(403).JSON(fiber.Map{"error": "Access denied: not a participant"})
 	}
 
@@ -350,6 +366,11 @@ func (h *Handler) CreateConversation(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
 	}
 
+	userID, _ := c.Locals("user_id").(string)
+	if userID == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "Not authenticated"})
+	}
+
 	var req struct {
 		Type         string   `json:"type"`
 		Name         string   `json:"name"`
@@ -361,6 +382,13 @@ func (h *Handler) CreateConversation(c *fiber.Ctx) error {
 
 	if len(req.Participants) < 2 {
 		return c.Status(400).JSON(fiber.Map{"error": "At least 2 participants required"})
+	}
+	participantMap := make(map[string]bool, len(req.Participants))
+	for _, id := range req.Participants {
+		participantMap[id] = true
+	}
+	if !participantMap[userID] {
+		return c.Status(403).JSON(fiber.Map{"error": "Creator must be a participant"})
 	}
 
 	convType := req.Type
@@ -450,6 +478,11 @@ func (h *Handler) SendMessage(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
 	}
 
+	userID, _ := c.Locals("user_id").(string)
+	if userID == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "Not authenticated"})
+	}
+
 	var req struct {
 		ConversationID string `json:"conversation_id"`
 		SenderID       string `json:"sender_id"`
@@ -462,6 +495,9 @@ func (h *Handler) SendMessage(c *fiber.Ctx) error {
 
 	if req.Content == "" || req.ConversationID == "" || req.SenderID == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "content, conversation_id, and sender_id required"})
+	}
+	if req.SenderID != userID {
+		return c.Status(403).JSON(fiber.Map{"error": "Sender mismatch"})
 	}
 
 	// Access control: verify sender is a participant
