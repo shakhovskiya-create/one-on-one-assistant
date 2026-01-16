@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/ekf/one-on-one-backend/internal/config"
 	"github.com/ekf/one-on-one-backend/internal/handlers"
@@ -23,7 +24,9 @@ func main() {
 
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
-		BodyLimit: 100 * 1024 * 1024, // 100MB for audio files
+		BodyLimit:    100 * 1024 * 1024, // 100MB for audio files
+		ReadTimeout:  120 * time.Second, // Увеличен таймаут для синхронизации календаря
+		WriteTimeout: 120 * time.Second,
 	})
 
 	// Middleware
