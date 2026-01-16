@@ -5,6 +5,13 @@ backend:
   heartbeat_interval: 30
   insecure_skip_verify: false
 
+ad:
+  url: ${AD_URL}
+  base_dn: ${AD_BASE_DN}
+  bind_user: ${AD_BIND_USER}
+  bind_password: ${AD_BIND_PASSWORD}
+  skip_verify: ${AD_SKIP_VERIFY}
+
 ews:
   url: ${EWS_URL}
   domain: ${EWS_DOMAIN}

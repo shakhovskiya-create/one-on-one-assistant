@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ekf/one-on-one-connector/internal/ad"
 	"github.com/ekf/one-on-one-connector/internal/ews"
 	"github.com/ekf/one-on-one-connector/pkg/protocol"
 	"github.com/gorilla/websocket"
@@ -25,6 +26,14 @@ type Config struct {
 		InsecureSkipVerify bool   `yaml:"insecure_skip_verify"`
 	} `yaml:"backend"`
 
+	AD struct {
+		URL          string `yaml:"url"`
+		BaseDN       string `yaml:"base_dn"`
+		BindUser     string `yaml:"bind_user"`
+		BindPassword string `yaml:"bind_password"`
+		SkipVerify   bool   `yaml:"skip_verify"`
+	} `yaml:"ad"`
+
 	EWS struct {
 		URL        string `yaml:"url"`
 		Domain     string `yaml:"domain"`
@@ -37,6 +46,7 @@ type Config struct {
 type Connector struct {
 	config    *Config
 	ws        *websocket.Conn
+	adClient  *ad.Client
 	ewsClient *ews.Client
 	running   bool
 	stopChan  chan struct{}
@@ -48,10 +58,19 @@ func New(configPath string) (*Connector, error) {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
+	adClient := ad.NewClient(
+		config.AD.URL,
+		config.AD.BaseDN,
+		config.AD.BindUser,
+		config.AD.BindPassword,
+		config.AD.SkipVerify,
+	)
+
 	ewsClient := ews.NewClient(config.EWS.URL, config.EWS.Domain, config.EWS.SkipVerify)
 
 	return &Connector{
 		config:    config,
+		adClient:  adClient,
 		ewsClient: ewsClient,
 		stopChan:  make(chan struct{}),
 	}, nil
@@ -148,6 +167,21 @@ func (c *Connector) handleMessage(data []byte) {
 
 	case "find_free_slots":
 		result, cmdErr = c.handleFindFreeSlots(cmd.Params)
+
+	case "sync_ad_users":
+		result, cmdErr = c.handleSyncADUsers(cmd.Params)
+
+	case "sync_users":
+		result, cmdErr = c.handleSyncADUsers(cmd.Params)
+
+	case "authenticate_ad":
+		result, cmdErr = c.handleAuthenticateAD(cmd.Params)
+
+	case "authenticate":
+		result, cmdErr = c.handleAuthenticateAD(cmd.Params)
+
+	case "get_subordinates":
+		result, cmdErr = c.handleGetSubordinates(cmd.Params)
 
 	default:
 		cmdErr = fmt.Errorf("unknown command: %s", cmd.Command)
@@ -298,6 +332,75 @@ func getFloat64(m map[string]interface{}, key string, defaultValue float64) floa
 	if v, ok := m[key]; ok {
 		if f, ok := v.(float64); ok {
 			return f
+		}
+	}
+	return defaultValue
+}
+
+func (c *Connector) handleSyncADUsers(params map[string]interface{}) (interface{}, error) {
+	includePhotos := getBool(params, "include_photos", true)
+
+	users, err := c.adClient.GetAllUsers(includePhotos)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get AD users: %w", err)
+	}
+
+	return map[string]interface{}{
+		"users": users,
+		"total": len(users),
+	}, nil
+}
+
+func (c *Connector) handleAuthenticateAD(params map[string]interface{}) (interface{}, error) {
+	username, _ := params["username"].(string)
+	password, _ := params["password"].(string)
+
+	if username == "" || password == "" {
+		return nil, fmt.Errorf("username and password required")
+	}
+
+	// Strip domain prefix if present (e.g., "domain\user" -> "user")
+	if strings.Contains(username, "\\") {
+		parts := strings.Split(username, "\\")
+		if len(parts) == 2 {
+			username = parts[1]
+		}
+	}
+
+	user, err := c.adClient.Authenticate(username, password)
+	if err != nil {
+		return map[string]interface{}{
+			"authenticated": false,
+			"error":         err.Error(),
+		}, nil
+	}
+
+	return map[string]interface{}{
+		"authenticated": true,
+		"user":          user,
+	}, nil
+}
+
+func (c *Connector) handleGetSubordinates(params map[string]interface{}) (interface{}, error) {
+	managerDN, _ := params["manager_dn"].(string)
+	if managerDN == "" {
+		return nil, fmt.Errorf("manager_dn required")
+	}
+
+	users, err := c.adClient.GetSubordinates(managerDN)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subordinates: %w", err)
+	}
+
+	return map[string]interface{}{
+		"subordinates": users,
+	}, nil
+}
+
+func getBool(m map[string]interface{}, key string, defaultValue bool) bool {
+	if v, ok := m[key]; ok {
+		if b, ok := v.(bool); ok {
+			return b
 		}
 	}
 	return defaultValue
