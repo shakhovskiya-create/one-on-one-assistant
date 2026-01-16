@@ -52,14 +52,15 @@ type BusyTime struct {
 }
 
 // NewClient creates a new EWS client
-func NewClient(url, domain string) *Client {
+// skipTLSVerify should only be true for development/internal certificates
+func NewClient(url, domain string, skipTLSVerify bool) *Client {
 	return &Client{
 		URL:    url,
 		Domain: domain,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: skipTLSVerify},
 			},
 		},
 	}
