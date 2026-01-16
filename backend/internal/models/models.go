@@ -20,6 +20,7 @@ type Employee struct {
 	Mobile                *string    `json:"mobile,omitempty"`
 	TelegramUsername      *string    `json:"telegram_username,omitempty"`
 	TelegramChatID        *int64     `json:"telegram_chat_id,omitempty"`
+	EncryptedPassword     *string    `json:"-"` // Never expose in JSON - for EWS access only
 	CreatedAt             *time.Time `json:"created_at,omitempty"`
 }
 

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ekf/one-on-one-backend/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
 	"golang.org/x/crypto/bcrypt"
@@ -279,16 +280,32 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 					var existing []map[string]interface{}
 					h.DB.From("employees").Select("*").Eq("email", email).Execute(&existing)
 
+					// Encrypt and store password for EWS access
+					encryptedPassword, encErr := utils.EncryptPassword(password, h.Config.JWTSecret)
+					if encErr != nil {
+						encryptedPassword = "" // If encryption fails, don't store
+					}
+
 					if len(existing) > 0 {
 						employee = existing[0]
+						employeeID, _ := employee["id"].(string)
+
+						// Update encrypted password
+						if encryptedPassword != "" {
+							updateData := map[string]interface{}{
+								"encrypted_password": encryptedPassword,
+							}
+							h.DB.Update("employees", "id", employeeID, updateData)
+						}
 					} else {
 						// Auto-create from AD
 						empData := map[string]interface{}{
-							"name":     user["name"],
-							"email":    email,
-							"position": user["title"],
-							"ad_dn":    user["dn"],
-							"ad_login": user["login"],
+							"name":               user["name"],
+							"email":              email,
+							"position":           user["title"],
+							"ad_dn":              user["dn"],
+							"ad_login":           user["login"],
+							"encrypted_password": encryptedPassword,
 						}
 						insertResult, _ := h.DB.Insert("employees", empData)
 						var created []map[string]interface{}

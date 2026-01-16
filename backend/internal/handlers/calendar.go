@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ekf/one-on-one-backend/internal/utils"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -24,10 +25,11 @@ func (h *Handler) GetCalendar(c *fiber.Ctx) error {
 
 	// Get employee info
 	var employees []struct {
-		Email   string `json:"email"`
-		ADLogin string `json:"ad_login"`
+		Email             string  `json:"email"`
+		ADLogin           string  `json:"ad_login"`
+		EncryptedPassword *string `json:"encrypted_password"`
 	}
-	err := h.DB.From("employees").Select("email, ad_login").Eq("id", employeeID).Limit(1).Execute(&employees)
+	err := h.DB.From("employees").Select("email, ad_login, encrypted_password").Eq("id", employeeID).Limit(1).Execute(&employees)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Ошибка базы данных: " + err.Error()})
 	}
@@ -56,10 +58,23 @@ func (h *Handler) GetCalendar(c *fiber.Ctx) error {
 	var source string
 	var getErr error
 
-	// Try connector first - connector uses its own service account credentials
+	// Try connector first - use user's own credentials if available
 	if h.Connector.IsConnected() {
+		// Get user's encrypted password for EWS authentication
+		var username, password string
+		if employee.EncryptedPassword != nil && *employee.EncryptedPassword != "" {
+			// Decrypt user's password
+			decrypted, err := utils.DecryptPassword(*employee.EncryptedPassword, h.Config.JWTSecret)
+			if err == nil {
+				username = "ekfgroup\\" + employee.ADLogin
+				password = decrypted
+			}
+		}
+
 		result, err := h.Connector.SendCommand("get_calendar", map[string]interface{}{
 			"email":        ewsEmail,
+			"username":     username, // User's own credentials
+			"password":     password,
 			"days_back":    daysBack,
 			"days_forward": daysForward,
 		}, 30*time.Second)

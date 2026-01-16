@@ -76,12 +76,24 @@ func (c *Client) GetCalendarEvents(email, username, password string, daysBack, d
 	startDate := now.AddDate(0, 0, -daysBack).Format("2006-01-02T00:00:00Z")
 	endDate := now.AddDate(0, 0, daysForward).Format("2006-01-02T23:59:59Z")
 
+	// If email parameter is provided and different from username, use impersonation
+	// Otherwise request own calendar
+	var headerImpersonation string
+	if email != "" && !strings.Contains(username, strings.Split(email, "@")[0]) {
+		headerImpersonation = fmt.Sprintf(`
+    <t:ExchangeImpersonation>
+      <t:ConnectingSID>
+        <t:SmtpAddress>%s</t:SmtpAddress>
+      </t:ConnectingSID>
+    </t:ExchangeImpersonation>`, email)
+	}
+
 	soap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
                xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
                xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
   <soap:Header>
-    <t:RequestServerVersion Version="Exchange2013"/>
+    <t:RequestServerVersion Version="Exchange2013"/>%s
   </soap:Header>
   <soap:Body>
     <m:FindItem Traversal="Shallow">
@@ -106,7 +118,7 @@ func (c *Client) GetCalendarEvents(email, username, password string, daysBack, d
       </m:ParentFolderIds>
     </m:FindItem>
   </soap:Body>
-</soap:Envelope>`, startDate, endDate)
+</soap:Envelope>`, headerImpersonation, startDate, endDate)
 
 	body, err := c.doRequest(soap, username, password)
 	if err != nil {

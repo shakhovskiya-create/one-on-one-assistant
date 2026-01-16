@@ -210,6 +210,7 @@ func (c *Connector) handleMessage(data []byte) {
 func (c *Connector) handleGetCalendar(params map[string]interface{}) (interface{}, error) {
 	email, ok := params["email"].(string)
 	if !ok || email == "" {
+		log.Printf("ERROR: email is required, params: %+v", params)
 		return nil, fmt.Errorf("email is required")
 	}
 
@@ -226,11 +227,15 @@ func (c *Connector) handleGetCalendar(params map[string]interface{}) (interface{
 		password = c.config.EWS.Password
 	}
 
+	log.Printf("Getting calendar for %s (days: -%d to +%d, user: %s)", email, daysBack, daysForward, username)
+
 	events, err := c.ewsClient.GetCalendarEvents(email, username, password, daysBack, daysForward)
 	if err != nil {
+		log.Printf("ERROR: Failed to get calendar for %s: %v", email, err)
 		return nil, fmt.Errorf("failed to get calendar: %w", err)
 	}
 
+	log.Printf("Successfully retrieved %d events for %s", len(events), email)
 	return events, nil
 }
 
