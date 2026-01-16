@@ -153,17 +153,18 @@ func (h *Handler) CreateMeeting(c *fiber.Ctx) error {
 		meeting["mood_score"] = *req.MoodScore
 	}
 
-	var result []models.Meeting
-	err := h.DB.From("meetings").Insert(meeting).Execute(&result)
+	result, err := h.DB.Insert("meetings", meeting)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to create meeting", "details": err.Error()})
 	}
 
-	if len(result) == 0 {
+	var created []models.Meeting
+	json.Unmarshal(result, &created)
+	if len(created) == 0 {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to create meeting"})
 	}
 
-	return c.Status(201).JSON(result[0])
+	return c.Status(201).JSON(created[0])
 }
 
 // ListMeetingCategories returns all meeting categories
