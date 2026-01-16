@@ -1,6 +1,7 @@
 import { browser } from '$app/environment';
 
-const API_URL = browser ? (import.meta.env.VITE_API_URL || 'http://localhost:8080') : 'http://localhost:8080';
+const BASE_URL = browser ? (import.meta.env.VITE_API_URL || 'http://localhost:8080') : 'http://localhost:8080';
+const API_URL = `${BASE_URL}/api/v1`;
 
 interface RequestOptions {
 	method?: string;
@@ -60,11 +61,16 @@ export const meetings = {
 	},
 	get: (id: string) => request<Meeting>(`/meetings/${id}`),
 	getCategories: () => request<MeetingCategory[]>('/meeting-categories'),
-	process: (formData: FormData) => {
-		return fetch(`${API_URL}/process-meeting`, {
+	process: async (formData: FormData) => {
+		const response = await fetch(`${API_URL}/process-meeting`, {
 			method: 'POST',
 			body: formData
-		}).then(r => r.json());
+		});
+		if (!response.ok) {
+			const error = await response.json().catch(() => ({ error: response.statusText }));
+			throw new Error(error.error || 'Upload failed');
+		}
+		return response.json();
 	},
 };
 
@@ -110,14 +116,15 @@ export const connector = {
 		const query = new URLSearchParams(params as Record<string, string>).toString();
 		return request(`/ad/sync${query ? `?${query}` : ''}`, { method: 'POST' });
 	},
-	authenticate: (username: string, password: string) => {
+	authenticate: async (username: string, password: string) => {
 		const formData = new FormData();
 		formData.append('username', username);
 		formData.append('password', password);
-		return fetch(`${API_URL}/ad/authenticate`, {
+		const response = await fetch(`${API_URL}/ad/authenticate`, {
 			method: 'POST',
 			body: formData
-		}).then(r => r.json());
+		});
+		return response.json();
 	},
 };
 
