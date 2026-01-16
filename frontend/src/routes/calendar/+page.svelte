@@ -27,7 +27,9 @@
 		if (!$user?.id) return;
 		loading = true;
 		try {
-			events = await calendarApi.getSimple($user.id);
+			const response = await calendarApi.getSimple($user.id);
+			// API returns { events: [...] } or just array
+			events = Array.isArray(response) ? response : (response.events || []);
 		} catch (e) {
 			console.error(e);
 			events = [];

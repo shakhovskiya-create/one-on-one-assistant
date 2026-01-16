@@ -56,7 +56,7 @@
 		<div class="ml-64 h-full flex flex-col">
 			<!-- Fixed Header -->
 			<header class="sticky top-0 z-30 bg-white">
-				<Header user={$user} onProfileClick={() => goto('/profile')} />
+				<Header user={$user} subordinates={$subordinates} onProfileClick={() => goto('/profile')} onLogout={handleLogout} />
 			</header>
 
 			<!-- Scrollable content -->

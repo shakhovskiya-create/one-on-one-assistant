@@ -80,38 +80,4 @@
 		</ul>
 	</nav>
 
-	<!-- User Info -->
-	{#if user}
-		<div class="p-4 border-t border-gray-700">
-			<div class="flex items-center gap-3 mb-3">
-				{#if user.photo_base64}
-					<img src="data:image/jpeg;base64,{user.photo_base64}" alt="" class="w-10 h-10 rounded-full object-cover" />
-				{:else}
-					<div class="w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center text-lg font-medium">
-						{user.name.charAt(0)}
-					</div>
-				{/if}
-				<div class="flex-1 min-w-0">
-					<div class="text-sm font-medium truncate">{user.name}</div>
-					<div class="text-xs text-gray-400 truncate">{user.position}</div>
-				</div>
-			</div>
-			{#if subordinates.length > 0}
-				<div class="text-xs text-gray-400 mb-2">
-					{subordinates.length} подчинённых
-				</div>
-			{/if}
-			{#if onLogout}
-				<button
-					onclick={onLogout}
-					class="w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center gap-2"
-				>
-					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-					</svg>
-					Выйти
-				</button>
-			{/if}
-		</div>
-	{/if}
 </aside>

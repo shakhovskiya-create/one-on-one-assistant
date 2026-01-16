@@ -273,48 +273,13 @@
 			</table>
 		</div>
 	{:else if displayMode === 'hierarchy'}
-		<!-- Hierarchy View by Department -->
-		<div class="space-y-6">
-			{#each Object.entries(employeesByDepartment()) as [department, employees]}
-				<div class="bg-white rounded-xl shadow-sm overflow-hidden">
-					<div class="bg-gray-50 px-6 py-3 border-b">
-						<h3 class="font-semibold text-gray-900 flex items-center gap-2">
-							<svg class="w-5 h-5 text-ekf-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-							</svg>
-							{department}
-							<span class="text-sm font-normal text-gray-500">({employees.length})</span>
-						</h3>
-					</div>
-					<div class="divide-y divide-gray-100">
-						{#each employees as employee (employee.id)}
-							<a
-								href="/employees/{employee.id}"
-								class="flex items-center gap-4 px-6 py-4 hover:bg-gray-50 transition-colors"
-							>
-								<div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-600 flex-shrink-0">
-									{#if employee.photo_base64}
-										<img
-											src="data:image/jpeg;base64,{employee.photo_base64}"
-											alt=""
-											class="w-full h-full rounded-full object-cover"
-										/>
-									{:else}
-										{employee.name.charAt(0)}
-									{/if}
-								</div>
-								<div class="flex-1 min-w-0">
-									<p class="font-medium text-gray-900">{employee.name}</p>
-									<p class="text-sm text-gray-500">{employee.position}</p>
-								</div>
-								{#if employee.email}
-									<span class="text-sm text-gray-400 hidden md:block">{employee.email}</span>
-								{/if}
-							</a>
-						{/each}
-					</div>
-				</div>
-			{/each}
+		<!-- Hierarchy View by Manager -->
+		<div class="bg-white rounded-xl shadow-sm p-6">
+			<div class="space-y-2">
+				{#each hierarchyTree().roots as employee (employee.id)}
+					{@render employeeNode(employee, 0)}
+				{/each}
+			</div>
 		</div>
 	{/if}
 
@@ -324,3 +289,44 @@
 		</div>
 	{/if}
 </div>
+
+{#snippet employeeNode(employee: Employee, level: number)}
+	<div style="margin-left: {level * 24}px">
+		<a
+			href="/employees/{employee.id}"
+			class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors group"
+		>
+			{#if level > 0}
+				<div class="w-4 h-4 border-l-2 border-b-2 border-gray-300 rounded-bl -ml-3 mr-1"></div>
+			{/if}
+			<div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-600 flex-shrink-0">
+				{#if employee.photo_base64}
+					<img
+						src="data:image/jpeg;base64,{employee.photo_base64}"
+						alt=""
+						class="w-full h-full rounded-full object-cover"
+					/>
+				{:else}
+					{employee.name.charAt(0)}
+				{/if}
+			</div>
+			<div class="flex-1 min-w-0">
+				<p class="font-medium text-gray-900 group-hover:text-ekf-red transition-colors">{employee.name}</p>
+				<p class="text-sm text-gray-500">{employee.position}</p>
+				{#if employee.department}
+					<p class="text-xs text-gray-400">{employee.department}</p>
+				{/if}
+			</div>
+			{#if hierarchyTree().children.get(employee.id)?.length}
+				<span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
+					{hierarchyTree().children.get(employee.id)?.length} подч.
+				</span>
+			{/if}
+		</a>
+		{#if hierarchyTree().children.has(employee.id)}
+			{#each hierarchyTree().children.get(employee.id) || [] as child (child.id)}
+				{@render employeeNode(child, level + 1)}
+			{/each}
+		{/if}
+	</div>
+{/snippet}
