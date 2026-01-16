@@ -102,8 +102,8 @@ func (h *Handler) GetDashboard(c *fiber.Ctx) error {
 	// Meetings by category
 	meetingsByCategory := make(map[string]int)
 	for _, m := range meetings {
-		if m.MeetingCategory != nil {
-			meetingsByCategory[m.MeetingCategory.Code]++
+		if m.Category != nil {
+			meetingsByCategory[m.Category.Code]++
 		}
 	}
 

@@ -34,6 +34,7 @@ type Query struct {
 	filters   []string
 	orderBy   string
 	limitVal  int
+	offsetVal int
 	single    bool
 }
 
@@ -111,6 +112,12 @@ func (q *Query) Limit(n int) *Query {
 	return q
 }
 
+// Offset skips results
+func (q *Query) Offset(n int) *Query {
+	q.offsetVal = n
+	return q
+}
+
 // Single returns single result
 func (q *Query) Single() *Query {
 	q.single = true
@@ -132,6 +139,10 @@ func (q *Query) Execute(result interface{}) error {
 
 	if q.limitVal > 0 {
 		reqURL += fmt.Sprintf("&limit=%d", q.limitVal)
+	}
+
+	if q.offsetVal > 0 {
+		reqURL += fmt.Sprintf("&offset=%d", q.offsetVal)
 	}
 
 	req, err := http.NewRequest("GET", reqURL, nil)

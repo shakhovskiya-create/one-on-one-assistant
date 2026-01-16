@@ -334,3 +334,15 @@ export interface Message {
 	sender?: Employee;
 	reply_to?: Message;
 }
+
+// Combined API object for convenience
+export const api = {
+	employees,
+	projects,
+	meetings,
+	tasks,
+	analytics,
+	calendar,
+	messenger,
+	connector
+};
