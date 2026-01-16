@@ -241,8 +241,19 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 			forceChange, _ := employee["force_password_change"].(bool)
 			delete(employee, "force_password_change")
 
-			// Generate JWT token
+			// Encrypt and store password for EWS access (for local auth too)
 			userID, _ := employee["id"].(string)
+			if userID != "" {
+				encryptedPassword, encErr := utils.EncryptPassword(password, h.Config.JWTSecret)
+				if encErr == nil && encryptedPassword != "" {
+					updateData := map[string]interface{}{
+						"encrypted_password": encryptedPassword,
+					}
+					h.DB.Update("employees", "id", userID, updateData)
+				}
+			}
+
+			// Generate JWT token
 			email, _ := employee["email"].(string)
 			name, _ := employee["name"].(string)
 			department, _ := employee["department"].(string)
