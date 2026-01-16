@@ -119,12 +119,11 @@ export const analytics = {
 
 // Calendar (EWS)
 export const calendar = {
-	get: (employeeId: string, auth: { username: string; password: string }) =>
-		request(`/calendar/${employeeId}`, { method: 'POST', body: auth }),
+	get: (employeeId: string) => request(`/calendar/${employeeId}`),
 	getSimple: (employeeId: string) => request<CalendarEvent[]>(`/calendar/${employeeId}/simple`),
 	findFreeSlots: (data: FreeSlotsRequest) =>
 		request('/calendar/free-slots', { method: 'POST', body: data }),
-	sync: (data: { employee_id: string; username: string; password: string; days_back?: number; days_forward?: number }) =>
+	sync: (data: CalendarSyncRequest) =>
 		request('/calendar/sync', { method: 'POST', body: data }),
 };
 

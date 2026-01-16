@@ -39,11 +39,19 @@
 		if (!$user?.id) return;
 		loading = true;
 		try {
-			const response = await calendarApi.getSimple($user.id);
+			// Try to get calendar from Exchange directly
+			const response = await calendarApi.get($user.id);
 			events = Array.isArray(response) ? response : (response.events || []);
-		} catch (e) {
-			console.error(e);
-			events = [];
+		} catch (e: any) {
+			console.error('Failed to load calendar from Exchange:', e);
+			// Fallback to database if Exchange fails
+			try {
+				const fallbackResponse = await calendarApi.getSimple($user.id);
+				events = Array.isArray(fallbackResponse) ? fallbackResponse : (fallbackResponse.events || []);
+			} catch (fallbackError) {
+				console.error('Failed to load calendar from database:', fallbackError);
+				events = [];
+			}
 		} finally {
 			loading = false;
 		}
