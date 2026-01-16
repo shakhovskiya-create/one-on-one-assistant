@@ -10,7 +10,7 @@
 
 	// Filter subordinates with departments
 	const employeesWithDept = $derived($subordinates.filter(emp => emp.department));
-	const pendingTasks = $derived(tasks.filter(t => t.status === 'pending' || t.status === 'in_progress' || t.status === 'todo'));
+	const pendingTasks = $derived(tasks.filter(t => ['backlog', 'todo', 'in_progress', 'review'].includes(t.status)));
 	const overdueTasks = $derived(tasks.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status !== 'done'));
 
 	onMount(async () => {
@@ -25,7 +25,7 @@
 		try {
 			const [meetingsData, tasksData] = await Promise.all([
 				meetingsApi.list().catch(() => []),
-				tasksApi.list({ status: 'in_progress' }).catch(() => [])
+				tasksApi.list().catch(() => [])
 			]);
 			recentMeetings = meetingsData || [];
 			tasks = tasksData || [];

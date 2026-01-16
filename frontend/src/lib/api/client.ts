@@ -72,6 +72,7 @@ export const meetings = {
 		return request<Meeting[]>(`/meetings${query ? `?${query}` : ''}`);
 	},
 	get: (id: string) => request<Meeting>(`/meetings/${id}`),
+	create: (data: Partial<Meeting>) => request<Meeting>('/meetings', { method: 'POST', body: data }),
 	getCategories: () => request<MeetingCategory[]>('/meeting-categories'),
 	process: async (formData: FormData) => {
 		const response = await fetch(`${API_URL}/process-meeting`, {
@@ -97,6 +98,8 @@ export const tasks = {
 	create: (data: Partial<Task>) => request<Task>('/tasks', { method: 'POST', body: data }),
 	update: (id: string, data: Partial<Task>) => request<Task>(`/tasks/${id}`, { method: 'PUT', body: data }),
 	delete: (id: string) => request(`/tasks/${id}`, { method: 'DELETE' }),
+	addComment: (id: string, data: { author_id: string; content: string }) =>
+		request(`/tasks/${id}/comments`, { method: 'POST', body: data }),
 	getKanban: (params?: { assignee_id?: string; project_id?: string }) => {
 		const query = new URLSearchParams(params as Record<string, string>).toString();
 		return request<KanbanBoard>(`/kanban${query ? `?${query}` : ''}`);
@@ -107,8 +110,10 @@ export const tasks = {
 
 // Analytics
 export const analytics = {
-	getDashboard: () => request<DashboardData>('/analytics/dashboard'),
-	getEmployee: (id: string) => request<EmployeeAnalytics>(`/analytics/employee/${id}`),
+	getDashboard: (period?: string) =>
+		request<DashboardData>(`/analytics/dashboard${period ? `?period=${period}` : ''}`),
+	getEmployee: (id: string, period?: string) =>
+		request<EmployeeAnalytics>(`/analytics/employee/${id}${period ? `?period=${period}` : ''}`),
 	getEmployeeByCategory: (id: string) => request(`/analytics/employee/${id}/by-category`),
 };
 
@@ -139,7 +144,12 @@ export const messenger = {
 		request<Message>('/messages', { method: 'POST', body: data }),
 	getWebSocketUrl: (userId: string) => {
 		const wsBase = BASE_URL.replace('http', 'ws');
-		return `${wsBase}/ws/messenger?user_id=${userId}`;
+		const token = browser ? localStorage.getItem('auth_token') : null;
+		const params = new URLSearchParams({ user_id: userId });
+		if (token && token !== 'authenticated') {
+			params.append('token', token);
+		}
+		return `${wsBase}/ws/messenger?${params.toString()}`;
 	},
 };
 
@@ -354,8 +364,8 @@ export interface Meeting {
 
 export interface MeetingAnalysis {
 	key_topics?: string[];
-	action_items?: string[];
-	agreements?: string[];
+	action_items?: Array<string | { task?: string; improvement?: string; responsible?: string; deadline?: string | null }>;
+	agreements?: Array<string | { task?: string; responsible?: string; deadline?: string | null }>;
 	red_flags?: {
 		burnout_signs?: string;
 		turnover_risk?: string;

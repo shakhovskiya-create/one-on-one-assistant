@@ -2,9 +2,11 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/ekf/one-on-one-backend/internal/config"
 	"github.com/ekf/one-on-one-backend/internal/handlers"
+	"github.com/ekf/one-on-one-backend/internal/middleware"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -15,6 +17,9 @@ import (
 func main() {
 	// Load config
 	cfg := config.Load()
+	if cfg.EWSSkipTLSVerify && os.Getenv("ENV") == "production" {
+		log.Fatal("EWS_SKIP_TLS_VERIFY cannot be enabled in production")
+	}
 
 	// Create handler
 	h := handlers.NewHandler(cfg)
@@ -53,129 +58,135 @@ func main() {
 
 	// API routes
 	api := app.Group("/api/v1")
+	protected := api.Group("", middleware.JWTAuth(h.JWT))
 
 	// Employees
-	api.Get("/employees", h.ListEmployees)
-	api.Post("/employees", h.CreateEmployee)
-	api.Get("/employees/:id", h.GetEmployee)
-	api.Put("/employees/:id", h.UpdateEmployee)
-	api.Delete("/employees/:id", h.DeleteEmployee)
-	api.Get("/employees/:id/dossier", h.GetEmployeeDossier)
-	api.Get("/employees/my-team", h.GetMyTeam)
+	protected.Get("/employees", h.ListEmployees)
+	protected.Post("/employees", h.CreateEmployee)
+	protected.Get("/employees/:id", h.GetEmployee)
+	protected.Put("/employees/:id", h.UpdateEmployee)
+	protected.Delete("/employees/:id", h.DeleteEmployee)
+	protected.Get("/employees/:id/dossier", h.GetEmployeeDossier)
+	protected.Get("/employees/my-team", h.GetMyTeam)
 
 	// Projects
-	api.Get("/projects", h.ListProjects)
-	api.Post("/projects", h.CreateProject)
-	api.Get("/projects/:id", h.GetProject)
-	api.Put("/projects/:id", h.UpdateProject)
-	api.Delete("/projects/:id", h.DeleteProject)
+	protected.Get("/projects", h.ListProjects)
+	protected.Post("/projects", h.CreateProject)
+	protected.Get("/projects/:id", h.GetProject)
+	protected.Put("/projects/:id", h.UpdateProject)
+	protected.Delete("/projects/:id", h.DeleteProject)
 
 	// Meetings
-	api.Get("/meetings", h.ListMeetings)
-	api.Get("/meetings/:id", h.GetMeeting)
-	api.Get("/meeting-categories", h.ListMeetingCategories)
-	api.Post("/process-meeting", h.ProcessMeeting)
+	protected.Get("/meetings", h.ListMeetings)
+	protected.Post("/meetings", h.CreateMeeting)
+	protected.Get("/meetings/:id", h.GetMeeting)
+	protected.Get("/meeting-categories", h.ListMeetingCategories)
+	protected.Post("/process-meeting", h.ProcessMeeting)
 
 	// Tasks
-	api.Get("/tasks", h.ListTasks)
-	api.Post("/tasks", h.CreateTask)
-	api.Get("/tasks/:id", h.GetTask)
-	api.Put("/tasks/:id", h.UpdateTask)
-	api.Delete("/tasks/:id", h.DeleteTask)
+	protected.Get("/tasks", h.ListTasks)
+	protected.Post("/tasks", h.CreateTask)
+	protected.Get("/tasks/:id", h.GetTask)
+	protected.Put("/tasks/:id", h.UpdateTask)
+	protected.Delete("/tasks/:id", h.DeleteTask)
+	protected.Post("/tasks/:id/comments", h.AddTaskComment)
 
 	// Kanban
-	api.Get("/kanban", h.GetKanban)
-	api.Put("/kanban/move", h.MoveTaskKanban)
+	protected.Get("/kanban", h.GetKanban)
+	protected.Put("/kanban/move", h.MoveTaskKanban)
 
 	// Calendar (EWS) - specific routes MUST come before parametric routes
-	api.Post("/calendar/sync", h.SyncCalendar)
-	api.Post("/calendar/free-slots", h.FindFreeSlots)
-	api.Get("/calendar/free-slots/simple", h.FreeSlotsSimple)
-	api.Post("/calendar/:id", h.GetCalendar)
-	api.Get("/calendar/:id/simple", h.GetCalendarSimple)
+	protected.Post("/calendar/sync", h.SyncCalendar)
+	protected.Post("/calendar/free-slots", h.FindFreeSlots)
+	protected.Get("/calendar/free-slots/simple", h.FreeSlotsSimple)
+	protected.Post("/calendar/:id", h.GetCalendar)
+	protected.Get("/calendar/:id/simple", h.GetCalendarSimple)
 
 	// Analytics
-	api.Get("/analytics/dashboard", h.GetDashboard)
-	api.Get("/analytics/employee/:id", h.GetEmployeeAnalytics)
-	api.Get("/analytics/employee/:id/by-category", h.GetEmployeeAnalyticsByCategory)
+	protected.Get("/analytics/dashboard", h.GetDashboard)
+	protected.Get("/analytics/employee/:id", h.GetEmployeeAnalytics)
+	protected.Get("/analytics/employee/:id/by-category", h.GetEmployeeAnalyticsByCategory)
 
 	// AD Integration
-	api.Get("/connector/status", h.ConnectorStatus)
-	api.Post("/ad/sync", h.SyncADUsers)
+	protected.Get("/connector/status", h.ConnectorStatus)
+	protected.Post("/ad/sync", h.SyncADUsers)
 	api.Post("/ad/authenticate", h.AuthenticateAD)
-	api.Get("/ad/subordinates/:id", h.GetSubordinates)
+	protected.Get("/ad/subordinates/:id", h.GetSubordinates)
 
 	// Local User Management (works without connector)
-	api.Post("/users/local", h.CreateLocalUser)
-	api.Post("/users/set-password", h.SetLocalPassword)
-	api.Post("/users/change-password", h.ChangePassword)
+	protected.Post("/users/local", h.CreateLocalUser)
+	protected.Post("/users/set-password", h.SetLocalPassword)
+	protected.Post("/users/change-password", h.ChangePassword)
 
 	// JWT Token Management
 	api.Post("/auth/refresh", h.RefreshToken)
-	api.Get("/auth/me", h.GetMe)
+	protected.Get("/auth/me", h.GetMe)
 
 	// File Storage
-	api.Post("/files", h.UploadFile)
-	api.Get("/files", h.ListFiles)
-	api.Get("/files/:id", h.GetFile)
-	api.Get("/files/:id/url", h.GetFileURL)
-	api.Delete("/files/:id", h.DeleteFile)
-	api.Post("/files/attach", h.AttachFileToEntity)
+	protected.Post("/files", h.UploadFile)
+	protected.Get("/files", h.ListFiles)
+	protected.Get("/files/:id", h.GetFile)
+	protected.Get("/files/:id/url", h.GetFileURL)
+	protected.Delete("/files/:id", h.DeleteFile)
+	protected.Post("/files/attach", h.AttachFileToEntity)
 
 	// BPMN / Camunda
-	api.Get("/bpmn/status", h.BPMNStatus)
-	api.Get("/bpmn/definitions", h.ListProcessDefinitions)
-	api.Get("/bpmn/definitions/:key", h.GetProcessDefinition)
-	api.Post("/bpmn/processes", h.StartProcess)
-	api.Get("/bpmn/processes", h.ListProcessInstances)
-	api.Get("/bpmn/processes/:id", h.GetProcessInstance)
-	api.Delete("/bpmn/processes/:id", h.DeleteProcessInstance)
-	api.Get("/bpmn/tasks", h.ListBPMNTasks)
-	api.Get("/bpmn/tasks/:id", h.GetBPMNTask)
-	api.Post("/bpmn/tasks/:id/complete", h.CompleteBPMNTask)
-	api.Post("/bpmn/tasks/:id/claim", h.ClaimBPMNTask)
-	api.Post("/bpmn/tasks/:id/unclaim", h.UnclaimBPMNTask)
+	protected.Get("/bpmn/status", h.BPMNStatus)
+	protected.Get("/bpmn/definitions", h.ListProcessDefinitions)
+	protected.Get("/bpmn/definitions/:key", h.GetProcessDefinition)
+	protected.Post("/bpmn/processes", h.StartProcess)
+	protected.Get("/bpmn/processes", h.ListProcessInstances)
+	protected.Get("/bpmn/processes/:id", h.GetProcessInstance)
+	protected.Delete("/bpmn/processes/:id", h.DeleteProcessInstance)
+	protected.Get("/bpmn/tasks", h.ListBPMNTasks)
+	protected.Get("/bpmn/tasks/:id", h.GetBPMNTask)
+	protected.Post("/bpmn/tasks/:id/complete", h.CompleteBPMNTask)
+	protected.Post("/bpmn/tasks/:id/claim", h.ClaimBPMNTask)
+	protected.Post("/bpmn/tasks/:id/unclaim", h.UnclaimBPMNTask)
 
 	// Messenger
-	api.Get("/conversations", h.ListConversations)
-	api.Post("/conversations", h.CreateConversation)
-	api.Get("/conversations/:id", h.GetConversation)
-	api.Post("/messages", h.SendMessage)
+	protected.Get("/conversations", h.ListConversations)
+	protected.Post("/conversations", h.CreateConversation)
+	protected.Get("/conversations/:id", h.GetConversation)
+	protected.Post("/messages", h.SendMessage)
 
 	// Legacy routes (for backward compatibility)
-	app.Get("/employees", h.ListEmployees)
-	app.Post("/employees", h.CreateEmployee)
-	app.Get("/employees/:id", h.GetEmployee)
-	app.Put("/employees/:id", h.UpdateEmployee)
-	app.Delete("/employees/:id", h.DeleteEmployee)
-	app.Get("/employees/:id/dossier", h.GetEmployeeDossier)
+	legacy := app.Group("", middleware.JWTAuth(h.JWT))
+	legacy.Get("/employees", h.ListEmployees)
+	legacy.Post("/employees", h.CreateEmployee)
+	legacy.Get("/employees/:id", h.GetEmployee)
+	legacy.Put("/employees/:id", h.UpdateEmployee)
+	legacy.Delete("/employees/:id", h.DeleteEmployee)
+	legacy.Get("/employees/:id/dossier", h.GetEmployeeDossier)
 
-	app.Get("/projects", h.ListProjects)
-	app.Post("/projects", h.CreateProject)
-	app.Get("/projects/:id", h.GetProject)
-	app.Put("/projects/:id", h.UpdateProject)
-	app.Delete("/projects/:id", h.DeleteProject)
+	legacy.Get("/projects", h.ListProjects)
+	legacy.Post("/projects", h.CreateProject)
+	legacy.Get("/projects/:id", h.GetProject)
+	legacy.Put("/projects/:id", h.UpdateProject)
+	legacy.Delete("/projects/:id", h.DeleteProject)
 
-	app.Get("/meetings", h.ListMeetings)
-	app.Get("/meetings/:id", h.GetMeeting)
-	app.Get("/meeting-categories", h.ListMeetingCategories)
-	app.Post("/process-meeting", h.ProcessMeeting)
+	legacy.Get("/meetings", h.ListMeetings)
+	legacy.Post("/meetings", h.CreateMeeting)
+	legacy.Get("/meetings/:id", h.GetMeeting)
+	legacy.Get("/meeting-categories", h.ListMeetingCategories)
+	legacy.Post("/process-meeting", h.ProcessMeeting)
 
-	app.Get("/tasks", h.ListTasks)
-	app.Post("/tasks", h.CreateTask)
-	app.Get("/tasks/:id", h.GetTask)
-	app.Put("/tasks/:id", h.UpdateTask)
-	app.Delete("/tasks/:id", h.DeleteTask)
+	legacy.Get("/tasks", h.ListTasks)
+	legacy.Post("/tasks", h.CreateTask)
+	legacy.Get("/tasks/:id", h.GetTask)
+	legacy.Put("/tasks/:id", h.UpdateTask)
+	legacy.Delete("/tasks/:id", h.DeleteTask)
+	legacy.Post("/tasks/:id/comments", h.AddTaskComment)
 
-	app.Get("/kanban", h.GetKanban)
-	app.Put("/kanban/move", h.MoveTaskKanban)
+	legacy.Get("/kanban", h.GetKanban)
+	legacy.Put("/kanban/move", h.MoveTaskKanban)
 
-	app.Get("/analytics/dashboard", h.GetDashboard)
-	app.Get("/analytics/employee/:id", h.GetEmployeeAnalytics)
-	app.Get("/analytics/employee/:id/by-category", h.GetEmployeeAnalyticsByCategory)
+	legacy.Get("/analytics/dashboard", h.GetDashboard)
+	legacy.Get("/analytics/employee/:id", h.GetEmployeeAnalytics)
+	legacy.Get("/analytics/employee/:id/by-category", h.GetEmployeeAnalyticsByCategory)
 
-	app.Get("/connector/status", h.ConnectorStatus)
-	app.Post("/ad/sync", h.SyncADUsers)
+	legacy.Get("/connector/status", h.ConnectorStatus)
+	legacy.Post("/ad/sync", h.SyncADUsers)
 	app.Post("/ad/authenticate", h.AuthenticateAD)
 
 	// WebSocket for messenger

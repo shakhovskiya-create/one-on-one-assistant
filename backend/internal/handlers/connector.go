@@ -34,9 +34,12 @@ func (h *Handler) ConnectorStatus(c *fiber.Ctx) error {
 		"connected":            h.Connector.IsConnected(),
 		"pending_requests":     0,
 		"ad_status":            adStatus,
+		"ad_sync_enabled":      false,
+		"last_sync":            "",
 		"employee_count":       employeeCount,
 		"calendar_integration": "ews",
 		"ews_url":              h.Config.EWSURL,
+		"ews_configured":       h.Config.EWSURL != "",
 	})
 }
 

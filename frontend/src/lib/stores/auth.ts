@@ -53,7 +53,12 @@ function createAuthStore() {
 
 	async function fetchSubordinates(userId: string) {
 		try {
-			const res = await fetch(`${API_URL}/api/v1/ad/subordinates/${userId}`);
+			const authToken = browser ? localStorage.getItem('auth_token') : null;
+			const res = await fetch(`${API_URL}/api/v1/ad/subordinates/${userId}`, {
+				headers: {
+					...(authToken && authToken !== 'authenticated' ? { 'Authorization': `Bearer ${authToken}` } : {})
+				}
+			});
 			if (res.ok) {
 				const data = await res.json();
 				update(state => ({ ...state, subordinates: data || [] }));
@@ -107,9 +112,13 @@ function createAuthStore() {
 
 	async function changePassword(userId: string, oldPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
 		try {
+			const authToken = browser ? localStorage.getItem('auth_token') : null;
 			const res = await fetch(`${API_URL}/api/v1/users/change-password`, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: {
+					'Content-Type': 'application/json',
+					...(authToken && authToken !== 'authenticated' ? { 'Authorization': `Bearer ${authToken}` } : {})
+				},
 				body: JSON.stringify({
 					user_id: userId,
 					old_password: oldPassword,

@@ -43,7 +43,7 @@
 		}
 		try {
 			const result = await connectorApi.authenticate(credentials.username, credentials.password);
-			if (result.success) {
+			if (result.authenticated) {
 				alert('Аутентификация успешна');
 			} else {
 				alert('Ошибка аутентификации');
