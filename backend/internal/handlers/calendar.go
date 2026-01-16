@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ekf/one-on-one-backend/internal/models"
 	"github.com/ekf/one-on-one-backend/internal/utils"
 	"github.com/gofiber/fiber/v2"
 )
@@ -263,14 +264,9 @@ func (h *Handler) SyncCalendar(c *fiber.Ctx) error {
 		req.DaysForward = 30
 	}
 
-	// Get employee info
-	var employees []struct {
-		ID      string `json:"id"`
-		Email   string `json:"email"`
-		ADLogin string `json:"ad_login"`
-		Name    string `json:"name"`
-	}
-	err := h.DB.From("employees").Select("id, email, ad_login, name").Eq("id", req.EmployeeID).Limit(1).Execute(&employees)
+	// Get employee info including encrypted_password
+	var employees []models.Employee
+	err := h.DB.From("employees").Select("*").Eq("id", req.EmployeeID).Limit(1).Execute(&employees)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Ошибка базы данных: " + err.Error(), "employee_id": req.EmployeeID})
 	}
@@ -280,13 +276,13 @@ func (h *Handler) SyncCalendar(c *fiber.Ctx) error {
 	employee := employees[0]
 
 	// Determine the email to use for EWS
-	ewsEmail := employee.Email
-	if ewsEmail == "" && strings.Contains(employee.ADLogin, "@") {
-		ewsEmail = employee.ADLogin
-	}
-	// If still no email, construct from ad_login
-	if ewsEmail == "" && employee.ADLogin != "" {
-		ewsEmail = employee.ADLogin + "@ekf.su"
+	var ewsEmail string
+	if employee.Email != "" {
+		ewsEmail = employee.Email
+	} else if employee.ADLogin != nil && strings.Contains(*employee.ADLogin, "@") {
+		ewsEmail = *employee.ADLogin
+	} else if employee.ADLogin != nil && *employee.ADLogin != "" {
+		ewsEmail = *employee.ADLogin + "@ekf.su"
 	}
 
 	if ewsEmail == "" {
@@ -300,10 +296,28 @@ func (h *Handler) SyncCalendar(c *fiber.Ctx) error {
 	var events interface{}
 	var getErr error
 
-	// Try connector first - uses service account credentials
+	// Try connector first - use user's own credentials if available
 	if h.Connector.IsConnected() {
+		// Get user's encrypted password for EWS authentication
+		var username, password string
+		if employee.EncryptedPassword != nil && *employee.EncryptedPassword != "" {
+			// Decrypt user's password
+			decrypted, err := utils.DecryptPassword(*employee.EncryptedPassword, h.Config.JWTSecret)
+			if err == nil {
+				username = "ekfgroup\\" + *employee.ADLogin
+				password = decrypted
+				log.Printf("SyncCalendar: Using user's own credentials for %s", ewsEmail)
+			} else {
+				log.Printf("ERROR: Failed to decrypt password for %s: %v", ewsEmail, err)
+			}
+		} else {
+			log.Printf("WARNING: No encrypted password for %s in SyncCalendar", ewsEmail)
+		}
+
 		result, err := h.Connector.SendCommand("sync_calendar", map[string]interface{}{
 			"email":        ewsEmail,
+			"username":     username,
+			"password":     password,
 			"days_back":    req.DaysBack,
 			"days_forward": req.DaysForward,
 		}, 120*time.Second)

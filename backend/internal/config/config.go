@@ -14,6 +14,13 @@ type Config struct {
 	YandexAPIKey     string
 	YandexFolderID   string
 	ConnectorAPIKey  string
+	// AD Configuration
+	ADURL          string // LDAP URL (e.g., ldap://172.20.0.33:389)
+	ADBaseDN       string // Base DN (e.g., OU=EKF-USERS,DC=ekfgroup,DC=ru)
+	ADBindUser     string // Bind user for LDAP queries
+	ADBindPassword string // Bind password
+	ADSkipVerify   bool   // Skip TLS verification
+	// EWS Configuration
 	EWSURL           string
 	EWSDomain        string
 	EWSUsername      string // Service account for EWS
@@ -36,6 +43,13 @@ func Load() *Config {
 		YandexAPIKey:     getEnv("YANDEX_API_KEY", ""),
 		YandexFolderID:   getEnv("YANDEX_FOLDER_ID", ""),
 		ConnectorAPIKey:  getEnv("CONNECTOR_API_KEY", ""),
+		// AD Configuration
+		ADURL:          getEnv("AD_URL", "ldap://172.20.0.33:389"),
+		ADBaseDN:       getEnv("AD_BASE_DN", "OU=EKF-USERS,DC=ekfgroup,DC=ru"),
+		ADBindUser:     getEnv("AD_BIND_USER", ""),
+		ADBindPassword: getEnv("AD_BIND_PASSWORD", ""),
+		ADSkipVerify:   getEnv("AD_SKIP_VERIFY", "true") == "true",
+		// EWS Configuration
 		EWSURL:           getEnv("EWS_URL", "https://post.ekf.su/EWS/Exchange.asmx"),
 		EWSDomain:        getEnv("EWS_DOMAIN", "ekfgroup"),
 		EWSUsername:      getEnv("EWS_USERNAME", ""),

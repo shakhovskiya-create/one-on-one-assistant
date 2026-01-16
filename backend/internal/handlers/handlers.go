@@ -1,13 +1,14 @@
 package handlers
 
 import (
+	"github.com/ekf/one-on-one-backend/internal/ad"
 	"github.com/ekf/one-on-one-backend/internal/config"
 	"github.com/ekf/one-on-one-backend/internal/database"
+	"github.com/ekf/one-on-one-backend/internal/ews"
 	"github.com/ekf/one-on-one-backend/internal/services"
 	"github.com/ekf/one-on-one-backend/pkg/ai"
 	"github.com/ekf/one-on-one-backend/pkg/auth"
 	"github.com/ekf/one-on-one-backend/pkg/camunda"
-	"github.com/ekf/one-on-one-backend/pkg/ews"
 	"github.com/ekf/one-on-one-backend/pkg/telegram"
 )
 
@@ -16,6 +17,7 @@ type Handler struct {
 	Config    *config.Config
 	DB        *database.SupabaseClient
 	AI        *ai.Client
+	AD        *ad.Client
 	EWS       *ews.Client
 	Telegram  *telegram.Client
 	Connector *services.ConnectorManager
@@ -37,7 +39,10 @@ func NewHandler(cfg *config.Config) *Handler {
 		cfg.YandexFolderID,
 	)
 
+	// Initialize AD and EWS clients for direct access (no connector needed)
+	adClient := ad.NewClient(cfg.ADURL, cfg.ADBaseDN, cfg.ADBindUser, cfg.ADBindPassword, cfg.ADSkipVerify)
 	ewsClient := ews.NewClient(cfg.EWSURL, cfg.EWSDomain, cfg.EWSSkipTLSVerify)
+
 	tgClient := telegram.NewClient(cfg.TelegramBotToken)
 	connector := services.NewConnectorManager(cfg.ConnectorAPIKey)
 	jwtManager := auth.NewJWTManager(cfg.JWTSecret, 24) // 24 hours expiration
@@ -47,6 +52,7 @@ func NewHandler(cfg *config.Config) *Handler {
 		Config:    cfg,
 		DB:        db,
 		AI:        aiClient,
+		AD:        adClient,
 		EWS:       ewsClient,
 		Telegram:  tgClient,
 		Connector: connector,
