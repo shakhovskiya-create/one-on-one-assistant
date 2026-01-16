@@ -113,11 +113,12 @@ export const calendar = {
 // Messenger
 export const messenger = {
 	listConversations: (userId: string) => request<Conversation[]>(`/conversations?user_id=${userId}`),
-	getConversation: (id: string, limit?: number, offset?: number) => {
+	getConversation: (id: string, userId: string, limit?: number, offset?: number) => {
 		const params = new URLSearchParams();
+		params.append('user_id', userId); // Required for access control
 		if (limit) params.append('limit', limit.toString());
 		if (offset) params.append('offset', offset.toString());
-		return request<{ conversation: Conversation; messages: Message[] }>(`/conversations/${id}?${params}`);
+		return request<{ conversation: Conversation; participants: Employee[]; messages: Message[] }>(`/conversations/${id}?${params}`);
 	},
 	createConversation: (data: { type?: string; name?: string; participants: string[] }) =>
 		request<Conversation>('/conversations', { method: 'POST', body: data }),
@@ -228,16 +229,27 @@ export interface Task {
 	title: string;
 	description?: string;
 	status: string;
-	priority?: string;
+	priority?: number;
 	flag_color?: string;
 	assignee_id?: string;
 	assignee_name?: string;
 	project_id?: string;
+	parent_id?: string;
+	start_date?: string;
 	due_date?: string;
+	progress?: number;
 	is_epic?: boolean;
 	assignee?: Employee;
 	project?: Project;
 	tags?: { name: string; color: string }[];
+	dependencies?: TaskDependency[];
+}
+
+export interface TaskDependency {
+	id: string;
+	task_id: string;
+	depends_on_task_id: string;
+	dependency_type: string;
 }
 
 export interface KanbanBoard {

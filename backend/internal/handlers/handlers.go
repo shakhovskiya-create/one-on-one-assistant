@@ -33,7 +33,7 @@ func NewHandler(cfg *config.Config) *Handler {
 		cfg.YandexFolderID,
 	)
 
-	ewsClient := ews.NewClient(cfg.EWSURL, cfg.EWSDomain)
+	ewsClient := ews.NewClient(cfg.EWSURL, cfg.EWSDomain, cfg.EWSSkipTLSVerify)
 	tgClient := telegram.NewClient(cfg.TelegramBotToken)
 	connector := services.NewConnectorManager(cfg.ConnectorAPIKey)
 

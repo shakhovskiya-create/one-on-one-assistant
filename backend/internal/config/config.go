@@ -5,17 +5,19 @@ import (
 )
 
 type Config struct {
-	Port              string
-	SupabaseURL       string
-	SupabaseKey       string
-	OpenAIKey         string
-	AnthropicKey      string
-	TelegramBotToken  string
-	YandexAPIKey      string
-	YandexFolderID    string
-	ConnectorAPIKey   string
-	EWSURL            string
-	EWSDomain         string
+	Port               string
+	SupabaseURL        string
+	SupabaseKey        string
+	OpenAIKey          string
+	AnthropicKey       string
+	TelegramBotToken   string
+	YandexAPIKey       string
+	YandexFolderID     string
+	ConnectorAPIKey    string
+	EWSURL             string
+	EWSDomain          string
+	EWSSkipTLSVerify   bool   // Only for internal/self-signed certs
+	JWTSecret          string // For signing auth tokens
 }
 
 func Load() *Config {
@@ -31,6 +33,8 @@ func Load() *Config {
 		ConnectorAPIKey:   getEnv("CONNECTOR_API_KEY", ""),
 		EWSURL:            getEnv("EWS_URL", "https://post.ekf.su/EWS/Exchange.asmx"),
 		EWSDomain:         getEnv("EWS_DOMAIN", "ekfgroup"),
+		EWSSkipTLSVerify:  getEnv("EWS_SKIP_TLS_VERIFY", "false") == "true",
+		JWTSecret:         getEnv("JWT_SECRET", "change-me-in-production"),
 	}
 }
 

@@ -117,7 +117,7 @@
 		currentConversation = conv;
 		loadingMessages = true;
 		try {
-			const result = await messenger.getConversation(conv.id);
+			const result = await messenger.getConversation(conv.id, $user!.id);
 			messages = result.messages || [];
 			// Update currentConversation with participants from API
 			if (result.participants) {

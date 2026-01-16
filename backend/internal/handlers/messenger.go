@@ -286,6 +286,7 @@ func (h *Handler) GetConversation(c *fiber.Ctx) error {
 	}
 
 	id := c.Params("id")
+	userID := c.Query("user_id") // Required for access control
 	limit := c.QueryInt("limit", 50)
 	offset := c.QueryInt("offset", 0)
 
@@ -303,6 +304,18 @@ func (h *Handler) GetConversation(c *fiber.Ctx) error {
 	h.DB.From("conversation_participants").
 		Select("employee_id, employees(id, name, photo_base64, position)").
 		Eq("conversation_id", id).Execute(&participantsData)
+
+	// Access control: verify user is a participant
+	isParticipant := false
+	for _, p := range participantsData {
+		if p.EmployeeID == userID {
+			isParticipant = true
+			break
+		}
+	}
+	if !isParticipant && userID != "" {
+		return c.Status(403).JSON(fiber.Map{"error": "Access denied: not a participant"})
+	}
 
 	participants := make([]models.Employee, len(participantsData))
 	for i, p := range participantsData {
@@ -449,6 +462,20 @@ func (h *Handler) SendMessage(c *fiber.Ctx) error {
 
 	if req.Content == "" || req.ConversationID == "" || req.SenderID == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "content, conversation_id, and sender_id required"})
+	}
+
+	// Access control: verify sender is a participant
+	var participantCheck []struct {
+		EmployeeID string `json:"employee_id"`
+	}
+	h.DB.From("conversation_participants").
+		Select("employee_id").
+		Eq("conversation_id", req.ConversationID).
+		Eq("employee_id", req.SenderID).
+		Execute(&participantCheck)
+
+	if len(participantCheck) == 0 {
+		return c.Status(403).JSON(fiber.Map{"error": "Access denied: not a participant"})
 	}
 
 	// Create message
