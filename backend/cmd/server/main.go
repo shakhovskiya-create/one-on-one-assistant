@@ -87,12 +87,12 @@ func main() {
 	api.Get("/kanban", h.GetKanban)
 	api.Put("/kanban/move", h.MoveTaskKanban)
 
-	// Calendar (EWS)
-	api.Post("/calendar/:id", h.GetCalendar)
-	api.Get("/calendar/:id/simple", h.GetCalendarSimple)
+	// Calendar (EWS) - specific routes MUST come before parametric routes
+	api.Post("/calendar/sync", h.SyncCalendar)
 	api.Post("/calendar/free-slots", h.FindFreeSlots)
 	api.Get("/calendar/free-slots/simple", h.FreeSlotsSimple)
-	api.Post("/calendar/sync", h.SyncCalendar)
+	api.Post("/calendar/:id", h.GetCalendar)
+	api.Get("/calendar/:id/simple", h.GetCalendarSimple)
 
 	// Analytics
 	api.Get("/analytics/dashboard", h.GetDashboard)
