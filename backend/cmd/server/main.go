@@ -105,6 +105,12 @@ func main() {
 	api.Post("/ad/authenticate", h.AuthenticateAD)
 	api.Get("/ad/subordinates/:id", h.GetSubordinates)
 
+	// Messenger
+	api.Get("/conversations", h.ListConversations)
+	api.Post("/conversations", h.CreateConversation)
+	api.Get("/conversations/:id", h.GetConversation)
+	api.Post("/messages", h.SendMessage)
+
 	// Legacy routes (for backward compatibility)
 	app.Get("/employees", h.ListEmployees)
 	app.Post("/employees", h.CreateEmployee)
@@ -140,6 +146,15 @@ func main() {
 	app.Get("/connector/status", h.ConnectorStatus)
 	app.Post("/ad/sync", h.SyncADUsers)
 	app.Post("/ad/authenticate", h.AuthenticateAD)
+
+	// WebSocket for messenger
+	app.Use("/ws/messenger", func(c *fiber.Ctx) error {
+		if websocket.IsWebSocketUpgrade(c) {
+			return c.Next()
+		}
+		return fiber.ErrUpgradeRequired
+	})
+	app.Get("/ws/messenger", websocket.New(h.MessengerWebSocket))
 
 	// WebSocket for connector
 	app.Use("/ws/connector", func(c *fiber.Ctx) error {
