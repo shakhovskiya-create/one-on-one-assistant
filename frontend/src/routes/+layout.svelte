@@ -46,13 +46,21 @@
 {:else if $page.url.pathname === '/login'}
 	{@render children()}
 {:else if $isAuthenticated}
-	<div class="flex min-h-screen">
-		<Sidebar user={$user} subordinates={$subordinates} onLogout={handleLogout} />
+	<div class="h-screen overflow-hidden">
+		<!-- Fixed Sidebar -->
+		<aside class="fixed left-0 top-0 h-full w-64 z-40">
+			<Sidebar user={$user} subordinates={$subordinates} onLogout={handleLogout} />
+		</aside>
 
-		<div class="flex-1 flex flex-col">
-			<Header user={$user} />
+		<!-- Main content area -->
+		<div class="ml-64 h-full flex flex-col">
+			<!-- Fixed Header -->
+			<header class="sticky top-0 z-30 bg-white">
+				<Header user={$user} onProfileClick={() => goto('/profile')} />
+			</header>
 
-			<main class="flex-1 p-6 bg-gray-50">
+			<!-- Scrollable content -->
+			<main class="flex-1 overflow-y-auto p-6 bg-gray-50">
 				{@render children()}
 			</main>
 		</div>

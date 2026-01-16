@@ -1,556 +1,533 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { subordinates, user } from '$lib/stores/auth';
-	import { tasks as tasksApi, projects as projectsApi } from '$lib/api/client';
-	import type { KanbanBoard, Task, Project } from '$lib/api/client';
+	import { api } from '$lib/api/client';
+	import { user, subordinates } from '$lib/stores/auth';
 
-	// View state
-	type ViewMode = 'board' | 'list' | 'table';
-	let viewMode: ViewMode = $state('board');
+	// Types
+	interface Task {
+		id: string;
+		title: string;
+		description?: string;
+		status: 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
+		priority?: 'low' | 'medium' | 'high' | 'urgent';
+		assignee_id?: string;
+		assignee?: any;
+		project_id?: string;
+		project?: any;
+		epic_id?: string;
+		epic?: string;
+		tags?: string[];
+		due_date?: string;
+		parent_id?: string;
+		created_at: string;
+		comments?: Comment[];
+	}
 
-	// Data
-	let kanban: KanbanBoard | null = $state(null);
-	let tasksList: Task[] = $state([]);
+	interface Comment {
+		id: string;
+		task_id: string;
+		user_id: string;
+		user?: any;
+		content: string;
+		created_at: string;
+	}
+
+	interface Project {
+		id: string;
+		name: string;
+		color?: string;
+	}
+
+	// State
+	let tasks: Task[] = $state([]);
 	let projects: Project[] = $state([]);
+	let employees: any[] = $state([]);
 	let loading = $state(true);
+	let view = $state<'board' | 'list' | 'timeline'>('board');
 
 	// Filters
-	let filterEmployee = $state('');
-	let filterProject = $state('');
-	let filterStatus = $state('');
-	let filterPriority = $state('');
+	let filterProject = $state('all');
+	let filterAssignee = $state('all');
+	let filterPriority = $state('all');
+	let filterEpic = $state('all');
 	let searchQuery = $state('');
 
-	// Drag state
-	let draggedTask: Task | null = $state(null);
-
-	// Modal state
+	// Modals
 	let showCreateModal = $state(false);
 	let showDetailModal = $state(false);
 	let selectedTask: Task | null = $state(null);
+
+	// New task form
 	let newTask = $state({
 		title: '',
 		description: '',
-		priority: 'medium',
-		status: 'todo',
+		status: 'backlog' as const,
+		priority: 'medium' as const,
 		assignee_id: '',
 		project_id: '',
-		due_date: '',
-		flag_color: ''
+		epic: '',
+		tags: [] as string[],
+		due_date: ''
 	});
 
-	// Columns configuration
+	// Comment
+	let newComment = $state('');
+
+	// Available tags
+	const availableTags = ['bug', 'feature', 'improvement', 'urgent', 'blocked', 'needs-review', 'design', 'frontend', 'backend', 'devops'];
+
+	// Columns for kanban
 	const columns = [
-		{ key: 'backlog', label: 'Бэклог', color: 'bg-gray-100', icon: '📋' },
-		{ key: 'todo', label: 'К выполнению', color: 'bg-blue-50', icon: '📝' },
-		{ key: 'in_progress', label: 'В работе', color: 'bg-yellow-50', icon: '🔄' },
-		{ key: 'review', label: 'На проверке', color: 'bg-purple-50', icon: '👀' },
-		{ key: 'done', label: 'Выполнено', color: 'bg-green-50', icon: '✅' }
+		{ id: 'backlog', label: 'Backlog', color: 'bg-gray-100' },
+		{ id: 'todo', label: 'К выполнению', color: 'bg-blue-50' },
+		{ id: 'in_progress', label: 'В работе', color: 'bg-yellow-50' },
+		{ id: 'review', label: 'На проверке', color: 'bg-purple-50' },
+		{ id: 'done', label: 'Готово', color: 'bg-green-50' }
 	];
 
-	const priorities = [
-		{ key: 'high', label: 'Высокий', color: 'text-red-600 bg-red-50' },
-		{ key: 'medium', label: 'Средний', color: 'text-yellow-600 bg-yellow-50' },
-		{ key: 'low', label: 'Низкий', color: 'text-green-600 bg-green-50' }
-	];
+	// Epics (derived from tasks)
+	let epics = $derived([...new Set(tasks.map(t => t.epic).filter(Boolean))]);
 
-	const flagColors = [
-		{ key: '', label: 'Без флага', color: 'bg-gray-200' },
-		{ key: 'red', label: 'Красный', color: 'bg-red-500' },
-		{ key: 'orange', label: 'Оранжевый', color: 'bg-orange-500' },
-		{ key: 'yellow', label: 'Жёлтый', color: 'bg-yellow-500' },
-		{ key: 'green', label: 'Зелёный', color: 'bg-green-500' },
-		{ key: 'blue', label: 'Синий', color: 'bg-blue-500' },
-		{ key: 'purple', label: 'Фиолетовый', color: 'bg-purple-500' }
-	];
-
-	// Filtered tasks for list/table view
-	const filteredTasks = $derived(() => {
-		let result = tasksList;
-		if (filterEmployee) {
-			result = result.filter(t => t.assignee_id === filterEmployee);
-		}
-		if (filterProject) {
-			result = result.filter(t => t.project_id === filterProject);
-		}
-		if (filterStatus) {
-			result = result.filter(t => t.status === filterStatus);
-		}
-		if (filterPriority) {
-			result = result.filter(t => t.priority === filterPriority);
-		}
-		if (searchQuery) {
-			const query = searchQuery.toLowerCase();
-			result = result.filter(t =>
-				t.title.toLowerCase().includes(query) ||
-				t.description?.toLowerCase().includes(query)
-			);
-		}
-		return result;
+	// Filtered tasks
+	let filteredTasks = $derived(() => {
+		return tasks.filter(t => {
+			if (filterProject !== 'all' && t.project_id !== filterProject) return false;
+			if (filterAssignee !== 'all' && t.assignee_id !== filterAssignee) return false;
+			if (filterPriority !== 'all' && t.priority !== filterPriority) return false;
+			if (filterEpic !== 'all' && t.epic !== filterEpic) return false;
+			if (searchQuery) {
+				const q = searchQuery.toLowerCase();
+				const inTitle = t.title.toLowerCase().includes(q);
+				const inDesc = t.description?.toLowerCase().includes(q);
+				const inTags = t.tags?.some(tag => tag.toLowerCase().includes(q));
+				if (!inTitle && !inDesc && !inTags) return false;
+			}
+			return true;
+		});
 	});
+
+	// Tasks by column
+	function getTasksByStatus(status: string) {
+		return filteredTasks().filter(t => t.status === status);
+	}
 
 	onMount(async () => {
-		await Promise.all([loadData(), loadProjects()]);
+		await loadData();
 	});
 
 	async function loadData() {
 		loading = true;
 		try {
-			const params: { assignee_id?: string; project_id?: string } = {};
-			if (filterEmployee) params.assignee_id = filterEmployee;
-			if (filterProject) params.project_id = filterProject;
-
-			if (viewMode === 'board') {
-				kanban = await tasksApi.getKanban(params);
-			} else {
-				tasksList = await tasksApi.list({ ...params, status: filterStatus || undefined });
-			}
+			const [tasksRes, projectsRes, employeesRes] = await Promise.all([
+				api.tasks.list(),
+				api.projects.list().catch(() => []),
+				api.employees.list().catch(() => [])
+			]);
+			tasks = tasksRes || [];
+			projects = projectsRes || [];
+			employees = employeesRes || [];
 		} catch (e) {
-			console.error(e);
-		} finally {
-			loading = false;
+			console.error('Error loading data:', e);
 		}
-	}
-
-	async function loadProjects() {
-		try {
-			projects = await projectsApi.list();
-		} catch (e) {
-			console.error(e);
-		}
-	}
-
-	function getTasksByStatus(status: string): Task[] {
-		if (!kanban) return [];
-		return (kanban as any)[status] || [];
-	}
-
-	function handleDragStart(task: Task) {
-		draggedTask = task;
-	}
-
-	function handleDragEnd() {
-		draggedTask = null;
-	}
-
-	async function handleDrop(newStatus: string) {
-		if (!draggedTask || draggedTask.status === newStatus) {
-			draggedTask = null;
-			return;
-		}
-
-		const taskId = draggedTask.id;
-		draggedTask = null;
-
-		try {
-			await tasksApi.moveKanban(taskId, newStatus);
-			await loadData();
-		} catch (e) {
-			console.error(e);
-		}
+		loading = false;
 	}
 
 	async function createTask() {
-		if (!newTask.title.trim()) return;
-
 		try {
-			await tasksApi.create({
-				title: newTask.title,
-				description: newTask.description,
-				priority: newTask.priority,
-				status: newTask.status,
-				assignee_id: newTask.assignee_id || undefined,
-				project_id: newTask.project_id || undefined,
-				due_date: newTask.due_date || undefined,
-				flag_color: newTask.flag_color || undefined
-			});
+			const task = await api.tasks.create(newTask);
+			tasks = [task, ...tasks];
 			showCreateModal = false;
 			resetNewTask();
-			await loadData();
 		} catch (e) {
-			console.error(e);
+			console.error('Error creating task:', e);
 		}
 	}
 
 	async function updateTask(task: Task) {
 		try {
-			await tasksApi.update(task.id, task);
-			await loadData();
+			const updated = await api.tasks.update(task.id, task);
+			tasks = tasks.map(t => t.id === task.id ? updated : t);
 		} catch (e) {
-			console.error(e);
+			console.error('Error updating task:', e);
 		}
 	}
 
-	async function deleteTask(taskId: string) {
-		if (!confirm('Удалить задачу?')) return;
-		try {
-			await tasksApi.delete(taskId);
-			showDetailModal = false;
-			selectedTask = null;
-			await loadData();
-		} catch (e) {
-			console.error(e);
+	async function moveTask(taskId: string, newStatus: string) {
+		const task = tasks.find(t => t.id === taskId);
+		if (task) {
+			task.status = newStatus as Task['status'];
+			await updateTask(task);
 		}
+	}
+
+	async function addComment() {
+		if (!selectedTask || !newComment.trim()) return;
+		const comment: Comment = {
+			id: Date.now().toString(),
+			task_id: selectedTask.id,
+			user_id: $user?.id || '',
+			user: $user,
+			content: newComment,
+			created_at: new Date().toISOString()
+		};
+		selectedTask.comments = [...(selectedTask.comments || []), comment];
+		newComment = '';
 	}
 
 	function resetNewTask() {
 		newTask = {
 			title: '',
 			description: '',
+			status: 'backlog',
 			priority: 'medium',
-			status: 'todo',
 			assignee_id: '',
 			project_id: '',
-			due_date: '',
-			flag_color: ''
+			epic: '',
+			tags: [],
+			due_date: ''
 		};
 	}
 
 	function openTaskDetail(task: Task) {
-		selectedTask = { ...task };
+		selectedTask = { ...task, comments: task.comments || [] };
 		showDetailModal = true;
 	}
 
-	function getPriorityClass(priority: string): string {
-		switch (priority) {
-			case 'high': return 'border-l-red-500';
-			case 'medium': return 'border-l-yellow-500';
-			case 'low': return 'border-l-green-500';
-			default: return 'border-l-gray-300';
+	function toggleTag(tag: string) {
+		if (newTask.tags.includes(tag)) {
+			newTask.tags = newTask.tags.filter(t => t !== tag);
+		} else {
+			newTask.tags = [...newTask.tags, tag];
 		}
 	}
 
-	function getPriorityLabel(priority: string): string {
-		return priorities.find(p => p.key === priority)?.label || priority;
+	function getAssigneeName(id: string) {
+		const emp = employees.find(e => e.id === id);
+		return emp?.name || 'Не назначен';
 	}
 
-	function getStatusLabel(status: string): string {
-		return columns.find(c => c.key === status)?.label || status;
+	function getProjectName(id: string) {
+		const proj = projects.find(p => p.id === id);
+		return proj?.name || '';
 	}
 
-	function formatDate(dateStr: string | undefined): string {
-		if (!dateStr) return '';
-		return new Date(dateStr).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+	function formatDate(dateStr: string) {
+		return new Date(dateStr).toLocaleDateString('ru-RU', {
+			day: 'numeric',
+			month: 'short'
+		});
 	}
 
-	function isOverdue(task: Task): boolean {
-		if (!task.due_date || task.status === 'done') return false;
-		return new Date(task.due_date) < new Date();
+	function formatDateTime(dateStr: string) {
+		return new Date(dateStr).toLocaleString('ru-RU', {
+			day: 'numeric',
+			month: 'short',
+			hour: '2-digit',
+			minute: '2-digit'
+		});
 	}
 
-	$effect(() => {
-		loadData();
-	});
+	function parseContent(content: string) {
+		return content.replace(/@(\w+)/g, '<span class="text-blue-600 font-medium">@$1</span>');
+	}
+
+	// Drag and drop
+	let draggedTask: Task | null = $state(null);
+
+	function handleDragStart(e: DragEvent, task: Task) {
+		draggedTask = task;
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+		}
+	}
+
+	function handleDragOver(e: DragEvent) {
+		e.preventDefault();
+		if (e.dataTransfer) {
+			e.dataTransfer.dropEffect = 'move';
+		}
+	}
+
+	function handleDrop(e: DragEvent, status: string) {
+		e.preventDefault();
+		if (draggedTask && draggedTask.status !== status) {
+			moveTask(draggedTask.id, status);
+		}
+		draggedTask = null;
+	}
+
+	function getPriorityColor(priority: string) {
+		switch (priority) {
+			case 'urgent': return 'bg-red-500';
+			case 'high': return 'bg-orange-500';
+			case 'medium': return 'bg-yellow-500';
+			case 'low': return 'bg-green-500';
+			default: return 'bg-gray-400';
+		}
+	}
 </script>
 
 <svelte:head>
 	<title>Задачи - EKF Team Hub</title>
 </svelte:head>
 
-<div class="space-y-6">
+<div class="h-full flex flex-col -m-6">
 	<!-- Header -->
-	<div class="flex items-center justify-between flex-wrap gap-4">
-		<h1 class="text-2xl font-bold text-gray-900">Задачи</h1>
-		<div class="flex items-center gap-3">
-			<!-- View toggle -->
-			<div class="flex bg-gray-100 rounded-lg p-1">
-				{#each [
-					{ key: 'board', label: 'Доска', icon: '▤' },
-					{ key: 'list', label: 'Список', icon: '≡' },
-					{ key: 'table', label: 'Таблица', icon: '⊞' }
-				] as view}
+	<div class="bg-white border-b px-6 py-4">
+		<div class="flex items-center justify-between mb-4">
+			<div class="flex items-center gap-4">
+				<h1 class="text-2xl font-bold text-gray-900">Задачи</h1>
+				<div class="flex bg-gray-100 rounded-lg p-1">
 					<button
-						onclick={() => { viewMode = view.key as ViewMode; loadData(); }}
-						class="px-3 py-1.5 rounded text-sm font-medium transition-colors
-							{viewMode === view.key ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}"
+						onclick={() => view = 'board'}
+						class="px-3 py-1.5 text-sm rounded-md transition-colors {view === 'board' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}"
 					>
-						<span class="mr-1">{view.icon}</span>
-						{view.label}
+						Доска
 					</button>
-				{/each}
+					<button
+						onclick={() => view = 'list'}
+						class="px-3 py-1.5 text-sm rounded-md transition-colors {view === 'list' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}"
+					>
+						Список
+					</button>
+					<button
+						onclick={() => view = 'timeline'}
+						class="px-3 py-1.5 text-sm rounded-md transition-colors {view === 'timeline' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}"
+					>
+						Эпики
+					</button>
+				</div>
 			</div>
 			<button
 				onclick={() => showCreateModal = true}
 				class="px-4 py-2 bg-ekf-red text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
 			>
 				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
 				</svg>
-				Новая задача
+				Создать задачу
 			</button>
 		</div>
-	</div>
 
-	<!-- Filters -->
-	<div class="bg-white rounded-lg shadow-sm border p-4">
-		<div class="flex flex-wrap gap-4">
-			<!-- Search -->
-			<div class="flex-1 min-w-[200px]">
-				<div class="relative">
-					<svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-					</svg>
-					<input
-						type="text"
-						bind:value={searchQuery}
-						placeholder="Поиск задач..."
-						class="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-ekf-red focus:border-transparent"
-					/>
-				</div>
+		<!-- Filters -->
+		<div class="flex flex-wrap gap-3">
+			<div class="relative">
+				<svg class="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+				</svg>
+				<input
+					type="text"
+					placeholder="Поиск задач..."
+					bind:value={searchQuery}
+					class="pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-ekf-red focus:border-transparent w-64"
+				/>
 			</div>
-
-			<!-- Employee filter -->
-			<select
-				bind:value={filterEmployee}
-				class="border rounded-lg px-3 py-2 focus:ring-2 focus:ring-ekf-red focus:border-transparent"
-			>
-				<option value="">Все исполнители</option>
-				{#each $subordinates as emp}
-					<option value={emp.id}>{emp.name}</option>
-				{/each}
-			</select>
-
-			<!-- Project filter -->
-			<select
-				bind:value={filterProject}
-				class="border rounded-lg px-3 py-2 focus:ring-2 focus:ring-ekf-red focus:border-transparent"
-			>
-				<option value="">Все проекты</option>
+			<select bind:value={filterProject} class="px-3 py-2 border border-gray-200 rounded-lg">
+				<option value="all">Все проекты</option>
 				{#each projects as project}
 					<option value={project.id}>{project.name}</option>
 				{/each}
 			</select>
-
-			<!-- Priority filter -->
-			<select
-				bind:value={filterPriority}
-				class="border rounded-lg px-3 py-2 focus:ring-2 focus:ring-ekf-red focus:border-transparent"
-			>
-				<option value="">Любой приоритет</option>
-				{#each priorities as p}
-					<option value={p.key}>{p.label}</option>
+			<select bind:value={filterEpic} class="px-3 py-2 border border-gray-200 rounded-lg">
+				<option value="all">Все эпики</option>
+				{#each epics as epic}
+					<option value={epic}>{epic}</option>
 				{/each}
 			</select>
-
-			{#if viewMode !== 'board'}
-				<!-- Status filter (only for list/table) -->
-				<select
-					bind:value={filterStatus}
-					class="border rounded-lg px-3 py-2 focus:ring-2 focus:ring-ekf-red focus:border-transparent"
-				>
-					<option value="">Все статусы</option>
-					{#each columns as col}
-						<option value={col.key}>{col.label}</option>
-					{/each}
-				</select>
-			{/if}
+			<select bind:value={filterAssignee} class="px-3 py-2 border border-gray-200 rounded-lg">
+				<option value="all">Все исполнители</option>
+				<option value={$user?.id}>Мои задачи</option>
+				{#each employees as emp}
+					<option value={emp.id}>{emp.name}</option>
+				{/each}
+			</select>
+			<select bind:value={filterPriority} class="px-3 py-2 border border-gray-200 rounded-lg">
+				<option value="all">Все приоритеты</option>
+				<option value="urgent">Срочный</option>
+				<option value="high">Высокий</option>
+				<option value="medium">Средний</option>
+				<option value="low">Низкий</option>
+			</select>
 		</div>
 	</div>
 
+	<!-- Content -->
 	{#if loading}
-		<div class="flex items-center justify-center h-64">
-			<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-ekf-red"></div>
+		<div class="flex-1 flex items-center justify-center">
+			<div class="text-gray-500">Загрузка задач...</div>
 		</div>
-	{:else if viewMode === 'board'}
-		<!-- Board View -->
-		<div class="grid grid-cols-5 gap-4 min-h-[600px]">
-			{#each columns as column}
-				<div
-					class="rounded-xl p-3 {column.color} min-h-full"
-					ondragover={(e) => e.preventDefault()}
-					ondrop={() => handleDrop(column.key)}
-				>
-					<div class="flex items-center justify-between mb-3 sticky top-0">
-						<div class="flex items-center gap-2">
-							<span>{column.icon}</span>
-							<h3 class="font-semibold text-gray-900">{column.label}</h3>
+	{:else if view === 'board'}
+		<div class="flex-1 overflow-x-auto p-6">
+			<div class="flex gap-4 h-full min-w-max">
+				{#each columns as column}
+					<div
+						class="w-80 flex flex-col rounded-xl {column.color}"
+						ondragover={handleDragOver}
+						ondrop={(e) => handleDrop(e, column.id)}
+					>
+						<div class="p-4 font-semibold text-gray-700 flex items-center justify-between">
+							<span>{column.label}</span>
+							<span class="text-sm bg-white/50 px-2 py-0.5 rounded-full">{getTasksByStatus(column.id).length}</span>
 						</div>
-						<span class="text-sm text-gray-500 bg-white px-2 py-0.5 rounded-full shadow-sm">
-							{getTasksByStatus(column.key).length}
-						</span>
-					</div>
-
-					<div class="space-y-2">
-						{#each getTasksByStatus(column.key) as task}
-							<div
-								class="bg-white rounded-lg p-3 shadow-sm border-l-4 cursor-pointer hover:shadow-md transition-all
-									{getPriorityClass(task.priority || 'medium')}
-									{draggedTask?.id === task.id ? 'opacity-50' : ''}"
-								draggable="true"
-								ondragstart={() => handleDragStart(task)}
-								ondragend={handleDragEnd}
-								onclick={() => openTaskDetail(task)}
-								role="button"
-								tabindex="0"
-							>
-								<!-- Flag -->
-								{#if task.flag_color}
-									<div class="w-full h-1 rounded-full mb-2 {flagColors.find(f => f.key === task.flag_color)?.color || 'bg-gray-200'}"></div>
-								{/if}
-
-								<h4 class="font-medium text-gray-900 text-sm mb-1 line-clamp-2">{task.title}</h4>
-
-								{#if task.description}
-									<p class="text-xs text-gray-500 line-clamp-2 mb-2">{task.description}</p>
-								{/if}
-
-								<div class="flex items-center justify-between text-xs">
-									<div class="flex items-center gap-2">
+						<div class="flex-1 overflow-y-auto p-2 space-y-2">
+							{#each getTasksByStatus(column.id) as task (task.id)}
+								<div
+									class="bg-white rounded-lg shadow-sm p-4 cursor-pointer hover:shadow-md transition-shadow"
+									draggable="true"
+									ondragstart={(e) => handleDragStart(e, task)}
+									onclick={() => openTaskDetail(task)}
+								>
+									<div class="flex items-start justify-between mb-2">
+										<div class="w-2 h-2 rounded-full {getPriorityColor(task.priority || 'medium')}"></div>
+										{#if task.epic}
+											<span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">{task.epic}</span>
+										{/if}
+									</div>
+									<h4 class="font-medium text-gray-900 mb-2">{task.title}</h4>
+									{#if task.description}
+										<p class="text-sm text-gray-500 mb-3 line-clamp-2">{task.description}</p>
+									{/if}
+									{#if task.tags && task.tags.length > 0}
+										<div class="flex flex-wrap gap-1 mb-3">
+											{#each task.tags as tag}
+												<span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{tag}</span>
+											{/each}
+										</div>
+									{/if}
+									<div class="flex items-center justify-between text-sm">
+										<div class="flex items-center gap-2">
+											{#if task.assignee_id}
+												<div class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium">
+													{getAssigneeName(task.assignee_id).charAt(0)}
+												</div>
+											{/if}
+											{#if task.project_id}
+												<span class="text-gray-500">{getProjectName(task.project_id)}</span>
+											{/if}
+										</div>
 										{#if task.due_date}
-											<span class="flex items-center gap-1 {isOverdue(task) ? 'text-red-600' : 'text-gray-500'}">
-												<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-												</svg>
-												{formatDate(task.due_date)}
-											</span>
+											<span class="text-gray-400">{formatDate(task.due_date)}</span>
 										{/if}
 									</div>
-									{#if task.assignee_name || task.assignee?.name}
-										<span class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs truncate max-w-[80px]">
-											{task.assignee_name || task.assignee?.name}
-										</span>
-									{/if}
 								</div>
-
-								{#if task.project?.name || task.tags?.length}
-									<div class="flex flex-wrap gap-1 mt-2">
-										{#if task.project?.name}
-											<span class="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">
-												{task.project.name}
-											</span>
-										{/if}
-										{#each task.tags || [] as tag}
-											<span class="text-xs px-1.5 py-0.5 rounded" style="background-color: {tag.color}20; color: {tag.color}">
-												{tag.name}
-											</span>
-										{/each}
-									</div>
-								{/if}
-							</div>
-						{/each}
-
-						{#if getTasksByStatus(column.key).length === 0}
-							<div class="text-center py-8 text-gray-400 text-sm">
-								Нет задач
-							</div>
-						{/if}
-					</div>
-				</div>
-			{/each}
-		</div>
-
-	{:else if viewMode === 'list'}
-		<!-- List View -->
-		<div class="bg-white rounded-lg shadow-sm border divide-y">
-			{#each filteredTasks() as task}
-				<div
-					class="p-4 hover:bg-gray-50 cursor-pointer flex items-center gap-4"
-					onclick={() => openTaskDetail(task)}
-					role="button"
-					tabindex="0"
-				>
-					<div class="w-1 h-10 rounded-full {getPriorityClass(task.priority || 'medium').replace('border-l-', 'bg-')}"></div>
-
-					<div class="flex-1 min-w-0">
-						<div class="flex items-center gap-2">
-							{#if task.flag_color}
-								<div class="w-2 h-2 rounded-full {flagColors.find(f => f.key === task.flag_color)?.color || ''}"></div>
-							{/if}
-							<h4 class="font-medium text-gray-900 truncate">{task.title}</h4>
+							{/each}
 						</div>
-						{#if task.description}
-							<p class="text-sm text-gray-500 truncate">{task.description}</p>
-						{/if}
 					</div>
-
-					<div class="flex items-center gap-4 text-sm">
-						<span class="px-2 py-1 rounded-full text-xs {columns.find(c => c.key === task.status)?.color || 'bg-gray-100'} text-gray-700">
-							{getStatusLabel(task.status)}
-						</span>
-
-						{#if task.due_date}
-							<span class="flex items-center gap-1 {isOverdue(task) ? 'text-red-600' : 'text-gray-500'}">
-								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-								</svg>
-								{formatDate(task.due_date)}
-							</span>
-						{/if}
-
-						{#if task.assignee_name}
-							<span class="text-gray-600">{task.assignee_name}</span>
-						{/if}
-					</div>
-				</div>
-			{:else}
-				<div class="p-12 text-center text-gray-400">
-					Задачи не найдены
-				</div>
-			{/each}
+				{/each}
+			</div>
 		</div>
-
-	{:else if viewMode === 'table'}
-		<!-- Table View -->
-		<div class="bg-white rounded-lg shadow-sm border overflow-x-auto">
-			<table class="w-full">
-				<thead class="bg-gray-50 border-b">
-					<tr>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Задача</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Приоритет</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Исполнитель</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Проект</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Срок</th>
-					</tr>
-				</thead>
-				<tbody class="divide-y">
-					{#each filteredTasks() as task}
-						<tr
-							class="hover:bg-gray-50 cursor-pointer"
-							onclick={() => openTaskDetail(task)}
-						>
-							<td class="px-4 py-3">
-								<div class="flex items-center gap-2">
-									{#if task.flag_color}
-										<div class="w-2 h-2 rounded-full {flagColors.find(f => f.key === task.flag_color)?.color || ''}"></div>
-									{/if}
-									<div>
-										<p class="font-medium text-gray-900">{task.title}</p>
-										{#if task.description}
-											<p class="text-sm text-gray-500 truncate max-w-xs">{task.description}</p>
-										{/if}
-									</div>
-								</div>
-							</td>
-							<td class="px-4 py-3">
-								<span class="px-2 py-1 rounded-full text-xs {columns.find(c => c.key === task.status)?.color || 'bg-gray-100'} text-gray-700">
-									{getStatusLabel(task.status)}
-								</span>
-							</td>
-							<td class="px-4 py-3">
-								<span class="px-2 py-1 rounded text-xs {priorities.find(p => p.key === task.priority)?.color || ''}">
-									{getPriorityLabel(task.priority || 'medium')}
-								</span>
-							</td>
-							<td class="px-4 py-3 text-sm text-gray-600">
-								{task.assignee_name || task.assignee?.name || '-'}
-							</td>
-							<td class="px-4 py-3 text-sm text-gray-600">
-								{task.project?.name || '-'}
-							</td>
-							<td class="px-4 py-3 text-sm {isOverdue(task) ? 'text-red-600' : 'text-gray-600'}">
-								{task.due_date ? formatDate(task.due_date) : '-'}
-							</td>
-						</tr>
-					{:else}
+	{:else if view === 'list'}
+		<div class="flex-1 overflow-y-auto p-6">
+			<div class="bg-white rounded-xl shadow-sm overflow-hidden">
+				<table class="w-full">
+					<thead class="bg-gray-50 border-b">
 						<tr>
-							<td colspan="6" class="px-4 py-12 text-center text-gray-400">
-								Задачи не найдены
-							</td>
+							<th class="px-4 py-3 text-left text-sm font-semibold text-gray-900">Задача</th>
+							<th class="px-4 py-3 text-left text-sm font-semibold text-gray-900">Статус</th>
+							<th class="px-4 py-3 text-left text-sm font-semibold text-gray-900">Приоритет</th>
+							<th class="px-4 py-3 text-left text-sm font-semibold text-gray-900">Исполнитель</th>
+							<th class="px-4 py-3 text-left text-sm font-semibold text-gray-900">Проект</th>
+							<th class="px-4 py-3 text-left text-sm font-semibold text-gray-900">Срок</th>
 						</tr>
-					{/each}
-				</tbody>
-			</table>
+					</thead>
+					<tbody class="divide-y">
+						{#each filteredTasks() as task (task.id)}
+							<tr class="hover:bg-gray-50 cursor-pointer" onclick={() => openTaskDetail(task)}>
+								<td class="px-4 py-3">
+									<div class="font-medium text-gray-900">{task.title}</div>
+									{#if task.tags && task.tags.length > 0}
+										<div class="flex gap-1 mt-1">
+											{#each task.tags.slice(0, 3) as tag}
+												<span class="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{tag}</span>
+											{/each}
+										</div>
+									{/if}
+								</td>
+								<td class="px-4 py-3">
+									<span class="px-2 py-1 rounded text-xs font-medium
+										{task.status === 'done' ? 'bg-green-100 text-green-700' : ''}
+										{task.status === 'in_progress' ? 'bg-yellow-100 text-yellow-700' : ''}
+										{task.status === 'todo' ? 'bg-blue-100 text-blue-700' : ''}
+										{task.status === 'backlog' ? 'bg-gray-100 text-gray-700' : ''}
+										{task.status === 'review' ? 'bg-purple-100 text-purple-700' : ''}
+									">
+										{columns.find(c => c.id === task.status)?.label || task.status}
+									</span>
+								</td>
+								<td class="px-4 py-3">
+									<div class="flex items-center gap-2">
+										<div class="w-2 h-2 rounded-full {getPriorityColor(task.priority || 'medium')}"></div>
+										<span class="text-sm text-gray-600 capitalize">{task.priority || 'medium'}</span>
+									</div>
+								</td>
+								<td class="px-4 py-3 text-sm text-gray-600">{task.assignee_id ? getAssigneeName(task.assignee_id) : '-'}</td>
+								<td class="px-4 py-3 text-sm text-gray-600">{task.project_id ? getProjectName(task.project_id) : '-'}</td>
+								<td class="px-4 py-3 text-sm text-gray-500">{task.due_date ? formatDate(task.due_date) : '-'}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	{:else}
+		<div class="flex-1 overflow-y-auto p-6">
+			<div class="space-y-4">
+				{#each epics as epic}
+					<div class="bg-white rounded-xl shadow-sm overflow-hidden">
+						<div class="p-4 bg-purple-50 border-b border-purple-100">
+							<h3 class="font-semibold text-purple-900">{epic}</h3>
+						</div>
+						<div class="p-4 space-y-2">
+							{#each filteredTasks().filter(t => t.epic === epic) as task (task.id)}
+								<div class="flex items-center gap-4 p-3 rounded-lg hover:bg-gray-50 cursor-pointer" onclick={() => openTaskDetail(task)}>
+									<div class="w-2 h-2 rounded-full {getPriorityColor(task.priority || 'medium')}"></div>
+									<div class="flex-1">
+										<div class="font-medium text-gray-900">{task.title}</div>
+										<div class="text-sm text-gray-500">{getAssigneeName(task.assignee_id || '')}</div>
+									</div>
+									<span class="px-2 py-1 rounded text-xs font-medium
+										{task.status === 'done' ? 'bg-green-100 text-green-700' : ''}
+										{task.status === 'in_progress' ? 'bg-yellow-100 text-yellow-700' : ''}
+										{task.status === 'todo' ? 'bg-blue-100 text-blue-700' : ''}
+										{task.status === 'backlog' ? 'bg-gray-100 text-gray-700' : ''}
+										{task.status === 'review' ? 'bg-purple-100 text-purple-700' : ''}
+									">
+										{columns.find(c => c.id === task.status)?.label || task.status}
+									</span>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/each}
+				{@const noEpicTasks = filteredTasks().filter(t => !t.epic)}
+				{#if noEpicTasks.length > 0}
+					<div class="bg-white rounded-xl shadow-sm overflow-hidden">
+						<div class="p-4 bg-gray-50 border-b">
+							<h3 class="font-semibold text-gray-700">Без эпика</h3>
+						</div>
+						<div class="p-4 space-y-2">
+							{#each noEpicTasks as task (task.id)}
+								<div class="flex items-center gap-4 p-3 rounded-lg hover:bg-gray-50 cursor-pointer" onclick={() => openTaskDetail(task)}>
+									<div class="w-2 h-2 rounded-full {getPriorityColor(task.priority || 'medium')}"></div>
+									<div class="flex-1">
+										<div class="font-medium text-gray-900">{task.title}</div>
+										<div class="text-sm text-gray-500">{getAssigneeName(task.assignee_id || '')}</div>
+									</div>
+									<span class="px-2 py-1 rounded text-xs font-medium
+										{task.status === 'done' ? 'bg-green-100 text-green-700' : ''}
+										{task.status === 'in_progress' ? 'bg-yellow-100 text-yellow-700' : ''}
+										{task.status === 'todo' ? 'bg-blue-100 text-blue-700' : ''}
+										{task.status === 'backlog' ? 'bg-gray-100 text-gray-700' : ''}
+										{task.status === 'review' ? 'bg-purple-100 text-purple-700' : ''}
+									">
+										{columns.find(c => c.id === task.status)?.label || task.status}
+									</span>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
+			</div>
 		</div>
 	{/if}
 </div>
@@ -558,117 +535,79 @@
 <!-- Create Task Modal -->
 {#if showCreateModal}
 	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onclick={() => showCreateModal = false}>
-		<div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg mx-4" onclick={(e) => e.stopPropagation()}>
-			<div class="flex items-center justify-between mb-4">
-				<h2 class="text-xl font-bold text-gray-900">Новая задача</h2>
-				<button onclick={() => showCreateModal = false} class="text-gray-400 hover:text-gray-600">
-					<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
+		<div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onclick={(e) => e.stopPropagation()}>
+			<div class="p-6 border-b">
+				<h2 class="text-xl font-bold text-gray-900">Создать задачу</h2>
 			</div>
-
-			<div class="space-y-4">
+			<form onsubmit={(e) => { e.preventDefault(); createTask(); }} class="p-6 space-y-4">
 				<div>
-					<label class="block text-sm font-medium text-gray-700 mb-1">Название *</label>
-					<input
-						type="text"
-						bind:value={newTask.title}
-						class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-ekf-red focus:border-transparent"
-						placeholder="Что нужно сделать?"
-					/>
+					<label class="block text-sm font-medium text-gray-700 mb-1">Название</label>
+					<input type="text" bind:value={newTask.title} required class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Введите название задачи" />
 				</div>
-
 				<div>
 					<label class="block text-sm font-medium text-gray-700 mb-1">Описание</label>
-					<textarea
-						bind:value={newTask.description}
-						rows="3"
-						class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-ekf-red focus:border-transparent"
-						placeholder="Подробности задачи..."
-					></textarea>
+					<textarea bind:value={newTask.description} rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Описание задачи... (поддерживается @упоминание)"></textarea>
 				</div>
-
 				<div class="grid grid-cols-2 gap-4">
-					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Статус</label>
-						<select bind:value={newTask.status} class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-ekf-red focus:border-transparent">
-							{#each columns as col}
-								<option value={col.key}>{col.label}</option>
-							{/each}
-						</select>
-					</div>
-					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Приоритет</label>
-						<select bind:value={newTask.priority} class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-ekf-red focus:border-transparent">
-							{#each priorities as p}
-								<option value={p.key}>{p.label}</option>
-							{/each}
-						</select>
-					</div>
-				</div>
-
-				<div class="grid grid-cols-2 gap-4">
-					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Исполнитель</label>
-						<select bind:value={newTask.assignee_id} class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-ekf-red focus:border-transparent">
-							<option value="">Не назначен</option>
-							{#each $subordinates as emp}
-								<option value={emp.id}>{emp.name}</option>
-							{/each}
-						</select>
-					</div>
 					<div>
 						<label class="block text-sm font-medium text-gray-700 mb-1">Проект</label>
-						<select bind:value={newTask.project_id} class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-ekf-red focus:border-transparent">
-							<option value="">Без проекта</option>
+						<select bind:value={newTask.project_id} class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+							<option value="">Выберите проект</option>
 							{#each projects as project}
 								<option value={project.id}>{project.name}</option>
 							{/each}
 						</select>
 					</div>
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-1">Эпик</label>
+						<input type="text" bind:value={newTask.epic} list="epics-list" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Название эпика" />
+						<datalist id="epics-list">
+							{#each epics as epic}
+								<option value={epic}></option>
+							{/each}
+						</datalist>
+					</div>
 				</div>
-
 				<div class="grid grid-cols-2 gap-4">
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Срок</label>
-						<input
-							type="date"
-							bind:value={newTask.due_date}
-							class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-ekf-red focus:border-transparent"
-						/>
+						<label class="block text-sm font-medium text-gray-700 mb-1">Исполнитель</label>
+						<select bind:value={newTask.assignee_id} class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+							<option value="">Не назначен</option>
+							<option value={$user?.id}>Я ({$user?.name})</option>
+							{#each employees as emp}
+								<option value={emp.id}>{emp.name}</option>
+							{/each}
+						</select>
 					</div>
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Флаг</label>
-						<div class="flex gap-2">
-							{#each flagColors as flag}
-								<button
-									type="button"
-									onclick={() => newTask.flag_color = flag.key}
-									class="w-6 h-6 rounded-full {flag.color} {newTask.flag_color === flag.key ? 'ring-2 ring-offset-2 ring-ekf-red' : ''}"
-									title={flag.label}
-								></button>
-							{/each}
-						</div>
+						<label class="block text-sm font-medium text-gray-700 mb-1">Приоритет</label>
+						<select bind:value={newTask.priority} class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+							<option value="low">Низкий</option>
+							<option value="medium">Средний</option>
+							<option value="high">Высокий</option>
+							<option value="urgent">Срочный</option>
+						</select>
 					</div>
 				</div>
-			</div>
-
-			<div class="flex gap-3 mt-6">
-				<button
-					onclick={() => showCreateModal = false}
-					class="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-				>
-					Отмена
-				</button>
-				<button
-					onclick={createTask}
-					disabled={!newTask.title.trim()}
-					class="flex-1 px-4 py-2 bg-ekf-red text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-				>
-					Создать
-				</button>
-			</div>
+				<div>
+					<label class="block text-sm font-medium text-gray-700 mb-1">Срок выполнения</label>
+					<input type="date" bind:value={newTask.due_date} class="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+				</div>
+				<div>
+					<label class="block text-sm font-medium text-gray-700 mb-2">Теги</label>
+					<div class="flex flex-wrap gap-2">
+						{#each availableTags as tag}
+							<button type="button" onclick={() => toggleTag(tag)} class="px-3 py-1 rounded-full text-sm transition-colors {newTask.tags.includes(tag) ? 'bg-ekf-red text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">
+								{tag}
+							</button>
+						{/each}
+					</div>
+				</div>
+				<div class="flex justify-end gap-3 pt-4 border-t">
+					<button type="button" onclick={() => showCreateModal = false} class="px-4 py-2 text-gray-600 hover:text-gray-900">Отмена</button>
+					<button type="submit" class="px-4 py-2 bg-ekf-red text-white rounded-lg hover:bg-red-700">Создать</button>
+				</div>
+			</form>
 		</div>
 	</div>
 {/if}
@@ -676,139 +615,109 @@
 <!-- Task Detail Modal -->
 {#if showDetailModal && selectedTask}
 	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onclick={() => showDetailModal = false}>
-		<div class="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" onclick={(e) => e.stopPropagation()}>
-			<div class="p-6 border-b sticky top-0 bg-white">
-				<div class="flex items-start justify-between">
-					<div class="flex-1">
-						<input
-							type="text"
-							bind:value={selectedTask.title}
-							class="text-xl font-bold text-gray-900 w-full border-0 p-0 focus:ring-0"
-						/>
-						{#if selectedTask.flag_color}
-							<div class="w-16 h-1 rounded-full mt-2 {flagColors.find(f => f.key === selectedTask.flag_color)?.color || ''}"></div>
+		<div class="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col" onclick={(e) => e.stopPropagation()}>
+			<div class="p-6 border-b flex items-start justify-between">
+				<div class="flex-1">
+					<div class="flex items-center gap-3 mb-2">
+						<div class="w-3 h-3 rounded-full {getPriorityColor(selectedTask.priority || 'medium')}"></div>
+						{#if selectedTask.epic}
+							<span class="text-sm bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">{selectedTask.epic}</span>
 						{/if}
+						<span class="px-2 py-1 rounded text-xs font-medium
+							{selectedTask.status === 'done' ? 'bg-green-100 text-green-700' : ''}
+							{selectedTask.status === 'in_progress' ? 'bg-yellow-100 text-yellow-700' : ''}
+							{selectedTask.status === 'todo' ? 'bg-blue-100 text-blue-700' : ''}
+							{selectedTask.status === 'backlog' ? 'bg-gray-100 text-gray-700' : ''}
+							{selectedTask.status === 'review' ? 'bg-purple-100 text-purple-700' : ''}
+						">{columns.find(c => c.id === selectedTask.status)?.label || selectedTask.status}</span>
 					</div>
-					<button onclick={() => showDetailModal = false} class="text-gray-400 hover:text-gray-600 ml-4">
-						<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-						</svg>
-					</button>
+					<h2 class="text-xl font-bold text-gray-900">{selectedTask.title}</h2>
 				</div>
-			</div>
-
-			<div class="p-6 space-y-6">
-				<!-- Status and Priority -->
-				<div class="grid grid-cols-2 gap-4">
-					<div>
-						<label class="block text-sm font-medium text-gray-500 mb-2">Статус</label>
-						<select
-							bind:value={selectedTask.status}
-							onchange={() => updateTask(selectedTask!)}
-							class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-ekf-red focus:border-transparent"
-						>
-							{#each columns as col}
-								<option value={col.key}>{col.icon} {col.label}</option>
-							{/each}
-						</select>
-					</div>
-					<div>
-						<label class="block text-sm font-medium text-gray-500 mb-2">Приоритет</label>
-						<select
-							bind:value={selectedTask.priority}
-							onchange={() => updateTask(selectedTask!)}
-							class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-ekf-red focus:border-transparent"
-						>
-							{#each priorities as p}
-								<option value={p.key}>{p.label}</option>
-							{/each}
-						</select>
-					</div>
-				</div>
-
-				<!-- Description -->
-				<div>
-					<label class="block text-sm font-medium text-gray-500 mb-2">Описание</label>
-					<textarea
-						bind:value={selectedTask.description}
-						onblur={() => updateTask(selectedTask!)}
-						rows="4"
-						class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-ekf-red focus:border-transparent"
-						placeholder="Добавьте описание..."
-					></textarea>
-				</div>
-
-				<!-- Assignee and Due Date -->
-				<div class="grid grid-cols-2 gap-4">
-					<div>
-						<label class="block text-sm font-medium text-gray-500 mb-2">Исполнитель</label>
-						<select
-							bind:value={selectedTask.assignee_id}
-							onchange={() => updateTask(selectedTask!)}
-							class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-ekf-red focus:border-transparent"
-						>
-							<option value="">Не назначен</option>
-							{#each $subordinates as emp}
-								<option value={emp.id}>{emp.name}</option>
-							{/each}
-						</select>
-					</div>
-					<div>
-						<label class="block text-sm font-medium text-gray-500 mb-2">Срок</label>
-						<input
-							type="date"
-							bind:value={selectedTask.due_date}
-							onchange={() => updateTask(selectedTask!)}
-							class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-ekf-red focus:border-transparent"
-						/>
-					</div>
-				</div>
-
-				<!-- Flag Color -->
-				<div>
-					<label class="block text-sm font-medium text-gray-500 mb-2">Флаг</label>
-					<div class="flex gap-3">
-						{#each flagColors as flag}
-							<button
-								type="button"
-								onclick={() => { selectedTask!.flag_color = flag.key; updateTask(selectedTask!); }}
-								class="w-8 h-8 rounded-full {flag.color} {selectedTask.flag_color === flag.key ? 'ring-2 ring-offset-2 ring-ekf-red' : ''} transition-transform hover:scale-110"
-								title={flag.label}
-							></button>
-						{/each}
-					</div>
-				</div>
-
-				<!-- Project -->
-				<div>
-					<label class="block text-sm font-medium text-gray-500 mb-2">Проект</label>
-					<select
-						bind:value={selectedTask.project_id}
-						onchange={() => updateTask(selectedTask!)}
-						class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-ekf-red focus:border-transparent"
-					>
-						<option value="">Без проекта</option>
-						{#each projects as project}
-							<option value={project.id}>{project.name}</option>
-						{/each}
-					</select>
-				</div>
-			</div>
-
-			<!-- Actions -->
-			<div class="p-6 border-t bg-gray-50 flex justify-between">
-				<button
-					onclick={() => deleteTask(selectedTask!.id)}
-					class="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-				>
-					Удалить задачу
+				<button onclick={() => showDetailModal = false} class="p-2 hover:bg-gray-100 rounded-lg">
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+					</svg>
 				</button>
-				<button
-					onclick={() => showDetailModal = false}
-					class="px-4 py-2 bg-ekf-red text-white rounded-lg hover:bg-red-700 transition-colors"
-				>
-					Готово
-				</button>
+			</div>
+			<div class="flex-1 overflow-y-auto">
+				<div class="p-6 grid grid-cols-3 gap-6">
+					<div class="col-span-2 space-y-6">
+						{#if selectedTask.description}
+							<div>
+								<h3 class="text-sm font-semibold text-gray-700 mb-2">Описание</h3>
+								<p class="text-gray-600 whitespace-pre-wrap">{@html parseContent(selectedTask.description)}</p>
+							</div>
+						{/if}
+						{#if selectedTask.tags && selectedTask.tags.length > 0}
+							<div>
+								<h3 class="text-sm font-semibold text-gray-700 mb-2">Теги</h3>
+								<div class="flex flex-wrap gap-2">
+									{#each selectedTask.tags as tag}
+										<span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-sm">{tag}</span>
+									{/each}
+								</div>
+							</div>
+						{/if}
+						<div>
+							<h3 class="text-sm font-semibold text-gray-700 mb-3">Комментарии</h3>
+							<div class="space-y-4">
+								{#if selectedTask.comments && selectedTask.comments.length > 0}
+									{#each selectedTask.comments as comment}
+										<div class="flex gap-3">
+											<div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium flex-shrink-0">{comment.user?.name?.charAt(0) || '?'}</div>
+											<div class="flex-1">
+												<div class="flex items-center gap-2 mb-1">
+													<span class="font-medium text-gray-900">{comment.user?.name || 'Пользователь'}</span>
+													<span class="text-xs text-gray-400">{formatDateTime(comment.created_at)}</span>
+												</div>
+												<p class="text-gray-600">{@html parseContent(comment.content)}</p>
+											</div>
+										</div>
+									{/each}
+								{:else}
+									<p class="text-gray-400 text-sm">Нет комментариев</p>
+								{/if}
+								<div class="flex gap-3 pt-4 border-t">
+									<div class="w-8 h-8 rounded-full bg-ekf-red text-white flex items-center justify-center text-sm font-medium flex-shrink-0">{$user?.name?.charAt(0) || '?'}</div>
+									<div class="flex-1">
+										<textarea bind:value={newComment} rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="Добавить комментарий... (@упоминание)"></textarea>
+										<div class="flex justify-end mt-2">
+											<button onclick={addComment} disabled={!newComment.trim()} class="px-3 py-1.5 bg-ekf-red text-white rounded text-sm hover:bg-red-700 disabled:opacity-50">Отправить</button>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="space-y-4">
+						<div>
+							<label class="block text-sm font-medium text-gray-500 mb-1">Статус</label>
+							<select bind:value={selectedTask.status} onchange={() => updateTask(selectedTask!)} class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+								{#each columns as col}
+									<option value={col.id}>{col.label}</option>
+								{/each}
+							</select>
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-500 mb-1">Исполнитель</label>
+							<div class="text-gray-900">{selectedTask.assignee_id ? getAssigneeName(selectedTask.assignee_id) : 'Не назначен'}</div>
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-500 mb-1">Проект</label>
+							<div class="text-gray-900">{selectedTask.project_id ? getProjectName(selectedTask.project_id) : '-'}</div>
+						</div>
+						{#if selectedTask.due_date}
+							<div>
+								<label class="block text-sm font-medium text-gray-500 mb-1">Срок</label>
+								<div class="text-gray-900">{formatDate(selectedTask.due_date)}</div>
+							</div>
+						{/if}
+						<div>
+							<label class="block text-sm font-medium text-gray-500 mb-1">Создана</label>
+							<div class="text-gray-600 text-sm">{formatDateTime(selectedTask.created_at)}</div>
+						</div>
+					</div>
+				</div>
 			</div>
 		</div>
 	</div>
