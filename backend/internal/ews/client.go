@@ -491,6 +491,14 @@ func (c *Client) GetEmails(email, username, password, folderID string, limit int
 
 // GetEmailBody fetches the full body of an email
 func (c *Client) GetEmailBody(username, password, itemID, changeKey string) (string, error) {
+	// Build ItemId - ChangeKey is optional
+	var itemIdElement string
+	if changeKey != "" {
+		itemIdElement = fmt.Sprintf(`<t:ItemId Id="%s" ChangeKey="%s"/>`, itemID, changeKey)
+	} else {
+		itemIdElement = fmt.Sprintf(`<t:ItemId Id="%s"/>`, itemID)
+	}
+
 	soap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
                xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
@@ -508,18 +516,63 @@ func (c *Client) GetEmailBody(username, password, itemID, changeKey string) (str
         </t:AdditionalProperties>
       </m:ItemShape>
       <m:ItemIds>
-        <t:ItemId Id="%s" ChangeKey="%s"/>
+        %s
       </m:ItemIds>
     </m:GetItem>
   </soap:Body>
-</soap:Envelope>`, itemID, changeKey)
+</soap:Envelope>`, itemIdElement)
 
 	body, err := c.doRequest(soap, username, password)
 	if err != nil {
 		return "", err
 	}
 
-	return extractValue(string(body), "<t:Body", "</t:Body>"), nil
+	// Extract body content - handle HTML body with attributes
+	// The body tag looks like: <t:Body BodyType="HTML">content</t:Body>
+	bodyStr := string(body)
+	result := extractBodyContent(bodyStr)
+
+	// Log for debugging
+	if result == "" {
+		log.Printf("GetEmailBody: empty body for item %s, response length: %d", itemID, len(bodyStr))
+	}
+
+	return result, nil
+}
+
+// extractBodyContent extracts the content from <t:Body ...>content</t:Body>
+func extractBodyContent(xml string) string {
+	// Find the start of Body tag
+	startTag := "<t:Body"
+	startIdx := strings.Index(xml, startTag)
+	if startIdx == -1 {
+		return ""
+	}
+
+	// Find the closing > of the opening tag
+	closeTagIdx := strings.Index(xml[startIdx:], ">")
+	if closeTagIdx == -1 {
+		return ""
+	}
+	contentStart := startIdx + closeTagIdx + 1
+
+	// Find the end tag
+	endTag := "</t:Body>"
+	endIdx := strings.Index(xml[contentStart:], endTag)
+	if endIdx == -1 {
+		return ""
+	}
+
+	content := xml[contentStart : contentStart+endIdx]
+
+	// Unescape XML entities for the content
+	content = strings.ReplaceAll(content, "&amp;", "&")
+	content = strings.ReplaceAll(content, "&lt;", "<")
+	content = strings.ReplaceAll(content, "&gt;", ">")
+	content = strings.ReplaceAll(content, "&quot;", "\"")
+	content = strings.ReplaceAll(content, "&apos;", "'")
+
+	return content
 }
 
 // SendEmail sends an email via Exchange
