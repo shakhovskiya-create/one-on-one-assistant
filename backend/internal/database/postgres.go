@@ -71,17 +71,22 @@ func (c *PostgresClient) From(table string) QueryBuilder {
 
 // parseSupabaseColumns parses Supabase-style column syntax and extracts relations
 // Example: "*, assignee:employees!tasks_assignee_id_fkey(id, name), project:projects(id, name)"
+// Also supports short form: "*, employees(name, position)" where table name is used as alias
 func parseSupabaseColumns(columns string) (string, []relationInfo) {
 	var relations []relationInfo
 	var cleanColumns []string
 
-	// Regex to match relationship syntax: alias:table!foreignkey(cols) or alias:table(cols)
+	// Regex to match relationship syntax with alias: alias:table!foreignkey(cols) or alias:table(cols)
 	// Pattern: word:word(!word)?(...)
-	relationRegex := regexp.MustCompile(`(\w+):(\w+)(?:!(\w+))?\(([^)]+)\)`)
+	aliasRelationRegex := regexp.MustCompile(`(\w+):(\w+)(?:!(\w+))?\(([^)]+)\)`)
 
-	// Find all relations
-	matches := relationRegex.FindAllStringSubmatch(columns, -1)
-	for _, match := range matches {
+	// Regex to match short form: table(cols) - no alias prefix
+	// Pattern: word(...) but NOT preceded by :
+	shortRelationRegex := regexp.MustCompile(`(?:^|[,\s])(\w+)\(([^)]+)\)`)
+
+	// Find all relations with alias
+	aliasMatches := aliasRelationRegex.FindAllStringSubmatch(columns, -1)
+	for _, match := range aliasMatches {
 		cols := strings.Split(match[4], ",")
 		for i := range cols {
 			cols[i] = strings.TrimSpace(cols[i])
@@ -94,8 +99,37 @@ func parseSupabaseColumns(columns string) (string, []relationInfo) {
 		})
 	}
 
+	// Find short form relations (table as alias)
+	shortMatches := shortRelationRegex.FindAllStringSubmatch(columns, -1)
+	for _, match := range shortMatches {
+		tableName := match[1]
+		// Skip if this table was already matched with alias syntax
+		alreadyMatched := false
+		for _, rel := range relations {
+			if rel.table == tableName {
+				alreadyMatched = true
+				break
+			}
+		}
+		if alreadyMatched {
+			continue
+		}
+
+		cols := strings.Split(match[2], ",")
+		for i := range cols {
+			cols[i] = strings.TrimSpace(cols[i])
+		}
+		relations = append(relations, relationInfo{
+			alias:      tableName, // Use table name as alias
+			table:      tableName,
+			foreignKey: "",
+			columns:    cols,
+		})
+	}
+
 	// Remove relation syntax from columns string
-	cleanStr := relationRegex.ReplaceAllString(columns, "")
+	cleanStr := aliasRelationRegex.ReplaceAllString(columns, "")
+	cleanStr = shortRelationRegex.ReplaceAllString(cleanStr, " ")
 
 	// Split by comma and clean up
 	parts := strings.Split(cleanStr, ",")
@@ -284,7 +318,7 @@ func (qb *PostgresQueryBuilder) Execute(result interface{}) error {
 func (qb *PostgresQueryBuilder) fetchRelations(results []map[string]interface{}) []map[string]interface{} {
 	for _, rel := range qb.relations {
 		// Determine the foreign key column name
-		fkColumn := rel.alias + "_id"
+		fkColumn := singularize(rel.alias) + "_id"
 		if rel.foreignKey != "" {
 			// Parse foreign key name like "tasks_assignee_id_fkey" to get "assignee_id"
 			parts := strings.Split(rel.foreignKey, "_")
@@ -626,4 +660,32 @@ func (c *PostgresClient) StorageGetPublicURL(bucket, path string) string {
 // Close closes the database connection
 func (c *PostgresClient) Close() error {
 	return c.db.Close()
+}
+
+// singularize converts plural table names to singular for foreign key lookups
+func singularize(name string) string {
+	// Special cases for common table names
+	specialCases := map[string]string{
+		"employees":          "employee",
+		"projects":           "project",
+		"meetings":           "meeting",
+		"meeting_categories": "category",
+		"tasks":              "task",
+		"categories":         "category",
+		"conversations":      "conversation",
+		"messages":           "message",
+		"tags":               "tag",
+		"files":              "file",
+	}
+	if singular, ok := specialCases[name]; ok {
+		return singular
+	}
+	// Simple pluralization rules
+	if strings.HasSuffix(name, "ies") {
+		return name[:len(name)-3] + "y"
+	}
+	if strings.HasSuffix(name, "s") && !strings.HasSuffix(name, "ss") {
+		return name[:len(name)-1]
+	}
+	return name
 }
