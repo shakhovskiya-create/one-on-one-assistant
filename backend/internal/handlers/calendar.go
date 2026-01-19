@@ -365,7 +365,7 @@ func (h *Handler) SyncCalendar(c *fiber.Ctx) error {
 
 	// If we successfully connected and employee had no email, save it
 	if employee.Email == "" && ewsEmail != "" {
-		h.DB.Update("employees", "id", employee.ID, map[string]string{"email": ewsEmail})
+		h.DB.Update("employees", "id", employee.ID, map[string]interface{}{"email": ewsEmail})
 	}
 
 	if len(eventsList) == 0 {
@@ -453,7 +453,7 @@ func (h *Handler) SyncCalendar(c *fiber.Ctx) error {
 				if attendeeMap, ok := att.(map[string]interface{}); ok {
 					if attEmail, ok := attendeeMap["email"].(string); ok && attEmail != "" {
 						if emp, ok := emailToEmp[strings.ToLower(attEmail)]; ok {
-							h.DB.Insert("meeting_participants", map[string]string{
+							h.DB.Insert("meeting_participants", map[string]interface{}{
 								"meeting_id":  meetingID,
 								"employee_id": emp.ID,
 							})

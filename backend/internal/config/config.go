@@ -6,6 +6,7 @@ import (
 
 type Config struct {
 	Port             string
+	DatabaseURL      string // Direct PostgreSQL connection string
 	SupabaseURL      string
 	SupabaseKey      string
 	OpenAIKey        string
@@ -35,6 +36,7 @@ type Config struct {
 func Load() *Config {
 	return &Config{
 		Port:             getEnv("PORT", "8080"),
+		DatabaseURL:      getEnv("DATABASE_URL", ""),
 		SupabaseURL:      getEnv("SUPABASE_URL", ""),
 		SupabaseKey:      getEnv("SUPABASE_KEY", ""),
 		OpenAIKey:        getEnv("OPENAI_API_KEY", ""),

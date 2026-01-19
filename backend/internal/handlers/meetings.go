@@ -306,7 +306,7 @@ func (h *Handler) ProcessMeeting(c *fiber.Ctx) error {
 
 	// Add participants
 	for _, pid := range participantIDs {
-		h.DB.Insert("meeting_participants", map[string]string{
+		h.DB.Insert("meeting_participants", map[string]interface{}{
 			"meeting_id":  meetingID,
 			"employee_id": pid,
 		})

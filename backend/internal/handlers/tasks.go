@@ -205,7 +205,7 @@ func (h *Handler) CreateTask(c *fiber.Ctx) error {
 			var tag models.Tag
 			h.DB.From("tags").Select("id").Eq("name", tagName).Single().Execute(&tag)
 			if tag.ID != "" {
-				h.DB.Insert("task_tags", map[string]string{
+				h.DB.Insert("task_tags", map[string]interface{}{
 					"task_id": created[0].ID,
 					"tag_id":  tag.ID,
 				})

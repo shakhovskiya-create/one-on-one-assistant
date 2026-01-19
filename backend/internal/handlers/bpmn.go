@@ -169,7 +169,7 @@ func (h *Handler) DeleteProcessInstance(c *fiber.Ctx) error {
 
 	// Update status in database
 	if h.DB != nil {
-		h.DB.Update("bpmn_instances", "camunda_id", id, map[string]string{"status": "cancelled"})
+		h.DB.Update("bpmn_instances", "camunda_id", id, map[string]interface{}{"status": "cancelled"})
 	}
 
 	return c.JSON(fiber.Map{"success": true, "message": "Процесс отменён"})

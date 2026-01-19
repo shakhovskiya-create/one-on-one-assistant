@@ -15,7 +15,7 @@ import (
 // Handler holds all handler dependencies
 type Handler struct {
 	Config    *config.Config
-	DB        *database.SupabaseClient
+	DB        database.DBClient
 	AI        *ai.Client
 	AD        *ad.Client
 	EWS       *ews.Client
@@ -27,9 +27,17 @@ type Handler struct {
 
 // NewHandler creates a new handler with all dependencies
 func NewHandler(cfg *config.Config) *Handler {
-	var db *database.SupabaseClient
-	if cfg.SupabaseURL != "" && cfg.SupabaseKey != "" {
-		db = database.NewSupabaseClient(cfg.SupabaseURL, cfg.SupabaseKey)
+	var db database.DBClient
+
+	// Connect to PostgreSQL database
+	if cfg.DatabaseURL != "" {
+		pgClient, err := database.NewPostgresClient(cfg.DatabaseURL)
+		if err != nil {
+			// Log error but continue - some handlers may not need DB
+			println("Warning: Failed to connect to database:", err.Error())
+		} else {
+			db = pgClient
+		}
 	}
 
 	aiClient := ai.NewClient(

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -257,8 +258,8 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 
 			// Debug: log what AD returned
 			c.Locals("ad_user_info", fiber.Map{
-				"email": email,
-				"name": name,
+				"email":    email,
+				"name":     name,
 				"username": adUser.Username,
 			})
 
@@ -266,7 +267,11 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 
 			if h.DB != nil && email != "" {
 				var existing []map[string]interface{}
-				h.DB.From("employees").Select("*").Eq("email", email).Limit(1).Execute(&existing)
+				err := h.DB.From("employees").Select("*").Eq("email", email).Limit(1).Execute(&existing)
+
+				// Debug: log database query result
+				c.Locals("db_query_error", err)
+				c.Locals("db_result_count", len(existing))
 
 				// Encrypt and store password for EWS access
 				encryptedPassword, encErr := utils.EncryptPassword(password, h.Config.JWTSecret)
@@ -312,6 +317,12 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 			}
 			if adUserInfo := c.Locals("ad_user_info"); adUserInfo != nil {
 				response["ad_user"] = adUserInfo
+			}
+			if dbErr := c.Locals("db_query_error"); dbErr != nil {
+				response["db_error"] = fmt.Sprint(dbErr)
+			}
+			if dbCount := c.Locals("db_result_count"); dbCount != nil {
+				response["db_result_count"] = dbCount
 			}
 			return c.Status(403).JSON(response)
 		}
