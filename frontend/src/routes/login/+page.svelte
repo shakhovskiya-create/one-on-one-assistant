@@ -91,7 +91,7 @@
 </script>
 
 <svelte:head>
-	<title>Вход - EKF Team Hub</title>
+	<title>Вход - EKF Hub</title>
 </svelte:head>
 
 <div class="min-h-screen bg-gray-100 flex items-center justify-center p-4">
@@ -101,7 +101,7 @@
 				<div class="bg-ekf-red text-white font-bold text-2xl px-4 py-2 rounded">
 					EKF
 				</div>
-				<span class="text-2xl font-semibold text-gray-900">Team Hub</span>
+				<span class="text-2xl font-semibold text-gray-900">Hub</span>
 			</div>
 			<p class="text-gray-500">Войдите с учётными данными Active Directory</p>
 		</div>

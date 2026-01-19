@@ -1,5 +1,5 @@
 <svelte:head>
-	<title>Скрипт встречи - EKF Team Hub</title>
+	<title>Скрипт встречи - EKF Hub</title>
 </svelte:head>
 
 <div class="max-w-2xl mx-auto bg-white rounded-xl shadow-sm p-8">

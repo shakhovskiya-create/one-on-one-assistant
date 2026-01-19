@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-	<title>Редактировать сотрудника - EKF Team Hub</title>
+	<title>Редактировать сотрудника - EKF Hub</title>
 </svelte:head>
 
 <div class="max-w-2xl mx-auto bg-white rounded-xl shadow-sm p-8">

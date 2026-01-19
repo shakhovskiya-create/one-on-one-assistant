@@ -1,5 +1,5 @@
 <svelte:head>
-	<title>Добавить сотрудника - EKF Team Hub</title>
+	<title>Добавить сотрудника - EKF Hub</title>
 </svelte:head>
 
 <div class="max-w-2xl mx-auto bg-white rounded-xl shadow-sm p-8">

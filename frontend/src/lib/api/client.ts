@@ -506,6 +506,51 @@ export interface Message {
 	reply_to?: Message;
 }
 
+// Mail types
+export interface MailFolder {
+	id: string;
+	display_name: string;
+	unread_count: number;
+	total_count: number;
+}
+
+export interface EmailPerson {
+	name: string;
+	email: string;
+}
+
+export interface EmailMessage {
+	id: string;
+	subject: string;
+	from?: EmailPerson;
+	to?: EmailPerson[];
+	cc?: EmailPerson[];
+	body: string;
+	body_preview?: string;
+	received_at: string;
+	is_read: boolean;
+	has_attachments: boolean;
+	folder_id?: string;
+}
+
+// Mail API
+export const mail = {
+	getFolders: (username: string, password: string) =>
+		request<MailFolder[]>(`/mail/folders?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`),
+	getEmails: (username: string, password: string, folderId?: string, limit?: number) => {
+		const params = new URLSearchParams({ username, password });
+		if (folderId) params.append('folder_id', folderId);
+		if (limit) params.append('limit', limit.toString());
+		return request<EmailMessage[]>(`/mail/emails?${params}`);
+	},
+	sendEmail: (data: { username: string; password: string; to: string[]; cc?: string[]; subject: string; body: string }) =>
+		request('/mail/send', { method: 'POST', body: data }),
+	markAsRead: (data: { username: string; password: string; item_id: string; change_key?: string }) =>
+		request('/mail/mark-read', { method: 'POST', body: data }),
+	deleteEmail: (data: { username: string; password: string; item_id: string; change_key?: string }) =>
+		request('/mail/email', { method: 'DELETE', body: data }),
+};
+
 // Combined API object for convenience
 export const api = {
 	employees,
@@ -517,5 +562,6 @@ export const api = {
 	messenger,
 	connector,
 	files,
-	bpmn
+	bpmn,
+	mail
 };

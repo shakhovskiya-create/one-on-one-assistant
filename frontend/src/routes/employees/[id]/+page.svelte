@@ -45,7 +45,7 @@
 </script>
 
 <svelte:head>
-	<title>{employee?.name || 'Сотрудник'} - EKF Team Hub</title>
+	<title>{employee?.name || 'Сотрудник'} - EKF Hub</title>
 </svelte:head>
 
 {#if loading}

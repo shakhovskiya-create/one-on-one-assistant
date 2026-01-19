@@ -422,7 +422,7 @@
 </script>
 
 <svelte:head>
-	<title>Календарь - EKF Team Hub</title>
+	<title>Календарь - EKF Hub</title>
 </svelte:head>
 
 <div class="flex h-[calc(100vh-100px)] gap-4">

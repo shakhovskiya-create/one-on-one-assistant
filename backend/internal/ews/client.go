@@ -52,6 +52,29 @@ type BusyTime struct {
 	Status string `json:"status"`
 }
 
+// EmailMessage represents an email from Exchange
+type EmailMessage struct {
+	ID          string   `json:"id"`
+	Subject     string   `json:"subject"`
+	From        *Person  `json:"from,omitempty"`
+	To          []Person `json:"to,omitempty"`
+	CC          []Person `json:"cc,omitempty"`
+	Body        string   `json:"body"`
+	BodyPreview string   `json:"body_preview,omitempty"`
+	ReceivedAt  string   `json:"received_at"`
+	IsRead      bool     `json:"is_read"`
+	HasAttach   bool     `json:"has_attachments"`
+	FolderID    string   `json:"folder_id,omitempty"`
+}
+
+// MailFolder represents a mail folder
+type MailFolder struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+	UnreadCount int    `json:"unread_count"`
+	TotalCount  int    `json:"total_count"`
+}
+
 // NewClient creates a new EWS client
 // skipTLSVerify should only be true for development/internal certificates
 func NewClient(url, domain string, skipTLSVerify bool) *Client {
@@ -385,4 +408,316 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// GetMailFolders fetches mail folders from Exchange
+func (c *Client) GetMailFolders(email, username, password string) ([]MailFolder, error) {
+	soap := `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:FindFolder Traversal="Shallow">
+      <m:FolderShape>
+        <t:BaseShape>Default</t:BaseShape>
+      </m:FolderShape>
+      <m:ParentFolderIds>
+        <t:DistinguishedFolderId Id="msgfolderroot"/>
+      </m:ParentFolderIds>
+    </m:FindFolder>
+  </soap:Body>
+</soap:Envelope>`
+
+	body, err := c.doRequest(soap, username, password)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.parseMailFoldersResponse(string(body)), nil
+}
+
+// GetEmails fetches emails from a folder
+func (c *Client) GetEmails(email, username, password, folderID string, limit int) ([]EmailMessage, error) {
+	var folderSpec string
+	if folderID != "" {
+		folderSpec = fmt.Sprintf(`<t:FolderId Id="%s"/>`, folderID)
+	} else {
+		folderSpec = `<t:DistinguishedFolderId Id="inbox"/>`
+	}
+
+	soap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:FindItem Traversal="Shallow">
+      <m:ItemShape>
+        <t:BaseShape>Default</t:BaseShape>
+        <t:AdditionalProperties>
+          <t:FieldURI FieldURI="item:Subject"/>
+          <t:FieldURI FieldURI="item:DateTimeReceived"/>
+          <t:FieldURI FieldURI="message:From"/>
+          <t:FieldURI FieldURI="message:ToRecipients"/>
+          <t:FieldURI FieldURI="message:IsRead"/>
+          <t:FieldURI FieldURI="item:HasAttachments"/>
+        </t:AdditionalProperties>
+      </m:ItemShape>
+      <m:IndexedPageItemView MaxEntriesReturned="%d" Offset="0" BasePoint="Beginning"/>
+      <m:SortOrder>
+        <t:FieldOrder Order="Descending">
+          <t:FieldURI FieldURI="item:DateTimeReceived"/>
+        </t:FieldOrder>
+      </m:SortOrder>
+      <m:ParentFolderIds>
+        %s
+      </m:ParentFolderIds>
+    </m:FindItem>
+  </soap:Body>
+</soap:Envelope>`, limit, folderSpec)
+
+	body, err := c.doRequest(soap, username, password)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.parseEmailsResponse(string(body)), nil
+}
+
+// GetEmailBody fetches the full body of an email
+func (c *Client) GetEmailBody(username, password, itemID, changeKey string) (string, error) {
+	soap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:GetItem>
+      <m:ItemShape>
+        <t:BaseShape>Default</t:BaseShape>
+        <t:BodyType>HTML</t:BodyType>
+        <t:AdditionalProperties>
+          <t:FieldURI FieldURI="item:Body"/>
+        </t:AdditionalProperties>
+      </m:ItemShape>
+      <m:ItemIds>
+        <t:ItemId Id="%s" ChangeKey="%s"/>
+      </m:ItemIds>
+    </m:GetItem>
+  </soap:Body>
+</soap:Envelope>`, itemID, changeKey)
+
+	body, err := c.doRequest(soap, username, password)
+	if err != nil {
+		return "", err
+	}
+
+	return extractValue(string(body), "<t:Body", "</t:Body>"), nil
+}
+
+// SendEmail sends an email via Exchange
+func (c *Client) SendEmail(username, password, subject string, toEmails []string, body string, ccEmails []string) error {
+	var toRecipients strings.Builder
+	for _, email := range toEmails {
+		toRecipients.WriteString(fmt.Sprintf(`<t:Mailbox><t:EmailAddress>%s</t:EmailAddress></t:Mailbox>`, email))
+	}
+
+	var ccRecipients strings.Builder
+	for _, email := range ccEmails {
+		ccRecipients.WriteString(fmt.Sprintf(`<t:Mailbox><t:EmailAddress>%s</t:EmailAddress></t:Mailbox>`, email))
+	}
+
+	ccSection := ""
+	if len(ccEmails) > 0 {
+		ccSection = fmt.Sprintf(`<t:CcRecipients>%s</t:CcRecipients>`, ccRecipients.String())
+	}
+
+	soap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:CreateItem MessageDisposition="SendAndSaveCopy">
+      <m:SavedItemFolderId>
+        <t:DistinguishedFolderId Id="sentitems"/>
+      </m:SavedItemFolderId>
+      <m:Items>
+        <t:Message>
+          <t:Subject>%s</t:Subject>
+          <t:Body BodyType="HTML">%s</t:Body>
+          <t:ToRecipients>%s</t:ToRecipients>
+          %s
+        </t:Message>
+      </m:Items>
+    </m:CreateItem>
+  </soap:Body>
+</soap:Envelope>`, escapeXML(subject), escapeXML(body), toRecipients.String(), ccSection)
+
+	_, err := c.doRequest(soap, username, password)
+	return err
+}
+
+// MarkEmailAsRead marks an email as read
+func (c *Client) MarkEmailAsRead(username, password, itemID, changeKey string) error {
+	soap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:UpdateItem MessageDisposition="SaveOnly" ConflictResolution="AlwaysOverwrite">
+      <m:ItemChanges>
+        <t:ItemChange>
+          <t:ItemId Id="%s" ChangeKey="%s"/>
+          <t:Updates>
+            <t:SetItemField>
+              <t:FieldURI FieldURI="message:IsRead"/>
+              <t:Message>
+                <t:IsRead>true</t:IsRead>
+              </t:Message>
+            </t:SetItemField>
+          </t:Updates>
+        </t:ItemChange>
+      </m:ItemChanges>
+    </m:UpdateItem>
+  </soap:Body>
+</soap:Envelope>`, itemID, changeKey)
+
+	_, err := c.doRequest(soap, username, password)
+	return err
+}
+
+// DeleteEmail moves an email to deleted items
+func (c *Client) DeleteEmail(username, password, itemID, changeKey string) error {
+	soap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:DeleteItem DeleteType="MoveToDeletedItems">
+      <m:ItemIds>
+        <t:ItemId Id="%s" ChangeKey="%s"/>
+      </m:ItemIds>
+    </m:DeleteItem>
+  </soap:Body>
+</soap:Envelope>`, itemID, changeKey)
+
+	_, err := c.doRequest(soap, username, password)
+	return err
+}
+
+func (c *Client) parseMailFoldersResponse(xml string) []MailFolder {
+	var folders []MailFolder
+
+	items := strings.Split(xml, "<t:Folder>")
+	for _, item := range items[1:] {
+		endIdx := strings.Index(item, "</t:Folder>")
+		if endIdx == -1 {
+			continue
+		}
+		itemXML := item[:endIdx]
+
+		unread := 0
+		total := 0
+		if v := extractValue(itemXML, "<t:UnreadCount>", "</t:UnreadCount>"); v != "" {
+			fmt.Sscanf(v, "%d", &unread)
+		}
+		if v := extractValue(itemXML, "<t:TotalCount>", "</t:TotalCount>"); v != "" {
+			fmt.Sscanf(v, "%d", &total)
+		}
+
+		folder := MailFolder{
+			ID:          extractValue(itemXML, `<t:FolderId Id="`, `"`),
+			DisplayName: extractValue(itemXML, "<t:DisplayName>", "</t:DisplayName>"),
+			UnreadCount: unread,
+			TotalCount:  total,
+		}
+
+		if folder.DisplayName != "" {
+			folders = append(folders, folder)
+		}
+	}
+
+	return folders
+}
+
+func (c *Client) parseEmailsResponse(xml string) []EmailMessage {
+	var emails []EmailMessage
+
+	items := strings.Split(xml, "<t:Message>")
+	for _, item := range items[1:] {
+		endIdx := strings.Index(item, "</t:Message>")
+		if endIdx == -1 {
+			continue
+		}
+		itemXML := item[:endIdx]
+
+		email := EmailMessage{
+			ID:         extractValue(itemXML, `<t:ItemId Id="`, `"`),
+			Subject:    extractValue(itemXML, "<t:Subject>", "</t:Subject>"),
+			ReceivedAt: extractValue(itemXML, "<t:DateTimeReceived>", "</t:DateTimeReceived>"),
+			IsRead:     strings.Contains(strings.ToLower(itemXML), "<t:isread>true"),
+			HasAttach:  strings.Contains(strings.ToLower(itemXML), "<t:hasattachments>true"),
+		}
+
+		// Parse From
+		if fromStart := strings.Index(itemXML, "<t:From>"); fromStart != -1 {
+			if fromEnd := strings.Index(itemXML[fromStart:], "</t:From>"); fromEnd != -1 {
+				fromXML := itemXML[fromStart : fromStart+fromEnd]
+				email.From = &Person{
+					Name:  extractValue(fromXML, "<t:Name>", "</t:Name>"),
+					Email: extractValue(fromXML, "<t:EmailAddress>", "</t:EmailAddress>"),
+				}
+			}
+		}
+
+		// Parse To recipients
+		if toStart := strings.Index(itemXML, "<t:ToRecipients>"); toStart != -1 {
+			if toEnd := strings.Index(itemXML[toStart:], "</t:ToRecipients>"); toEnd != -1 {
+				toXML := itemXML[toStart : toStart+toEnd]
+				for _, mailbox := range strings.Split(toXML, "<t:Mailbox>")[1:] {
+					mbEnd := strings.Index(mailbox, "</t:Mailbox>")
+					if mbEnd == -1 {
+						continue
+					}
+					email.To = append(email.To, Person{
+						Name:  extractValue(mailbox[:mbEnd], "<t:Name>", "</t:Name>"),
+						Email: extractValue(mailbox[:mbEnd], "<t:EmailAddress>", "</t:EmailAddress>"),
+					})
+				}
+			}
+		}
+
+		if email.Subject == "" {
+			email.Subject = "(Без темы)"
+		}
+
+		emails = append(emails, email)
+	}
+
+	return emails
+}
+
+func escapeXML(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	s = strings.ReplaceAll(s, "\"", "&quot;")
+	s = strings.ReplaceAll(s, "'", "&apos;")
+	return s
 }

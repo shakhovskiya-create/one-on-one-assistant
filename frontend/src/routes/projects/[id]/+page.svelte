@@ -167,7 +167,7 @@
 </script>
 
 <svelte:head>
-	<title>{project?.name || 'Проект'} - EKF Team Hub</title>
+	<title>{project?.name || 'Проект'} - EKF Hub</title>
 </svelte:head>
 
 {#if loading}

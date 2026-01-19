@@ -126,13 +126,13 @@
 </script>
 
 <svelte:head>
-	<title>Сотрудники - EKF Team Hub</title>
+	<title>Сотрудники - EKF Hub</title>
 </svelte:head>
 
-<div class="space-y-6">
+<div class="space-y-4">
 	<!-- Header -->
-	<div class="flex items-center justify-between flex-wrap gap-4">
-		<h1 class="text-2xl font-bold text-gray-900">Сотрудники</h1>
+	<div class="flex items-center justify-between flex-wrap gap-3">
+		<h1 class="text-xl font-bold text-gray-900">Сотрудники</h1>
 		<div class="flex items-center gap-4">
 			<!-- My/All Toggle -->
 			<div class="flex rounded-lg border border-gray-200 overflow-hidden">
@@ -202,14 +202,14 @@
 	</div>
 
 	<!-- Search -->
-	<div class="relative">
+	<div class="relative max-w-md">
 		<input
 			type="text"
 			bind:value={searchQuery}
 			placeholder="Поиск сотрудников..."
-			class="w-full px-4 py-3 pl-10 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ekf-red/20 focus:border-ekf-red"
+			class="w-full px-3 py-2 pl-9 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-1 focus:ring-ekf-red focus:border-ekf-red"
 		/>
-		<svg class="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
 		</svg>
 	</div>

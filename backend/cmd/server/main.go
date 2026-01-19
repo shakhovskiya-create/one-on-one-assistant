@@ -50,7 +50,7 @@ func main() {
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"status":  "ok",
-			"service": "EKF Team Hub API",
+			"service": "EKF Hub API",
 			"version": "1.0.0",
 		})
 	})
@@ -156,6 +156,13 @@ func main() {
 	protectedAPI.Post("/conversations", h.CreateConversation)
 	protectedAPI.Get("/conversations/:id", h.GetConversation)
 	protectedAPI.Post("/messages", h.SendMessage)
+
+	// Mail (EWS)
+	protectedAPI.Get("/mail/folders", h.GetMailFolders)
+	protectedAPI.Get("/mail/emails", h.GetEmails)
+	protectedAPI.Post("/mail/send", h.SendEmail)
+	protectedAPI.Post("/mail/mark-read", h.MarkEmailAsRead)
+	protectedAPI.Delete("/mail/email", h.DeleteEmail)
 
 	// Legacy routes (for backward compatibility)
 	app.Get("/employees", h.ListEmployees)

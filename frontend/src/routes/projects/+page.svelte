@@ -42,12 +42,12 @@
 </script>
 
 <svelte:head>
-	<title>Проекты - EKF Team Hub</title>
+	<title>Проекты - EKF Hub</title>
 </svelte:head>
 
-<div class="space-y-6">
+<div class="space-y-4">
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold text-gray-900">Проекты</h1>
+		<h1 class="text-xl font-bold text-gray-900">Проекты</h1>
 		<button
 			onclick={() => showCreateModal = true}
 			class="px-4 py-2 bg-ekf-red text-white rounded-lg hover:bg-red-700 transition-colors"

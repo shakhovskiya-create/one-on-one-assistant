@@ -236,7 +236,7 @@
 </script>
 
 <svelte:head>
-	<title>Задачи - EKF Team Hub</title>
+	<title>Задачи - EKF Hub</title>
 </svelte:head>
 
 <div class="space-y-4">

@@ -54,7 +54,7 @@
 </script>
 
 <svelte:head>
-	<title>{meeting?.title || 'Встреча'} - EKF Team Hub</title>
+	<title>{meeting?.title || 'Встреча'} - EKF Hub</title>
 </svelte:head>
 
 {#if loading}

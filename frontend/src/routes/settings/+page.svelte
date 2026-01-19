@@ -22,11 +22,11 @@
 </script>
 
 <svelte:head>
-	<title>Настройки - EKF Team Hub</title>
+	<title>Настройки - EKF Hub</title>
 </svelte:head>
 
-<div class="max-w-4xl mx-auto space-y-6">
-	<h1 class="text-2xl font-bold text-gray-900">Настройки</h1>
+<div class="max-w-4xl mx-auto space-y-4">
+	<h1 class="text-xl font-bold text-gray-900">Настройки</h1>
 
 	{#if loading}
 		<div class="flex items-center justify-center h-64">

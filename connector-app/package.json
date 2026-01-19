@@ -1,7 +1,7 @@
 {
   "name": "ekf-connector",
   "version": "1.0.0",
-  "description": "EKF Team Hub On-Prem Connector",
+  "description": "EKF Hub On-Prem Connector",
   "type": "module",
   "scripts": {
     "dev": "vite",

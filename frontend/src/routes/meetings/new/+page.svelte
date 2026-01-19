@@ -81,7 +81,7 @@
 </script>
 
 <svelte:head>
-	<title>Новая встреча - EKF Team Hub</title>
+	<title>Новая встреча - EKF Hub</title>
 </svelte:head>
 
 <div class="max-w-2xl mx-auto space-y-6">

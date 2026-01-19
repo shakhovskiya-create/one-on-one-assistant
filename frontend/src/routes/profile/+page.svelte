@@ -35,7 +35,7 @@
 </script>
 
 <svelte:head>
-	<title>Мой профиль - EKF Team Hub</title>
+	<title>Мой профиль - EKF Hub</title>
 </svelte:head>
 
 <div class="max-w-4xl mx-auto">
