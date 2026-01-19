@@ -102,9 +102,9 @@ func (c *Client) Authenticate(username, password string) (*User, error) {
 
 	// Try to bind with user credentials in different formats
 	bindFormats := []string{
-		username,                                                       // plain username
+		username, // plain username
 		fmt.Sprintf("%s@%s", username, extractDomainFromDN(c.BaseDN)), // username@domain
-		fmt.Sprintf("CN=%s,%s", username, c.BaseDN),                    // CN=username,OU=...
+		fmt.Sprintf("CN=%s,%s", username, c.BaseDN),                   // CN=username,OU=...
 	}
 
 	var bindErr error

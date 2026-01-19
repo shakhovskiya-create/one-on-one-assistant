@@ -255,6 +255,13 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 			email := adUser.Email
 			name := adUser.Name
 
+			// Debug: log what AD returned
+			c.Locals("ad_user_info", fiber.Map{
+				"email": email,
+				"name": name,
+				"username": adUser.Username,
+			})
+
 			var employee map[string]interface{}
 
 			if h.DB != nil && email != "" {
@@ -298,11 +305,15 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 				})
 			}
 
-			// User authenticated in AD but not in database - return error
-			return c.Status(403).JSON(fiber.Map{
+			// User authenticated in AD but not in database - return error with debug info
+			response := fiber.Map{
 				"error":         "User not found in system. Please contact administrator.",
 				"authenticated": false,
-			})
+			}
+			if adUserInfo := c.Locals("ad_user_info"); adUserInfo != nil {
+				response["ad_user"] = adUserInfo
+			}
+			return c.Status(403).JSON(response)
 		}
 	}
 
