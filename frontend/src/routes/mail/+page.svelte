@@ -30,6 +30,33 @@
 	let searchQuery = $state('');
 	let showOnlyUnread = $state(false);
 
+	// Auto-refresh interval (60 seconds)
+	let refreshInterval: ReturnType<typeof setInterval> | null = null;
+
+	function startAutoRefresh() {
+		if (refreshInterval) clearInterval(refreshInterval);
+		refreshInterval = setInterval(() => {
+			if (selectedFolder && !loadingEmails) {
+				refreshEmails();
+			}
+		}, 60000); // 60 seconds
+	}
+
+	async function refreshEmails() {
+		if (!selectedFolder) return;
+		try {
+			const newEmails = await mail.getEmails(credentials.username, credentials.password, selectedFolder.id, 50);
+			emails = newEmails;
+			// Update folder unread count
+			const unreadCount = newEmails.filter(e => !e.is_read).length;
+			folders = folders.map(f =>
+				f.id === selectedFolder?.id ? { ...f, unread_count: unreadCount } : f
+			);
+		} catch (e) {
+			console.error('Auto-refresh failed:', e);
+		}
+	}
+
 	// Check for saved credentials from main login
 	onMount(() => {
 		if (browser) {
@@ -40,6 +67,7 @@
 					credentials = JSON.parse(ewsCreds);
 					showLogin = false;
 					loadFolders();
+					startAutoRefresh();
 					loading = false;
 					return;
 				} catch {
@@ -53,12 +81,18 @@
 					credentials = JSON.parse(savedCreds);
 					showLogin = false;
 					loadFolders();
+					startAutoRefresh();
 				} catch {
 					showLogin = true;
 				}
 			}
 		}
 		loading = false;
+
+		// Cleanup on unmount
+		return () => {
+			if (refreshInterval) clearInterval(refreshInterval);
+		};
 	});
 
 	async function handleLogin() {
@@ -122,9 +156,11 @@
 	}
 
 	let loadingBody = $state(false);
+	let bodyError = $state('');
 
 	async function selectEmail(email: EmailMessage) {
 		selectedEmail = email;
+		bodyError = '';
 
 		// Load email body if not already loaded
 		if (!email.body || email.body === '') {
@@ -136,11 +172,17 @@
 					item_id: email.id
 				});
 				// Update the email with body
-				const updatedEmail = { ...email, body: result.body };
+				const bodyContent = result.body || '';
+				const updatedEmail = { ...email, body: bodyContent };
 				selectedEmail = updatedEmail;
 				emails = emails.map(e => e.id === email.id ? updatedEmail : e);
+
+				if (!bodyContent) {
+					bodyError = 'Письмо не содержит текста';
+				}
 			} catch (err) {
 				console.error('Failed to load email body:', err);
+				bodyError = err instanceof Error ? err.message : 'Ошибка загрузки письма';
 			} finally {
 				loadingBody = false;
 			}
@@ -421,16 +463,28 @@
 		<!-- Email list -->
 		<div class="w-80 border-r border-gray-200 flex flex-col">
 			<div class="p-3 border-b border-gray-200 space-y-2">
-				<div class="relative">
-					<input
-						type="text"
-						bind:value={searchQuery}
-						placeholder="Поиск"
-						class="w-full pl-10 pr-4 py-2 bg-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ekf-red/20"
-					/>
-					<svg class="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-					</svg>
+				<div class="flex gap-2">
+					<div class="relative flex-1">
+						<input
+							type="text"
+							bind:value={searchQuery}
+							placeholder="Поиск"
+							class="w-full pl-10 pr-4 py-2 bg-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ekf-red/20"
+						/>
+						<svg class="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+						</svg>
+					</div>
+					<button
+						onclick={() => selectedFolder && selectFolder(selectedFolder)}
+						disabled={loadingEmails}
+						class="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
+						title="Обновить"
+					>
+						<svg class="w-5 h-5 text-gray-600 {loadingEmails ? 'animate-spin' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+						</svg>
+					</button>
 				</div>
 				<button
 					onclick={() => showOnlyUnread = !showOnlyUnread}
@@ -438,7 +492,7 @@
 						{showOnlyUnread ? 'bg-ekf-red text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}"
 				>
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2 2v10a2 2 0 002 2z" />
 					</svg>
 					{showOnlyUnread ? 'Только непрочитанные' : 'Все письма'}
 				</button>
@@ -539,8 +593,17 @@
 								<div class="animate-spin rounded-full h-6 w-6 border-b-2 border-ekf-red"></div>
 								<span class="ml-3 text-gray-500 text-sm">Загрузка письма...</span>
 							</div>
+						{:else if bodyError}
+							<div class="text-center py-8">
+								<svg class="w-12 h-12 mx-auto text-red-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+								</svg>
+								<p class="text-red-500">{bodyError}</p>
+							</div>
 						{:else if selectedEmail.body}
-							{@html selectedEmail.body}
+							<div class="prose max-w-none">
+								{@html selectedEmail.body}
+							</div>
 						{:else}
 							<p class="text-gray-500">Нет содержимого</p>
 						{/if}
