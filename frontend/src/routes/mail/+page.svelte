@@ -26,8 +26,9 @@
 	let composeBody = $state('');
 	let sending = $state(false);
 
-	// Search
+	// Search & Filter
 	let searchQuery = $state('');
+	let showOnlyUnread = $state(false);
 
 	// Check for saved credentials from main login
 	onMount(() => {
@@ -294,15 +295,26 @@
 		return person.name || person.email || 'Неизвестный';
 	}
 
-	let filteredEmails = $derived(
-		searchQuery
-			? emails.filter(e =>
-					e.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-					(e.from?.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-					(e.from?.email || '').toLowerCase().includes(searchQuery.toLowerCase())
-				)
-			: emails
-	);
+	let filteredEmails = $derived(() => {
+		let result = emails;
+
+		// Filter by unread if enabled
+		if (showOnlyUnread) {
+			result = result.filter(e => !e.is_read);
+		}
+
+		// Filter by search query
+		if (searchQuery) {
+			const query = searchQuery.toLowerCase();
+			result = result.filter(e =>
+				e.subject.toLowerCase().includes(query) ||
+				(e.from?.name || '').toLowerCase().includes(query) ||
+				(e.from?.email || '').toLowerCase().includes(query)
+			);
+		}
+
+		return result;
+	});
 </script>
 
 <svelte:head>
@@ -408,7 +420,7 @@
 
 		<!-- Email list -->
 		<div class="w-80 border-r border-gray-200 flex flex-col">
-			<div class="p-3 border-b border-gray-200">
+			<div class="p-3 border-b border-gray-200 space-y-2">
 				<div class="relative">
 					<input
 						type="text"
@@ -420,6 +432,16 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
 					</svg>
 				</div>
+				<button
+					onclick={() => showOnlyUnread = !showOnlyUnread}
+					class="flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg transition-colors w-full
+						{showOnlyUnread ? 'bg-ekf-red text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}"
+				>
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+					</svg>
+					{showOnlyUnread ? 'Только непрочитанные' : 'Все письма'}
+				</button>
 			</div>
 
 			<div class="flex-1 overflow-y-auto">
@@ -427,10 +449,12 @@
 					<div class="flex items-center justify-center h-32">
 						<div class="animate-spin rounded-full h-6 w-6 border-b-2 border-ekf-red"></div>
 					</div>
-				{:else if filteredEmails.length === 0}
-					<div class="text-center py-12 text-gray-500 text-sm">Нет писем</div>
+				{:else if filteredEmails().length === 0}
+					<div class="text-center py-12 text-gray-500 text-sm">
+						{showOnlyUnread ? 'Нет непрочитанных писем' : 'Нет писем'}
+					</div>
 				{:else}
-					{#each filteredEmails as email}
+					{#each filteredEmails() as email}
 						<button
 							onclick={() => selectEmail(email)}
 							class="w-full px-4 py-3 text-left border-b border-gray-100 hover:bg-gray-50 transition-colors
