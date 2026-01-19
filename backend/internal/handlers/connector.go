@@ -14,14 +14,52 @@ import (
 // ConnectorStatus returns connector status
 func (h *Handler) ConnectorStatus(c *fiber.Ctx) error {
 	adStatus := "unknown"
+	dbStatus := "disconnected"
 	employeeCount := 0
+	meetingsCount := 0
+	tasksCount := 0
+	projectsCount := 0
+	openTasksCount := 0
+	overdueTasksCount := 0
 
 	if h.DB != nil {
+		dbStatus = "connected"
+
 		var employees []struct {
 			ID string `json:"id"`
 		}
 		h.DB.From("employees").Select("id").Execute(&employees)
 		employeeCount = len(employees)
+
+		var meetings []struct {
+			ID string `json:"id"`
+		}
+		h.DB.From("meetings").Select("id").Execute(&meetings)
+		meetingsCount = len(meetings)
+
+		var tasks []struct {
+			ID      string  `json:"id"`
+			Status  string  `json:"status"`
+			DueDate *string `json:"due_date"`
+		}
+		h.DB.From("tasks").Select("id, status, due_date").Execute(&tasks)
+		tasksCount = len(tasks)
+		today := time.Now().Format("2006-01-02")
+		for _, t := range tasks {
+			if t.Status != "done" {
+				openTasksCount++
+				if t.DueDate != nil && *t.DueDate < today {
+					overdueTasksCount++
+				}
+			}
+		}
+
+		var projects []struct {
+			ID string `json:"id"`
+		}
+		h.DB.From("projects").Select("id").Execute(&projects)
+		projectsCount = len(projects)
+
 		if employeeCount > 0 {
 			if h.Connector.IsConnected() {
 				adStatus = "connected"
@@ -37,7 +75,13 @@ func (h *Handler) ConnectorStatus(c *fiber.Ctx) error {
 		"ad_status":            adStatus,
 		"ad_sync_enabled":      false,
 		"last_sync":            "",
+		"db_status":            dbStatus,
 		"employee_count":       employeeCount,
+		"meetings_count":       meetingsCount,
+		"tasks_count":          tasksCount,
+		"open_tasks_count":     openTasksCount,
+		"overdue_tasks_count":  overdueTasksCount,
+		"projects_count":       projectsCount,
 		"calendar_integration": "ews",
 		"ews_url":              h.Config.EWSURL,
 		"ews_configured":       h.Config.EWSURL != "" && h.Config.EWSUsername != "" && h.Config.EWSPassword != "",

@@ -465,7 +465,13 @@ export interface ConnectorStatus {
 	ad_status?: string;
 	ad_sync_enabled?: boolean;
 	last_sync?: string;
+	db_status?: string;
 	employee_count?: number;
+	meetings_count?: number;
+	tasks_count?: number;
+	open_tasks_count?: number;
+	overdue_tasks_count?: number;
+	projects_count?: number;
 	calendar_integration?: string;
 	ews_url?: string;
 	ews_configured?: boolean;
