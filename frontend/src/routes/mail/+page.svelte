@@ -123,15 +123,34 @@
 	function selectEmail(email: EmailMessage) {
 		selectedEmail = email;
 		if (!email.is_read) {
-			// Mark as read
+			// Mark as read in UI immediately for better UX
+			emails = emails.map(e =>
+				e.id === email.id ? { ...e, is_read: true } : e
+			);
+			selectedEmail = { ...email, is_read: true };
+
+			// Update folder unread count
+			if (selectedFolder) {
+				folders = folders.map(f =>
+					f.id === selectedFolder?.id
+						? { ...f, unread_count: Math.max(0, f.unread_count - 1) }
+						: f
+				);
+			}
+
+			// Mark as read on server
 			mail.markAsRead({
 				username: credentials.username,
 				password: credentials.password,
 				item_id: email.id
-			}).then(() => {
-				email.is_read = true;
-				emails = [...emails];
-			}).catch(console.error);
+			}).catch(err => {
+				console.error('Failed to mark as read:', err);
+				// Revert on error
+				emails = emails.map(e =>
+					e.id === email.id ? { ...e, is_read: false } : e
+				);
+				selectedEmail = { ...email, is_read: false };
+			});
 		}
 	}
 
@@ -230,6 +249,21 @@
 		return 'folder';
 	}
 
+	function getFolderPriority(name: string): number {
+		const lower = name.toLowerCase();
+		if (lower === 'inbox' || lower === 'входящие') return 0;
+		if (lower.includes('sent') || lower.includes('отправленные')) return 1;
+		if (lower.includes('draft') || lower.includes('черновик')) return 2;
+		if (lower.includes('deleted') || lower.includes('удаленные')) return 3;
+		if (lower.includes('spam') || lower.includes('junk') || lower.includes('нежелательн')) return 4;
+		if (lower.includes('archive') || lower.includes('архив')) return 5;
+		return 10; // Other folders at the end
+	}
+
+	let sortedFolders = $derived(
+		[...folders].sort((a, b) => getFolderPriority(a.display_name) - getFolderPriority(b.display_name))
+	);
+
 	function getPersonDisplay(person?: EmailPerson): string {
 		if (!person) return 'Неизвестный';
 		return person.name || person.email || 'Неизвестный';
@@ -314,7 +348,7 @@
 			</div>
 
 			<nav class="flex-1 overflow-y-auto px-2">
-				{#each folders as folder}
+				{#each sortedFolders as folder}
 					<button
 						onclick={() => selectFolder(folder)}
 						class="w-full px-3 py-2 flex items-center gap-3 rounded-lg text-left text-sm transition-colors mb-1
@@ -345,11 +379,6 @@
 				{/each}
 			</nav>
 
-			<div class="p-3 border-t border-gray-200">
-				<button onclick={logout} class="w-full text-sm text-gray-500 hover:text-gray-700">
-					Выйти
-				</button>
-			</div>
 		</div>
 
 		<!-- Email list -->
