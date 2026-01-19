@@ -1,7 +1,8 @@
 import { writable, derived, get } from 'svelte/store';
 import { browser } from '$app/environment';
 
-const API_URL = browser ? (import.meta.env.VITE_API_URL || 'http://localhost:8080') : 'http://localhost:8080';
+// Use /api prefix which will be proxied to backend
+const API_URL = '/api';
 
 export interface User {
 	id: string;
