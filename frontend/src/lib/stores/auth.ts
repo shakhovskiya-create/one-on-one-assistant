@@ -97,6 +97,8 @@ function createAuthStore() {
 					localStorage.setItem('auth_token', token);
 					localStorage.setItem('auth_user', JSON.stringify(user));
 					localStorage.setItem('currentUserId', user.id);
+					// Save credentials for EWS services (mail, calendar)
+					sessionStorage.setItem('ews_credentials', JSON.stringify({ username, password }));
 				}
 
 				fetchSubordinates(user.id);

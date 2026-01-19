@@ -14,10 +14,9 @@
 	let loadingEmails = $state(false);
 	let error = $state('');
 
-	// Credentials (stored in session for this page)
+	// Credentials (from main login via ews_credentials)
 	let credentials = $state({ username: '', password: '' });
 	let showLogin = $state(true);
-	let rememberCredentials = $state(false);
 
 	// Compose
 	let showCompose = $state(false);
@@ -30,9 +29,23 @@
 	// Search
 	let searchQuery = $state('');
 
-	// Check for saved credentials
+	// Check for saved credentials from main login
 	onMount(() => {
 		if (browser) {
+			// First try ews_credentials from main login
+			const ewsCreds = sessionStorage.getItem('ews_credentials');
+			if (ewsCreds) {
+				try {
+					credentials = JSON.parse(ewsCreds);
+					showLogin = false;
+					loadFolders();
+					loading = false;
+					return;
+				} catch {
+					// Fall through to show login
+				}
+			}
+			// Fallback to mail_credentials for backwards compatibility
 			const savedCreds = sessionStorage.getItem('mail_credentials');
 			if (savedCreds) {
 				try {
@@ -60,8 +73,8 @@
 			const result = await mail.getFolders(credentials.username, credentials.password);
 			folders = result;
 
-			if (browser && rememberCredentials) {
-				sessionStorage.setItem('mail_credentials', JSON.stringify(credentials));
+			if (browser) {
+				sessionStorage.setItem('ews_credentials', JSON.stringify(credentials));
 			}
 
 			showLogin = false;
@@ -177,6 +190,7 @@
 
 	function logout() {
 		if (browser) {
+			sessionStorage.removeItem('ews_credentials');
 			sessionStorage.removeItem('mail_credentials');
 		}
 		credentials = { username: '', password: '' };
@@ -264,19 +278,13 @@
 						class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ekf-red/20"
 					/>
 				</div>
-				<div class="mb-4">
+				<div class="mb-6">
 					<label class="block text-sm font-medium text-gray-700 mb-1">Пароль</label>
 					<input
 						type="password"
 						bind:value={credentials.password}
 						class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ekf-red/20"
 					/>
-				</div>
-				<div class="mb-6">
-					<label class="flex items-center gap-2 text-sm text-gray-600">
-						<input type="checkbox" bind:checked={rememberCredentials} class="rounded text-ekf-red" />
-						Запомнить на эту сессию
-					</label>
 				</div>
 				<button
 					type="submit"
