@@ -70,8 +70,6 @@ func main() {
 	// Public routes (no JWT required)
 	publicAPI := api.Group("")
 	publicAPI.Post("/ad/authenticate", h.AuthenticateAD)
-	publicAPI.Post("/users/local", h.CreateLocalUser)
-	publicAPI.Post("/users/set-password", h.SetLocalPassword)
 	publicAPI.Get("/connector/status", h.ConnectorStatus)
 
 	// Protected routes (JWT required)
@@ -126,9 +124,6 @@ func main() {
 	// AD Integration
 	protectedAPI.Post("/ad/sync", h.SyncADUsers)
 	protectedAPI.Get("/ad/subordinates/:id", h.GetSubordinates)
-
-	// Local User Management
-	protectedAPI.Post("/users/change-password", h.ChangePassword)
 
 	// JWT Token Management
 	protectedAPI.Post("/auth/refresh", h.RefreshToken)
