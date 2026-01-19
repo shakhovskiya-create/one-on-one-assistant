@@ -209,7 +209,7 @@ func (c *PostgresClient) Insert(table string, data map[string]interface{}) ([]by
 	columns := []string{}
 	placeholders := []string{}
 	values := []interface{}{}
-	
+
 	i := 1
 	for col, val := range data {
 		columns = append(columns, col)
@@ -226,7 +226,7 @@ func (c *PostgresClient) Insert(table string, data map[string]interface{}) ([]by
 	)
 
 	row := c.db.QueryRow(query, values...)
-	
+
 	// Scan result
 	columnNames := []string{}
 	for col := range data {
@@ -256,7 +256,7 @@ func (c *PostgresClient) Insert(table string, data map[string]interface{}) ([]by
 func (c *PostgresClient) Update(table, keyColumn, keyValue string, data map[string]interface{}) ([]byte, error) {
 	setClauses := []string{}
 	values := []interface{}{}
-	
+
 	i := 1
 	for col, val := range data {
 		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", col, i))
@@ -291,7 +291,7 @@ func (c *PostgresClient) Upsert(table string, data []map[string]interface{}, con
 		placeholders := []string{}
 		values := []interface{}{}
 		updateClauses := []string{}
-		
+
 		i := 1
 		for col, val := range row {
 			columns = append(columns, col)

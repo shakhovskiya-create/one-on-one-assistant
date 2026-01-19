@@ -79,10 +79,29 @@ func (h *Handler) SyncADUsersDirect(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "AD not configured"})
 	}
 
-	includePhotos := c.Query("include_photos", "true") == "true"
+	// Get credentials from request body or query params
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
 
-	// Get all users from AD
-	users, err := h.AD.GetAllUsers(includePhotos)
+	// Try to parse body, fallback to query params
+	c.BodyParser(&req)
+	if req.Username == "" {
+		req.Username = c.Query("username")
+		req.Password = c.Query("password")
+	}
+
+	if req.Username == "" || req.Password == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Username and password required for AD sync"})
+	}
+
+	// Always include photos as per user requirement
+	includePhotos := true
+
+	// Get all users from AD using user credentials
+	// This will automatically filter users without departments
+	users, err := h.AD.GetAllUsersWithCredentials(req.Username, req.Password, includePhotos)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}

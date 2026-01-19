@@ -169,6 +169,81 @@ func extractDomainFromDN(dn string) string {
 	return "local"
 }
 
+// GetAllUsersWithCredentials retrieves all users using provided credentials
+func (c *Client) GetAllUsersWithCredentials(username, password string, includePhotos bool) ([]*User, error) {
+	// Create temporary connection with user credentials
+	var userConn *ldap.Conn
+	var err error
+
+	if strings.HasPrefix(c.URL, "ldaps://") {
+		userConn, err = ldap.DialURL(c.URL, ldap.DialWithTLSConfig(&tls.Config{
+			InsecureSkipVerify: c.SkipVerify,
+		}))
+	} else {
+		userConn, err = ldap.DialURL(c.URL)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect: %w", err)
+	}
+	defer userConn.Close()
+
+	// Try to bind with user credentials in different formats
+	bindFormats := []string{
+		username,
+		fmt.Sprintf("%s@%s", username, extractDomainFromDN(c.BaseDN)),
+		fmt.Sprintf("CN=%s,%s", username, c.BaseDN),
+	}
+
+	var bindErr error
+	authenticated := false
+	for _, bindUser := range bindFormats {
+		bindErr = userConn.Bind(bindUser, password)
+		if bindErr == nil {
+			authenticated = true
+			break
+		}
+	}
+
+	if !authenticated {
+		return nil, fmt.Errorf("authentication failed: %w", bindErr)
+	}
+
+	// Now search for all users
+	attributes := []string{
+		"dn", "sAMAccountName", "mail", "displayName", "givenName", "sn",
+		"department", "title", "telephoneNumber", "mobile", "manager",
+		"memberOf", "userAccountControl",
+	}
+
+	if includePhotos {
+		attributes = append(attributes, "thumbnailPhoto")
+	}
+
+	// Filter: user object, has department, account enabled
+	searchFilter := "(&(objectClass=user)(objectCategory=person)(department=*)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
+
+	searchRequest := ldap.NewSearchRequest(
+		c.BaseDN,
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+		searchFilter,
+		attributes,
+		nil,
+	)
+
+	sr, err := userConn.Search(searchRequest)
+	if err != nil {
+		return nil, fmt.Errorf("search failed: %w", err)
+	}
+
+	users := make([]*User, 0, len(sr.Entries))
+	for _, entry := range sr.Entries {
+		user := c.parseUser(entry, includePhotos)
+		users = append(users, user)
+	}
+
+	return users, nil
+}
+
 func (c *Client) GetAllUsers(includePhotos bool) ([]*User, error) {
 	if c.conn == nil {
 		if err := c.Connect(); err != nil {
