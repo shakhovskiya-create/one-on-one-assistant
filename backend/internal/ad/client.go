@@ -82,13 +82,46 @@ func (c *Client) Close() {
 }
 
 func (c *Client) Authenticate(username, password string) (*User, error) {
-	if c.conn == nil {
-		if err := c.Connect(); err != nil {
-			return nil, err
+	// First, try to authenticate with user credentials directly
+	// Try different username formats: domain\username, username@domain, or just username
+	var userConn *ldap.Conn
+	var err error
+
+	// Connect to LDAP
+	if strings.HasPrefix(c.URL, "ldaps://") {
+		userConn, err = ldap.DialURL(c.URL, ldap.DialWithTLSConfig(&tls.Config{
+			InsecureSkipVerify: c.SkipVerify,
+		}))
+	} else {
+		userConn, err = ldap.DialURL(c.URL)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect: %w", err)
+	}
+	defer userConn.Close()
+
+	// Try to bind with user credentials in different formats
+	bindFormats := []string{
+		username,                                                       // plain username
+		fmt.Sprintf("%s@%s", username, extractDomainFromDN(c.BaseDN)), // username@domain
+		fmt.Sprintf("CN=%s,%s", username, c.BaseDN),                    // CN=username,OU=...
+	}
+
+	var bindErr error
+	authenticated := false
+	for _, bindUser := range bindFormats {
+		bindErr = userConn.Bind(bindUser, password)
+		if bindErr == nil {
+			authenticated = true
+			break
 		}
 	}
 
-	// Search for user
+	if !authenticated {
+		return nil, fmt.Errorf("invalid credentials: %w", bindErr)
+	}
+
+	// Now search for user info using the authenticated connection
 	searchFilter := fmt.Sprintf("(&(objectClass=user)(sAMAccountName=%s))", ldap.EscapeFilter(username))
 	searchRequest := ldap.NewSearchRequest(
 		c.BaseDN,
@@ -98,47 +131,42 @@ func (c *Client) Authenticate(username, password string) (*User, error) {
 		nil,
 	)
 
-	sr, err := c.conn.Search(searchRequest)
+	sr, err := userConn.Search(searchRequest)
 	if err != nil {
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
 
 	if len(sr.Entries) == 0 {
-		return nil, fmt.Errorf("user not found")
+		// User authenticated but not found in search - create minimal user info
+		return &User{
+			Username: username,
+			Login:    username,
+			Email:    fmt.Sprintf("%s@%s", username, extractDomainFromDN(c.BaseDN)),
+			Name:     username,
+			Enabled:  true,
+		}, nil
 	}
 
+	// Parse full user info
 	entry := sr.Entries[0]
-	userDN := entry.DN
-	upn := entry.GetAttributeValue("userPrincipalName")
-
-	// Try to bind as user to verify password
-	var testConn *ldap.Conn
-	if strings.HasPrefix(c.URL, "ldaps://") {
-		testConn, err = ldap.DialURL(c.URL, ldap.DialWithTLSConfig(&tls.Config{
-			InsecureSkipVerify: c.SkipVerify,
-		}))
-	} else {
-		testConn, err = ldap.DialURL(c.URL)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect for auth: %w", err)
-	}
-	defer testConn.Close()
-
-	// Try bind with UPN first if available, then fall back to DN
-	bindUsername := userDN
-	if upn != "" {
-		bindUsername = upn
-	}
-
-	err = testConn.Bind(bindUsername, password)
-	if err != nil {
-		return nil, fmt.Errorf("invalid credentials")
-	}
-
-	// Parse user info
 	user := c.parseUser(entry, false)
 	return user, nil
+}
+
+// extractDomainFromDN extracts domain name from DN (e.g., DC=ekfgroup,DC=ru -> ekfgroup.ru)
+func extractDomainFromDN(dn string) string {
+	parts := strings.Split(dn, ",")
+	var domainParts []string
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(strings.ToUpper(part), "DC=") {
+			domainParts = append(domainParts, part[3:])
+		}
+	}
+	if len(domainParts) > 0 {
+		return strings.Join(domainParts, ".")
+	}
+	return "local"
 }
 
 func (c *Client) GetAllUsers(includePhotos bool) ([]*User, error) {
