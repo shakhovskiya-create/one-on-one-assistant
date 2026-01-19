@@ -112,8 +112,13 @@ export const tasks = {
 
 // Analytics
 export const analytics = {
-	getDashboard: (period?: string) =>
-		request<DashboardData>(`/analytics/dashboard${period ? `?period=${period}` : ''}`),
+	getDashboard: (period?: string, managerId?: string) => {
+		const params = new URLSearchParams();
+		if (period) params.append('period', period);
+		if (managerId) params.append('manager_id', managerId);
+		const query = params.toString();
+		return request<DashboardData>(`/analytics/dashboard${query ? `?${query}` : ''}`);
+	},
 	getEmployee: (id: string, period?: string) =>
 		request<EmployeeAnalytics>(`/analytics/employee/${id}${period ? `?period=${period}` : ''}`),
 	getEmployeeByCategory: (id: string) => request(`/analytics/employee/${id}/by-category`),

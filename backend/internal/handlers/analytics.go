@@ -15,25 +15,39 @@ func (h *Handler) GetDashboard(c *fiber.Ctx) error {
 
 	period := c.Query("period", "month")
 	startDate := getPeriodStart(period)
+	managerID := c.Query("manager_id")
 
-	// Get employees
+	// Get employees - filter by manager if specified
 	var employees []models.Employee
-	h.DB.From("employees").Select("*").Execute(&employees)
+	if managerID != "" {
+		// Get all subordinates recursively
+		employees = h.getSubordinatesRecursive(managerID)
+	} else {
+		h.DB.From("employees").Select("*").Execute(&employees)
+	}
 
 	// Get active projects
 	var projects []models.Project
 	h.DB.From("projects").Select("*").Eq("status", "active").Execute(&projects)
 
-	// Get recent meetings
+	// Get recent meetings - filter by employees if manager specified
 	var meetings []models.Meeting
-	h.DB.From("meetings").Select("*, employees(name), meeting_categories(name)").Order("date", true).Limit(10).Execute(&meetings)
+	meetingQuery := h.DB.From("meetings").Select("*, employees(name), meeting_categories(name)")
+	if managerID != "" && len(employees) > 0 {
+		meetingQuery = meetingQuery.In("employee_id", getEmployeeIDs(employees))
+	}
+	meetingQuery.Order("date", true).Limit(50).Execute(&meetings)
 
-	// Get task stats
+	// Get task stats - filter by employees if manager specified
 	var tasks []struct {
 		Status  string  `json:"status"`
 		DueDate *string `json:"due_date"`
 	}
-	h.DB.From("tasks").Select("status, due_date").Execute(&tasks)
+	taskQuery := h.DB.From("tasks").Select("status, due_date")
+	if managerID != "" && len(employees) > 0 {
+		taskQuery = taskQuery.In("assignee_id", getEmployeeIDs(employees))
+	}
+	taskQuery.Execute(&tasks)
 
 	// Get agreement stats
 	var agreements []struct {
@@ -342,6 +356,33 @@ func getPeriodStart(period string) string {
 	default:
 		return ""
 	}
+}
+
+// getSubordinatesRecursive gets all subordinates recursively for a manager
+func (h *Handler) getSubordinatesRecursive(managerID string) []models.Employee {
+	var result []models.Employee
+
+	// Get direct subordinates
+	var directSubordinates []models.Employee
+	h.DB.From("employees").Select("*").Eq("manager_id", managerID).Execute(&directSubordinates)
+
+	for _, sub := range directSubordinates {
+		result = append(result, sub)
+		// Recursively get their subordinates
+		subOfSub := h.getSubordinatesRecursive(sub.ID)
+		result = append(result, subOfSub...)
+	}
+
+	return result
+}
+
+// getEmployeeIDs extracts IDs from employee slice
+func getEmployeeIDs(employees []models.Employee) []string {
+	ids := make([]string, len(employees))
+	for i, emp := range employees {
+		ids[i] = emp.ID
+	}
+	return ids
 }
 
 // GetEmployeeAnalyticsByCategory returns analytics by meeting category

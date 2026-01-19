@@ -40,10 +40,10 @@ func NewPostgresClient(connectionString string) (*PostgresClient, error) {
 
 // relationInfo stores information about a Supabase-style relationship
 type relationInfo struct {
-	alias       string   // e.g., "assignee"
-	table       string   // e.g., "employees"
-	foreignKey  string   // e.g., "tasks_assignee_id_fkey" (optional)
-	columns     []string // e.g., ["id", "name"]
+	alias      string   // e.g., "assignee"
+	table      string   // e.g., "employees"
+	foreignKey string   // e.g., "tasks_assignee_id_fkey" (optional)
+	columns    []string // e.g., ["id", "name"]
 }
 
 // PostgresQueryBuilder helps build SQL queries

@@ -15,8 +15,10 @@
 
 	onMount(async () => {
 		try {
+			// Get manager_id for filtering when viewScope is 'my'
+			const managerId = viewScope === 'my' && $user ? $user.id : undefined;
 			const [dashboardData, categoriesData] = await Promise.all([
-				analyticsApi.getDashboard(selectedPeriod).catch(() => null),
+				analyticsApi.getDashboard(selectedPeriod, managerId).catch(() => null),
 				meetings.getCategories().catch(() => [])
 			]);
 			dashboard = dashboardData;
@@ -43,10 +45,14 @@
 
 	$effect(() => {
 		const period = selectedPeriod;
+		const scope = viewScope;
+		const currentUser = $user;
 		if (selectedEmployee) {
 			loadEmployeeAnalytics(selectedEmployee, period);
 		} else {
-			analyticsApi.getDashboard(period).then((data) => {
+			// Get manager_id for filtering when viewScope is 'my'
+			const managerId = scope === 'my' && currentUser ? currentUser.id : undefined;
+			analyticsApi.getDashboard(period, managerId).then((data) => {
 				dashboard = data;
 			}).catch((e) => {
 				console.error(e);
