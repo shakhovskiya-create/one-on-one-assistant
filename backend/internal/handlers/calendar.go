@@ -58,53 +58,24 @@ func (h *Handler) GetCalendar(c *fiber.Ctx) error {
 
 	var events interface{}
 	var source string
-	var getErr error
 
-	// Try connector first - use user's own credentials if available
-	if h.Connector.IsConnected() {
-		// Get user's encrypted password for EWS authentication
-		var username, password string
-		if employee.EncryptedPassword != nil && *employee.EncryptedPassword != "" {
-			// Decrypt user's password
-			decrypted, err := utils.DecryptPassword(*employee.EncryptedPassword, h.Config.JWTSecret)
-			if err == nil {
-				username = "ekfgroup\\" + employee.ADLogin
-				password = decrypted
-				log.Printf("Using user's own credentials for calendar: %s", username)
-			} else {
-				log.Printf("ERROR: Failed to decrypt password for %s: %v", employee.Email, err)
-			}
-		} else {
-			log.Printf("WARNING: No encrypted password for %s", employee.Email)
-		}
-
-		result, err := h.Connector.SendCommand("get_calendar", map[string]interface{}{
-			"email":        ewsEmail,
-			"username":     username, // User's own credentials
-			"password":     password,
-			"days_back":    daysBack,
-			"days_forward": daysForward,
-		}, 30*time.Second)
-
+	// Get user's encrypted password for EWS authentication
+	var username, password string
+	if employee.EncryptedPassword != nil && *employee.EncryptedPassword != "" {
+		// Decrypt user's password
+		decrypted, err := utils.DecryptPassword(*employee.EncryptedPassword, h.Config.JWTSecret)
 		if err == nil {
-			events = result
-			source = "connector"
+			username = "ekfgroup\\" + employee.ADLogin
+			password = decrypted
 		} else {
-			getErr = err
+			log.Printf("ERROR: Failed to decrypt password for %s: %v", employee.Email, err)
 		}
 	}
 
-	// Fallback to direct EWS if connector failed (uses config credentials)
-	if events == nil && h.EWS != nil {
-		ewsEvents, err := h.EWS.GetCalendarEvents(ewsEmail, h.Config.EWSUsername, h.Config.EWSPassword, daysBack, daysForward)
+	// Use direct EWS with user's credentials
+	if h.EWS != nil && username != "" && password != "" {
+		ewsEvents, err := h.EWS.GetCalendarEvents(ewsEmail, username, password, daysBack, daysForward)
 		if err != nil {
-			if getErr != nil {
-				return c.Status(500).JSON(fiber.Map{
-					"error":           "Ошибка подключения к Exchange",
-					"connector_error": getErr.Error(),
-					"ews_error":       err.Error(),
-				})
-			}
 			return c.Status(500).JSON(fiber.Map{"error": "EWS error: " + err.Error()})
 		}
 		events = ewsEvents
@@ -112,8 +83,13 @@ func (h *Handler) GetCalendar(c *fiber.Ctx) error {
 	}
 
 	if events == nil {
+		if username == "" || password == "" {
+			return c.Status(401).JSON(fiber.Map{
+				"error": "Для доступа к календарю необходимо повторно войти в систему",
+			})
+		}
 		return c.Status(500).JSON(fiber.Map{
-			"error": "Не удалось получить календарь: коннектор недоступен и прямое подключение не настроено",
+			"error": "Не удалось получить календарь",
 		})
 	}
 

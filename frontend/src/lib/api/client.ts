@@ -1,7 +1,7 @@
 import { browser } from '$app/environment';
 
-const BASE_URL = browser ? (import.meta.env.VITE_API_URL || 'http://localhost:8080') : 'http://localhost:8080';
-const API_URL = `${BASE_URL}/api/v1`;
+const BASE_URL = browser ? '/api' : 'http://backend:8080';
+const API_URL = BASE_URL;
 
 interface RequestOptions {
 	method?: string;

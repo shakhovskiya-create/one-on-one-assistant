@@ -47,6 +47,7 @@ type PostgresQueryBuilder struct {
 	limitVal     int
 	offsetVal    int
 	orderBy      string
+	single       bool
 }
 
 // From starts a query on a table
@@ -134,6 +135,7 @@ func (qb *PostgresQueryBuilder) Limit(limit int) QueryBuilder {
 // Single executes query expecting single result
 func (qb *PostgresQueryBuilder) Single() QueryBuilder {
 	qb.limitVal = 1
+	qb.single = true
 	return qb
 }
 
@@ -196,6 +198,18 @@ func (qb *PostgresQueryBuilder) Execute(result interface{}) error {
 	}
 
 	// Marshal and unmarshal to convert to target type
+	// If single mode and results exist, return first element
+	if qb.single {
+		if len(results) == 0 {
+			return fmt.Errorf("no rows found")
+		}
+		jsonData, err := json.Marshal(results[0])
+		if err != nil {
+			return err
+		}
+		return json.Unmarshal(jsonData, result)
+	}
+
 	jsonData, err := json.Marshal(results)
 	if err != nil {
 		return err
@@ -225,31 +239,44 @@ func (c *PostgresClient) Insert(table string, data map[string]interface{}) ([]by
 		strings.Join(placeholders, ", "),
 	)
 
-	row := c.db.QueryRow(query, values...)
-
-	// Scan result
-	columnNames := []string{}
-	for col := range data {
-		columnNames = append(columnNames, col)
+	rows, err := c.db.Query(query, values...)
+	if err != nil {
+		return nil, fmt.Errorf("insert failed: %w", err)
 	}
-	columnNames = append(columnNames, "id") // Assuming id is returned
+	defer rows.Close()
 
-	result := make(map[string]interface{})
-	scanDest := make([]interface{}, len(columnNames))
-	for i := range scanDest {
-		var v interface{}
-		scanDest[i] = &v
-	}
-
-	if err := row.Scan(scanDest...); err != nil {
+	// Get actual column names from result
+	columnNames, err := rows.Columns()
+	if err != nil {
 		return nil, err
 	}
 
-	for i, col := range columnNames {
-		result[col] = scanDest[i]
+	var results []map[string]interface{}
+	for rows.Next() {
+		scanDest := make([]interface{}, len(columnNames))
+		for i := range scanDest {
+			var v interface{}
+			scanDest[i] = &v
+		}
+
+		if err := rows.Scan(scanDest...); err != nil {
+			return nil, err
+		}
+
+		result := make(map[string]interface{})
+		for i, col := range columnNames {
+			val := *(scanDest[i].(*interface{}))
+			// Convert []byte to string for JSON compatibility
+			if b, ok := val.([]byte); ok {
+				result[col] = string(b)
+			} else {
+				result[col] = val
+			}
+		}
+		results = append(results, result)
 	}
 
-	return json.Marshal([]map[string]interface{}{result})
+	return json.Marshal(results)
 }
 
 // Update updates data in table
@@ -266,15 +293,50 @@ func (c *PostgresClient) Update(table, keyColumn, keyValue string, data map[stri
 	values = append(values, keyValue)
 
 	query := fmt.Sprintf(
-		"UPDATE %s SET %s WHERE %s = $%d",
+		"UPDATE %s SET %s WHERE %s = $%d RETURNING *",
 		table,
 		strings.Join(setClauses, ", "),
 		keyColumn,
 		i,
 	)
 
-	_, err := c.db.Exec(query, values...)
-	return nil, err
+	rows, err := c.db.Query(query, values...)
+	if err != nil {
+		return nil, fmt.Errorf("update failed: %w", err)
+	}
+	defer rows.Close()
+
+	// Get actual column names from result
+	columnNames, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	var results []map[string]interface{}
+	for rows.Next() {
+		scanDest := make([]interface{}, len(columnNames))
+		for i := range scanDest {
+			var v interface{}
+			scanDest[i] = &v
+		}
+
+		if err := rows.Scan(scanDest...); err != nil {
+			return nil, err
+		}
+
+		result := make(map[string]interface{})
+		for i, col := range columnNames {
+			val := *(scanDest[i].(*interface{}))
+			if b, ok := val.([]byte); ok {
+				result[col] = string(b)
+			} else {
+				result[col] = val
+			}
+		}
+		results = append(results, result)
+	}
+
+	return json.Marshal(results)
 }
 
 // Upsert upserts data (not implemented yet, just inserts)

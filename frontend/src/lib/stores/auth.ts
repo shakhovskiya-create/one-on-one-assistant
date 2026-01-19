@@ -54,7 +54,7 @@ function createAuthStore() {
 	async function fetchSubordinates(userId: string) {
 		try {
 			const authToken = browser ? localStorage.getItem('auth_token') : null;
-			const res = await fetch(`${API_URL}/api/v1/ad/subordinates/${userId}`, {
+			const res = await fetch(`${API_URL}/v1/ad/subordinates/${userId}`, {
 				headers: {
 					...(authToken && authToken !== 'authenticated' ? { 'Authorization': `Bearer ${authToken}` } : {})
 				}
@@ -74,7 +74,7 @@ function createAuthStore() {
 			formData.append('username', username);
 			formData.append('password', password);
 
-			const res = await fetch(`${API_URL}/api/v1/ad/authenticate`, {
+			const res = await fetch(`${API_URL}/v1/ad/authenticate`, {
 				method: 'POST',
 				body: formData
 			});
@@ -113,7 +113,7 @@ function createAuthStore() {
 	async function changePassword(userId: string, oldPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
 		try {
 			const authToken = browser ? localStorage.getItem('auth_token') : null;
-			const res = await fetch(`${API_URL}/api/v1/users/change-password`, {
+			const res = await fetch(`${API_URL}/v1/users/change-password`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
@@ -146,7 +146,7 @@ function createAuthStore() {
 				return false;
 			}
 
-			const res = await fetch(`${API_URL}/api/v1/auth/refresh`, {
+			const res = await fetch(`${API_URL}/v1/auth/refresh`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',

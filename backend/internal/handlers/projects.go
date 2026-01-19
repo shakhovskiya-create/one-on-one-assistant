@@ -25,6 +25,11 @@ func (h *Handler) ListProjects(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	// Return empty array instead of null
+	if projects == nil {
+		projects = []models.Project{}
+	}
+
 	return c.JSON(projects)
 }
 

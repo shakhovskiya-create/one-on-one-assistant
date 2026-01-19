@@ -87,6 +87,12 @@ func (c *Client) Authenticate(username, password string) (*User, error) {
 	var userConn *ldap.Conn
 	var err error
 
+	// Extract login from email if needed (a.shakhovskiy@ekf.su -> a.shakhovskiy)
+	loginName := username
+	if strings.Contains(username, "@") {
+		loginName = strings.Split(username, "@")[0]
+	}
+
 	// Connect to LDAP
 	if strings.HasPrefix(c.URL, "ldaps://") {
 		userConn, err = ldap.DialURL(c.URL, ldap.DialWithTLSConfig(&tls.Config{
@@ -102,9 +108,10 @@ func (c *Client) Authenticate(username, password string) (*User, error) {
 
 	// Try to bind with user credentials in different formats
 	bindFormats := []string{
-		username, // plain username
-		fmt.Sprintf("%s@%s", username, extractDomainFromDN(c.BaseDN)), // username@domain
-		fmt.Sprintf("CN=%s,%s", username, c.BaseDN),                   // CN=username,OU=...
+		username,                                                          // as provided (may include @domain)
+		loginName,                                                         // plain login without domain
+		fmt.Sprintf("%s@%s", loginName, extractDomainFromDN(c.BaseDN)),    // login@domain from DN
+		fmt.Sprintf("CN=%s,%s", loginName, c.BaseDN),                      // CN=login,OU=...
 	}
 
 	var bindErr error
@@ -122,7 +129,8 @@ func (c *Client) Authenticate(username, password string) (*User, error) {
 	}
 
 	// Now search for user info using the authenticated connection
-	searchFilter := fmt.Sprintf("(&(objectClass=user)(sAMAccountName=%s))", ldap.EscapeFilter(username))
+	// Search by sAMAccountName (login without domain)
+	searchFilter := fmt.Sprintf("(&(objectClass=user)(sAMAccountName=%s))", ldap.EscapeFilter(loginName))
 	searchRequest := ldap.NewSearchRequest(
 		c.BaseDN,
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,

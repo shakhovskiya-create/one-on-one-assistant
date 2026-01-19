@@ -1,6 +1,18 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:16
+    container_name: oneonone-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=oneonone
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - /opt/one-on-one/postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -9,7 +21,7 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/oneonone?sslmode=disable
       - AD_URL=${AD_URL}
       - AD_BASE_DN=${AD_BASE_DN}
       - AD_BIND_USER=${AD_BIND_USER}
@@ -24,16 +36,18 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - YANDEX_API_KEY=${YANDEX_API_KEY}
       - YANDEX_FOLDER_ID=${YANDEX_FOLDER_ID}
+    depends_on:
+      - postgres
     restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=/api
     ports:
       - "3000:3000"
-    environment:
-      - VITE_API_URL=/api/v1
     depends_on:
       - backend
     restart: unless-stopped
