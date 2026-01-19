@@ -367,21 +367,33 @@ func (h *Handler) SyncADUsers(c *fiber.Ctx) error {
 // AuthenticateAD authenticates a user against AD only
 func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Username string `json:"username" form:"username"`
+		Password string `json:"password" form:"password"`
 	}
 
-	// Try JSON first, then form data
+	// Try to parse body (JSON or form data)
 	if err := c.BodyParser(&req); err != nil {
+		// Fallback to manual form parsing
 		req.Username = c.FormValue("username")
 		req.Password = c.FormValue("password")
+	}
+
+	// Also check query params as fallback
+	if req.Username == "" {
+		req.Username = c.Query("username")
+	}
+	if req.Password == "" {
+		req.Password = c.Query("password")
 	}
 
 	username := req.Username
 	password := req.Password
 
 	if username == "" || password == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "Username and password required"})
+		return c.Status(400).JSON(fiber.Map{
+			"error":        "Username and password required",
+			"content_type": c.Get("Content-Type"),
+		})
 	}
 
 	// Try direct AD authentication (no connector needed)
