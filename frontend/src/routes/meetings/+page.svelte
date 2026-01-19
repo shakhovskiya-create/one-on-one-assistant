@@ -516,7 +516,7 @@
 							</svg>
 							<span class="text-green-700 font-medium">Анализ завершен!</span>
 						</div>
-						<a href="/meetings/{uploadResult.id}" class="text-ekf-red hover:underline">Открыть встречу</a>
+						<a href="/meetings/{uploadResult.meeting_id}" class="text-ekf-red hover:underline">Открыть встречу</a>
 					</div>
 					{#if uploadResult.analysis?.summary}
 						<div class="bg-white rounded-lg shadow-sm border p-6">

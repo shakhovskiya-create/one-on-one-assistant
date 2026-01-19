@@ -89,6 +89,54 @@ func (h *Handler) GetTask(c *fiber.Ctx) error {
 	return c.JSON(task)
 }
 
+// AddTaskComment adds a comment to a task
+func (h *Handler) AddTaskComment(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
+	taskID := c.Params("id")
+	var input struct {
+		AuthorID string `json:"author_id"`
+		Content  string `json:"content"`
+	}
+
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if input.AuthorID == "" || input.Content == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Author ID and content required"})
+	}
+
+	result, err := h.DB.Insert("task_comments", map[string]interface{}{
+		"task_id":   taskID,
+		"author_id": input.AuthorID,
+		"content":   input.Content,
+	})
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	var created []models.TaskComment
+	json.Unmarshal(result, &created)
+	if len(created) == 0 {
+		return c.Status(201).JSON(fiber.Map{"status": "created"})
+	}
+
+	var comment models.TaskComment
+	err = h.DB.From("task_comments").
+		Select("*, author:employees(name, photo_base64)").
+		Eq("id", created[0].ID).
+		Single().
+		Execute(&comment)
+	if err != nil {
+		return c.Status(201).JSON(created[0])
+	}
+
+	return c.Status(201).JSON(comment)
+}
+
 // CreateTask creates a new task
 func (h *Handler) CreateTask(c *fiber.Ctx) error {
 	if h.DB == nil {
@@ -124,19 +172,19 @@ func (h *Handler) CreateTask(c *fiber.Ctx) error {
 	}
 
 	taskData := map[string]interface{}{
-		"title":        input.Title,
-		"description":  input.Description,
-		"status":       input.Status,
-		"priority":     input.Priority,
-		"flag_color":   input.FlagColor,
-		"assignee_id":  input.AssigneeID,
+		"title":          input.Title,
+		"description":    input.Description,
+		"status":         input.Status,
+		"priority":       input.Priority,
+		"flag_color":     input.FlagColor,
+		"assignee_id":    input.AssigneeID,
 		"co_assignee_id": input.CoAssigneeID,
-		"creator_id":   input.CreatorID,
-		"meeting_id":   input.MeetingID,
-		"project_id":   input.ProjectID,
-		"parent_id":    input.ParentID,
-		"is_epic":      input.IsEpic,
-		"due_date":     input.DueDate,
+		"creator_id":     input.CreatorID,
+		"meeting_id":     input.MeetingID,
+		"project_id":     input.ProjectID,
+		"parent_id":      input.ParentID,
+		"is_epic":        input.IsEpic,
+		"due_date":       input.DueDate,
 	}
 
 	if input.DueDate != nil {
@@ -157,7 +205,7 @@ func (h *Handler) CreateTask(c *fiber.Ctx) error {
 			var tag models.Tag
 			h.DB.From("tags").Select("id").Eq("name", tagName).Single().Execute(&tag)
 			if tag.ID != "" {
-				h.DB.Insert("task_tags", map[string]string{
+				h.DB.Insert("task_tags", map[string]interface{}{
 					"task_id": created[0].ID,
 					"tag_id":  tag.ID,
 				})

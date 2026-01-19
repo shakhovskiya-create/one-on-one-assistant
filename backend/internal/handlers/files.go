@@ -104,12 +104,12 @@ func (h *Handler) UploadFile(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"id":            fileID,
-		"name":          file.Filename,
-		"url":           publicURL,
-		"content_type":  contentType,
-		"size_bytes":    file.Size,
-		"storage_path":  storagePath,
+		"id":           fileID,
+		"name":         file.Filename,
+		"url":          publicURL,
+		"content_type": contentType,
+		"size_bytes":   file.Size,
+		"storage_path": storagePath,
 	})
 }
 
@@ -213,10 +213,10 @@ func (h *Handler) GetFileURL(c *fiber.Ctx) error {
 	url := h.DB.StorageGetPublicURL(file.Bucket, file.StoragePath)
 
 	return c.JSON(fiber.Map{
-		"id":            file.ID,
-		"name":          file.OriginalName,
-		"url":           url,
-		"content_type":  file.ContentType,
+		"id":           file.ID,
+		"name":         file.OriginalName,
+		"url":          url,
+		"content_type": file.ContentType,
 	})
 }
 

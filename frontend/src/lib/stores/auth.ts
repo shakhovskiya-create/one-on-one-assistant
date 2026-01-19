@@ -1,7 +1,8 @@
 import { writable, derived, get } from 'svelte/store';
 import { browser } from '$app/environment';
 
-const API_URL = browser ? (import.meta.env.VITE_API_URL || 'http://localhost:8080') : 'http://localhost:8080';
+// Use /api prefix which will be proxied to backend
+const API_URL = '/api';
 
 export interface User {
 	id: string;
@@ -53,7 +54,12 @@ function createAuthStore() {
 
 	async function fetchSubordinates(userId: string) {
 		try {
-			const res = await fetch(`${API_URL}/api/v1/ad/subordinates/${userId}`);
+			const authToken = browser ? localStorage.getItem('auth_token') : null;
+			const res = await fetch(`${API_URL}/v1/ad/subordinates/${userId}`, {
+				headers: {
+					...(authToken && authToken !== 'authenticated' ? { 'Authorization': `Bearer ${authToken}` } : {})
+				}
+			});
 			if (res.ok) {
 				const data = await res.json();
 				update(state => ({ ...state, subordinates: data || [] }));
@@ -69,7 +75,7 @@ function createAuthStore() {
 			formData.append('username', username);
 			formData.append('password', password);
 
-			const res = await fetch(`${API_URL}/api/v1/ad/authenticate`, {
+			const res = await fetch(`${API_URL}/v1/ad/authenticate`, {
 				method: 'POST',
 				body: formData
 			});
@@ -107,9 +113,13 @@ function createAuthStore() {
 
 	async function changePassword(userId: string, oldPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
 		try {
-			const res = await fetch(`${API_URL}/api/v1/users/change-password`, {
+			const authToken = browser ? localStorage.getItem('auth_token') : null;
+			const res = await fetch(`${API_URL}/v1/users/change-password`, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: {
+					'Content-Type': 'application/json',
+					...(authToken && authToken !== 'authenticated' ? { 'Authorization': `Bearer ${authToken}` } : {})
+				},
 				body: JSON.stringify({
 					user_id: userId,
 					old_password: oldPassword,
@@ -137,7 +147,7 @@ function createAuthStore() {
 				return false;
 			}
 
-			const res = await fetch(`${API_URL}/api/v1/auth/refresh`, {
+			const res = await fetch(`${API_URL}/v1/auth/refresh`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',

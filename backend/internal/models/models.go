@@ -20,6 +20,7 @@ type Employee struct {
 	Mobile                *string    `json:"mobile,omitempty"`
 	TelegramUsername      *string    `json:"telegram_username,omitempty"`
 	TelegramChatID        *int64     `json:"telegram_chat_id,omitempty"`
+	EncryptedPassword     *string    `json:"-"` // Never expose in JSON - for EWS access only
 	CreatedAt             *time.Time `json:"created_at,omitempty"`
 }
 
@@ -92,32 +93,32 @@ type Agreement struct {
 
 // Task represents a work item
 type Task struct {
-	ID              string                 `json:"id"`
-	Title           string                 `json:"title"`
-	Description     *string                `json:"description,omitempty"`
-	Status          string                 `json:"status"`
-	Priority        int                    `json:"priority"`
-	FlagColor       *string                `json:"flag_color,omitempty"`
-	AssigneeID      *string                `json:"assignee_id,omitempty"`
-	CoAssigneeID    *string                `json:"co_assignee_id,omitempty"`
-	CreatorID       *string                `json:"creator_id,omitempty"`
-	MeetingID       *string                `json:"meeting_id,omitempty"`
-	ProjectID       *string                `json:"project_id,omitempty"`
-	ParentID        *string                `json:"parent_id,omitempty"`
-	IsEpic          bool                   `json:"is_epic"`
-	DueDate         *string                `json:"due_date,omitempty"`
-	OriginalDueDate *string                `json:"original_due_date,omitempty"`
-	CompletedAt     *time.Time             `json:"completed_at,omitempty"`
-	CreatedAt       *time.Time             `json:"created_at,omitempty"`
-	Tags            []Tag                  `json:"tags,omitempty"`
-	Assignee        *Employee              `json:"assignee,omitempty"`
-	CoAssignee      *Employee              `json:"co_assignee,omitempty"`
-	Creator         *Employee              `json:"creator,omitempty"`
-	Project         *Project               `json:"project,omitempty"`
-	Subtasks        []Task                 `json:"subtasks,omitempty"`
-	Comments        []TaskComment          `json:"comments,omitempty"`
-	History         []TaskHistory          `json:"history,omitempty"`
-	Progress        int                    `json:"progress,omitempty"`
+	ID              string        `json:"id"`
+	Title           string        `json:"title"`
+	Description     *string       `json:"description,omitempty"`
+	Status          string        `json:"status"`
+	Priority        int           `json:"priority"`
+	FlagColor       *string       `json:"flag_color,omitempty"`
+	AssigneeID      *string       `json:"assignee_id,omitempty"`
+	CoAssigneeID    *string       `json:"co_assignee_id,omitempty"`
+	CreatorID       *string       `json:"creator_id,omitempty"`
+	MeetingID       *string       `json:"meeting_id,omitempty"`
+	ProjectID       *string       `json:"project_id,omitempty"`
+	ParentID        *string       `json:"parent_id,omitempty"`
+	IsEpic          bool          `json:"is_epic"`
+	DueDate         *string       `json:"due_date,omitempty"`
+	OriginalDueDate *string       `json:"original_due_date,omitempty"`
+	CompletedAt     *time.Time    `json:"completed_at,omitempty"`
+	CreatedAt       *time.Time    `json:"created_at,omitempty"`
+	Tags            []Tag         `json:"tags,omitempty"`
+	Assignee        *Employee     `json:"assignee,omitempty"`
+	CoAssignee      *Employee     `json:"co_assignee,omitempty"`
+	Creator         *Employee     `json:"creator,omitempty"`
+	Project         *Project      `json:"project,omitempty"`
+	Subtasks        []Task        `json:"subtasks,omitempty"`
+	Comments        []TaskComment `json:"comments,omitempty"`
+	History         []TaskHistory `json:"history,omitempty"`
+	Progress        int           `json:"progress,omitempty"`
 }
 
 // Tag represents a label for tasks

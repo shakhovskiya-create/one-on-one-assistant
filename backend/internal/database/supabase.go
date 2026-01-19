@@ -39,7 +39,7 @@ type Query struct {
 }
 
 // From starts a query on a table
-func (c *SupabaseClient) From(table string) *Query {
+func (c *SupabaseClient) From(table string) QueryBuilder {
 	return &Query{
 		client:    c,
 		table:     table,
@@ -49,14 +49,16 @@ func (c *SupabaseClient) From(table string) *Query {
 }
 
 // Select specifies columns to return
-func (q *Query) Select(columns string) *Query {
+func (q *Query) Select(columns string) QueryBuilder {
 	q.selectStr = columns
 	return q
 }
 
 // Eq adds an equality filter
-func (q *Query) Eq(column, value string) *Query {
-	q.filters = append(q.filters, fmt.Sprintf("%s=eq.%s", column, value))
+func (q *Query) Eq(column string, value interface{}) QueryBuilder {
+	// Convert value to string for Supabase API
+	valueStr := fmt.Sprintf("%v", value)
+	q.filters = append(q.filters, fmt.Sprintf("%s=eq.%s", column, valueStr))
 	return q
 }
 
@@ -67,19 +69,19 @@ func (q *Query) Neq(column, value string) *Query {
 }
 
 // In adds an IN filter
-func (q *Query) In(column string, values []string) *Query {
+func (q *Query) In(column string, values []string) QueryBuilder {
 	q.filters = append(q.filters, fmt.Sprintf("%s=in.(%s)", column, strings.Join(values, ",")))
 	return q
 }
 
 // Gte adds a >= filter
-func (q *Query) Gte(column, value string) *Query {
+func (q *Query) Gte(column, value string) QueryBuilder {
 	q.filters = append(q.filters, fmt.Sprintf("%s=gte.%s", column, value))
 	return q
 }
 
 // Lte adds a <= filter
-func (q *Query) Lte(column, value string) *Query {
+func (q *Query) Lte(column, value string) QueryBuilder {
 	q.filters = append(q.filters, fmt.Sprintf("%s=lte.%s", column, value))
 	return q
 }
@@ -91,13 +93,13 @@ func (q *Query) Lt(column, value string) *Query {
 }
 
 // IsNull adds IS NULL filter
-func (q *Query) IsNull(column string) *Query {
+func (q *Query) IsNull(column string) QueryBuilder {
 	q.filters = append(q.filters, fmt.Sprintf("%s=is.null", column))
 	return q
 }
 
 // Ilike adds a case-insensitive LIKE filter
-func (q *Query) Ilike(column, pattern string) *Query {
+func (q *Query) Ilike(column, pattern string) QueryBuilder {
 	q.filters = append(q.filters, fmt.Sprintf("%s=ilike.%s", column, url.QueryEscape(pattern)))
 	return q
 }
@@ -115,7 +117,7 @@ func (q *Query) Or(conditions string) *Query {
 }
 
 // Order adds ordering
-func (q *Query) Order(column string, desc bool) *Query {
+func (q *Query) Order(column string, desc bool) QueryBuilder {
 	order := "asc"
 	if desc {
 		order = "desc"
@@ -125,19 +127,19 @@ func (q *Query) Order(column string, desc bool) *Query {
 }
 
 // Limit limits results
-func (q *Query) Limit(n int) *Query {
+func (q *Query) Limit(n int) QueryBuilder {
 	q.limitVal = n
 	return q
 }
 
 // Offset skips results
-func (q *Query) Offset(n int) *Query {
+func (q *Query) Offset(n int) QueryBuilder {
 	q.offsetVal = n
 	return q
 }
 
 // Single returns single result
-func (q *Query) Single() *Query {
+func (q *Query) Single() QueryBuilder {
 	q.single = true
 	q.limitVal = 1
 	return q
@@ -473,10 +475,10 @@ func (c *SupabaseClient) StorageGetPublicURL(bucket, path string) string {
 
 // StorageObject represents a file in storage
 type StorageObject struct {
-	Name           string `json:"name"`
-	ID             string `json:"id,omitempty"`
-	UpdatedAt      string `json:"updated_at,omitempty"`
-	CreatedAt      string `json:"created_at,omitempty"`
-	LastAccessedAt string `json:"last_accessed_at,omitempty"`
+	Name           string                 `json:"name"`
+	ID             string                 `json:"id,omitempty"`
+	UpdatedAt      string                 `json:"updated_at,omitempty"`
+	CreatedAt      string                 `json:"created_at,omitempty"`
+	LastAccessedAt string                 `json:"last_accessed_at,omitempty"`
 	Metadata       map[string]interface{} `json:"metadata,omitempty"`
 }

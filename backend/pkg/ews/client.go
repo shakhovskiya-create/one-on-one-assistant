@@ -58,9 +58,13 @@ func NewClient(url, domain string, skipTLSVerify bool) *Client {
 		URL:    url,
 		Domain: domain,
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 120 * time.Second, // Увеличен таймаут для медленных Exchange серверов
 			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: skipTLSVerify},
+				TLSClientConfig:     &tls.Config{InsecureSkipVerify: skipTLSVerify},
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 10,
+				IdleConnTimeout:     90 * time.Second,
+				DisableKeepAlives:   false,
 			},
 		},
 	}

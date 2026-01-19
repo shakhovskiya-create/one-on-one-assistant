@@ -2,8 +2,12 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"strings"
+	"time"
 
+	"github.com/ekf/one-on-one-backend/internal/models"
+	"github.com/ekf/one-on-one-backend/internal/utils"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -21,17 +25,13 @@ func (h *Handler) GetCalendar(c *fiber.Ctx) error {
 
 	employeeID := c.Params("id")
 
-	var auth CalendarAuthRequest
-	if err := c.BodyParser(&auth); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Username and password required"})
-	}
-
 	// Get employee info
 	var employees []struct {
-		Email   string `json:"email"`
-		ADLogin string `json:"ad_login"`
+		Email             string  `json:"email"`
+		ADLogin           string  `json:"ad_login"`
+		EncryptedPassword *string `json:"encrypted_password"`
 	}
-	err := h.DB.From("employees").Select("email, ad_login").Eq("id", employeeID).Limit(1).Execute(&employees)
+	err := h.DB.From("employees").Select("email, ad_login, encrypted_password").Eq("id", employeeID).Limit(1).Execute(&employees)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Ошибка базы данных: " + err.Error()})
 	}
@@ -42,35 +42,62 @@ func (h *Handler) GetCalendar(c *fiber.Ctx) error {
 
 	// Determine email to use
 	ewsEmail := employee.Email
-	if ewsEmail == "" && strings.Contains(auth.Username, "@") {
-		ewsEmail = auth.Username
-	}
 	if ewsEmail == "" && strings.Contains(employee.ADLogin, "@") {
 		ewsEmail = employee.ADLogin
 	}
-	if ewsEmail == "" && strings.Contains(auth.Username, "\\") {
-		parts := strings.Split(auth.Username, "\\")
-		if len(parts) == 2 {
-			ewsEmail = parts[1] + "@ekfgroup.com"
-		}
+	// If still no email, construct from ad_login
+	if ewsEmail == "" && employee.ADLogin != "" {
+		ewsEmail = employee.ADLogin + "@ekf.su"
 	}
 	if ewsEmail == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "Email сотрудника не найден. Укажите email в профиле."})
+		return c.Status(400).JSON(fiber.Map{"error": "Email сотрудника не найден. Обратитесь к администратору."})
 	}
 
 	daysBack := c.QueryInt("days_back", 7)
 	daysForward := c.QueryInt("days_forward", 30)
 
-	events, err := h.EWS.GetCalendarEvents(ewsEmail, auth.Username, auth.Password, daysBack, daysForward)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "EWS error: " + err.Error()})
+	var events interface{}
+	var source string
+
+	// Get user's encrypted password for EWS authentication
+	var username, password string
+	if employee.EncryptedPassword != nil && *employee.EncryptedPassword != "" {
+		// Decrypt user's password
+		decrypted, err := utils.DecryptPassword(*employee.EncryptedPassword, h.Config.JWTSecret)
+		if err == nil {
+			username = "ekfgroup\\" + employee.ADLogin
+			password = decrypted
+		} else {
+			log.Printf("ERROR: Failed to decrypt password for %s: %v", employee.Email, err)
+		}
+	}
+
+	// Use direct EWS with user's credentials
+	if h.EWS != nil && username != "" && password != "" {
+		ewsEvents, err := h.EWS.GetCalendarEvents(ewsEmail, username, password, daysBack, daysForward)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "EWS error: " + err.Error()})
+		}
+		events = ewsEvents
+		source = "direct_ews"
+	}
+
+	if events == nil {
+		if username == "" || password == "" {
+			return c.Status(401).JSON(fiber.Map{
+				"error": "Для доступа к календарю необходимо повторно войти в систему",
+			})
+		}
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Не удалось получить календарь",
+		})
 	}
 
 	return c.JSON(fiber.Map{
 		"employee_id": employeeID,
-		"email":       employee.Email,
+		"email":       ewsEmail,
 		"events":      events,
-		"source":      "exchange_ews",
+		"source":      source,
 	})
 }
 
@@ -191,8 +218,6 @@ func (h *Handler) FreeSlotsSimple(c *fiber.Ctx) error {
 // CalendarSyncRequest contains sync params
 type CalendarSyncRequest struct {
 	EmployeeID  string `json:"employee_id"`
-	Username    string `json:"username"`
-	Password    string `json:"password"`
 	DaysBack    int    `json:"days_back"`
 	DaysForward int    `json:"days_forward"`
 }
@@ -215,14 +240,9 @@ func (h *Handler) SyncCalendar(c *fiber.Ctx) error {
 		req.DaysForward = 30
 	}
 
-	// Get employee info - use array query instead of Single() for better error handling
-	var employees []struct {
-		ID      string `json:"id"`
-		Email   string `json:"email"`
-		ADLogin string `json:"ad_login"`
-		Name    string `json:"name"`
-	}
-	err := h.DB.From("employees").Select("id, email, ad_login, name").Eq("id", req.EmployeeID).Limit(1).Execute(&employees)
+	// Get employee info including encrypted_password
+	var employees []models.Employee
+	err := h.DB.From("employees").Select("*").Eq("id", req.EmployeeID).Limit(1).Execute(&employees)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Ошибка базы данных: " + err.Error(), "employee_id": req.EmployeeID})
 	}
@@ -232,50 +252,99 @@ func (h *Handler) SyncCalendar(c *fiber.Ctx) error {
 	employee := employees[0]
 
 	// Determine the email to use for EWS
-	ewsEmail := employee.Email
-
-	// If no email, try to extract from username (could be email format)
-	if ewsEmail == "" && strings.Contains(req.Username, "@") {
-		ewsEmail = req.Username
-	}
-
-	// Or use ad_login if it's in email format
-	if ewsEmail == "" && strings.Contains(employee.ADLogin, "@") {
-		ewsEmail = employee.ADLogin
-	}
-
-	// If still no email, try to construct from domain\user format
-	if ewsEmail == "" && strings.Contains(req.Username, "\\") {
-		parts := strings.Split(req.Username, "\\")
-		if len(parts) == 2 {
-			// Try common email domain patterns
-			ewsEmail = parts[1] + "@ekfgroup.com"
-		}
+	var ewsEmail string
+	if employee.Email != "" {
+		ewsEmail = employee.Email
+	} else if employee.ADLogin != nil && strings.Contains(*employee.ADLogin, "@") {
+		ewsEmail = *employee.ADLogin
+	} else if employee.ADLogin != nil && *employee.ADLogin != "" {
+		ewsEmail = *employee.ADLogin + "@ekf.su"
 	}
 
 	if ewsEmail == "" {
 		return c.Status(400).JSON(fiber.Map{
-			"error":       "Не удалось определить email для синхронизации. Укажите email в профиле сотрудника.",
+			"error":       "Не удалось определить email для синхронизации. Обратитесь к администратору.",
 			"employee_id": employee.ID,
 			"name":        employee.Name,
 		})
 	}
 
-	events, err := h.EWS.GetCalendarEvents(ewsEmail, req.Username, req.Password, req.DaysBack, req.DaysForward)
-	if err != nil {
+	var events interface{}
+	var getErr error
+
+	// Try connector first - use user's own credentials if available
+	if h.Connector.IsConnected() {
+		// Get user's encrypted password for EWS authentication
+		var username, password string
+		if employee.EncryptedPassword != nil && *employee.EncryptedPassword != "" {
+			// Decrypt user's password
+			decrypted, err := utils.DecryptPassword(*employee.EncryptedPassword, h.Config.JWTSecret)
+			if err == nil {
+				username = "ekfgroup\\" + *employee.ADLogin
+				password = decrypted
+				log.Printf("SyncCalendar: Using user's own credentials for %s", ewsEmail)
+			} else {
+				log.Printf("ERROR: Failed to decrypt password for %s: %v", ewsEmail, err)
+			}
+		} else {
+			log.Printf("WARNING: No encrypted password for %s in SyncCalendar", ewsEmail)
+		}
+
+		result, err := h.Connector.SendCommand("sync_calendar", map[string]interface{}{
+			"email":        ewsEmail,
+			"username":     username,
+			"password":     password,
+			"days_back":    req.DaysBack,
+			"days_forward": req.DaysForward,
+		}, 120*time.Second)
+
+		if err == nil {
+			events = result
+		} else {
+			getErr = err
+		}
+	}
+
+	// Fallback to direct EWS if connector failed (uses config credentials)
+	if events == nil && h.EWS != nil {
+		ewsEvents, err := h.EWS.GetCalendarEvents(ewsEmail, h.Config.EWSUsername, h.Config.EWSPassword, req.DaysBack, req.DaysForward)
+		if err != nil {
+			if getErr != nil {
+				return c.Status(500).JSON(fiber.Map{
+					"error":           "Ошибка подключения к Exchange",
+					"connector_error": getErr.Error(),
+					"ews_error":       err.Error(),
+					"ews_email":       ewsEmail,
+					"ews_url":         h.Config.EWSURL,
+				})
+			}
+			return c.Status(500).JSON(fiber.Map{
+				"error":     "Ошибка подключения к Exchange: " + err.Error(),
+				"ews_email": ewsEmail,
+				"ews_url":   h.Config.EWSURL,
+			})
+		}
+		events = ewsEvents
+	}
+
+	if events == nil {
 		return c.Status(500).JSON(fiber.Map{
-			"error":      "Ошибка подключения к Exchange: " + err.Error(),
-			"ews_email":  ewsEmail,
-			"ews_url":    h.Config.EWSURL,
+			"error": "Не удалось получить календарь: коннектор недоступен и прямое подключение не настроено",
 		})
+	}
+
+	// Convert events to slice for processing
+	eventsList, ok := events.([]interface{})
+	if !ok {
+		return c.Status(500).JSON(fiber.Map{"error": "Invalid events format"})
 	}
 
 	// If we successfully connected and employee had no email, save it
 	if employee.Email == "" && ewsEmail != "" {
-		h.DB.Update("employees", "id", employee.ID, map[string]string{"email": ewsEmail})
+		h.DB.Update("employees", "id", employee.ID, map[string]interface{}{"email": ewsEmail})
 	}
 
-	if len(events) == 0 {
+	if len(eventsList) == 0 {
 		return c.JSON(fiber.Map{"synced": 0, "message": "No events found", "ews_email": ewsEmail})
 	}
 
@@ -301,8 +370,14 @@ func (h *Handler) SyncCalendar(c *fiber.Ctx) error {
 	}
 
 	synced := 0
-	for _, event := range events {
-		if event.ID == "" {
+	for _, ev := range eventsList {
+		eventMap, ok := ev.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		eventID, _ := eventMap["id"].(string)
+		if eventID == "" {
 			continue
 		}
 
@@ -310,21 +385,28 @@ func (h *Handler) SyncCalendar(c *fiber.Ctx) error {
 		var existing []struct {
 			ID string `json:"id"`
 		}
-		h.DB.From("meetings").Select("id").Eq("exchange_id", event.ID).Execute(&existing)
+		h.DB.From("meetings").Select("id").Eq("exchange_id", eventID).Execute(&existing)
+
+		subject, _ := eventMap["subject"].(string)
+		start, _ := eventMap["start"].(string)
+		end, _ := eventMap["end"].(string)
+		location, _ := eventMap["location"].(string)
 
 		meetingData := map[string]interface{}{
-			"exchange_id":   event.ID,
-			"title":         event.Subject,
-			"date":          event.Start[:10],
-			"start_time":    event.Start,
-			"end_time":      event.End,
-			"location":      event.Location,
-			"exchange_data": event,
+			"exchange_id":   eventID,
+			"title":         subject,
+			"date":          start[:10],
+			"start_time":    start,
+			"end_time":      end,
+			"location":      location,
+			"exchange_data": eventMap,
 		}
 
-		if event.Organizer != nil && event.Organizer.Email != "" {
-			if emp, ok := emailToEmp[strings.ToLower(event.Organizer.Email)]; ok {
-				meetingData["organizer_id"] = emp.ID
+		if organizer, ok := eventMap["organizer"].(map[string]interface{}); ok {
+			if orgEmail, ok := organizer["email"].(string); ok && orgEmail != "" {
+				if emp, ok := emailToEmp[strings.ToLower(orgEmail)]; ok {
+					meetingData["organizer_id"] = emp.ID
+				}
 			}
 		}
 
@@ -342,12 +424,18 @@ func (h *Handler) SyncCalendar(c *fiber.Ctx) error {
 		}
 
 		// Sync participants
-		for _, attendee := range event.Attendees {
-			if emp, ok := emailToEmp[strings.ToLower(attendee.Email)]; ok {
-				h.DB.Insert("meeting_participants", map[string]string{
-					"meeting_id":  meetingID,
-					"employee_id": emp.ID,
-				})
+		if attendees, ok := eventMap["attendees"].([]interface{}); ok {
+			for _, att := range attendees {
+				if attendeeMap, ok := att.(map[string]interface{}); ok {
+					if attEmail, ok := attendeeMap["email"].(string); ok && attEmail != "" {
+						if emp, ok := emailToEmp[strings.ToLower(attEmail)]; ok {
+							h.DB.Insert("meeting_participants", map[string]interface{}{
+								"meeting_id":  meetingID,
+								"employee_id": emp.ID,
+							})
+						}
+					}
+				}
 			}
 		}
 
@@ -356,8 +444,8 @@ func (h *Handler) SyncCalendar(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"synced":         synced,
-		"total_events":   len(events),
+		"total_events":   len(eventsList),
 		"employee_email": employee.Email,
-		"source":         "exchange_ews",
+		"source":         "connector_ews",
 	})
 }

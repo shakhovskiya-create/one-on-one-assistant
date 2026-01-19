@@ -50,7 +50,12 @@ func (h *Handler) CreateEmployee(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	result, err := h.DB.Insert("employees", employee)
+	// Convert struct to map[string]interface{}
+	employeeData := make(map[string]interface{})
+	empJSON, _ := json.Marshal(employee)
+	json.Unmarshal(empJSON, &employeeData)
+
+	result, err := h.DB.Insert("employees", employeeData)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -189,8 +194,8 @@ func (h *Handler) GetEmployeeDossier(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"employee":              employee,
-		"one_on_one_count":      len(meetings),
+		"employee":               employee,
+		"one_on_one_count":       len(meetings),
 		"project_meetings_count": 0,
 		"tasks": fiber.Map{
 			"total":       len(tasks),

@@ -29,6 +29,28 @@
 			minute: '2-digit'
 		});
 	}
+
+	function formatActionItem(item: unknown): string {
+		if (typeof item === 'string') return item;
+		if (!item || typeof item !== 'object') return '';
+		const data = item as { task?: string; improvement?: string; responsible?: string; deadline?: string | null };
+		const label = data.task || data.improvement || '';
+		const parts = [label];
+		if (data.responsible) parts.push(`Ответственный: ${data.responsible}`);
+		if (data.deadline) parts.push(`Срок: ${data.deadline}`);
+		return parts.filter(Boolean).join(' · ');
+	}
+
+	function formatAgreement(item: unknown): string {
+		if (typeof item === 'string') return item;
+		if (!item || typeof item !== 'object') return '';
+		const data = item as { task?: string; responsible?: string; deadline?: string | null };
+		const label = data.task || '';
+		const parts = [label];
+		if (data.responsible) parts.push(`Ответственный: ${data.responsible}`);
+		if (data.deadline) parts.push(`Срок: ${data.deadline}`);
+		return parts.filter(Boolean).join(' · ');
+	}
 </script>
 
 <svelte:head>
@@ -47,10 +69,10 @@
 				<div>
 					<div class="flex items-center gap-3">
 						<h1 class="text-2xl font-bold text-gray-900">{meeting.title || 'Без названия'}</h1>
-						{#if meeting.category}
+						{#if meeting.meeting_categories?.code}
 							<span class="px-3 py-1 text-sm rounded-full bg-gray-100 text-gray-600">
-								{meeting.category === 'one_on_one' ? '1-на-1' :
-								meeting.category === 'project' ? 'Проект' : 'Команда'}
+								{meeting.meeting_categories.code === 'one_on_one' ? '1-на-1' :
+								meeting.meeting_categories.code === 'project' ? 'Проект' : 'Команда'}
 							</span>
 						{/if}
 					</div>
@@ -103,10 +125,10 @@
 							<div class="mb-4">
 								<h4 class="text-sm font-medium text-gray-700 mb-2">Задачи к выполнению</h4>
 								<ul class="space-y-2">
-									{#each meeting.analysis.action_items as item}
+										{#each meeting.analysis.action_items as item}
 										<li class="flex items-start gap-2">
 											<span class="text-ekf-red">•</span>
-											<span class="text-gray-600">{item}</span>
+											<span class="text-gray-600">{formatActionItem(item)}</span>
 										</li>
 									{/each}
 								</ul>
@@ -117,10 +139,10 @@
 							<div class="mb-4">
 								<h4 class="text-sm font-medium text-gray-700 mb-2">Договорённости</h4>
 								<ul class="space-y-2">
-									{#each meeting.analysis.agreements as agreement}
+										{#each meeting.analysis.agreements as agreement}
 										<li class="flex items-start gap-2">
 											<span class="text-green-600">✓</span>
-											<span class="text-gray-600">{agreement}</span>
+											<span class="text-gray-600">{formatAgreement(agreement)}</span>
 										</li>
 									{/each}
 								</ul>
@@ -163,13 +185,26 @@
 				<!-- Participants -->
 				<div class="bg-white rounded-xl shadow-sm p-6">
 					<h3 class="font-semibold text-gray-900 mb-3">Участники</h3>
-					{#if meeting.employee_id}
+					{#if meeting.participants && meeting.participants.length > 0}
+						<div class="space-y-2">
+							{#each meeting.participants as participant}
+								<a href="/employees/{participant.id}" class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
+									<div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-medium">
+										{participant.name?.charAt(0) || 'С'}
+									</div>
+									<span class="text-gray-900">{participant.name}</span>
+								</a>
+							{/each}
+						</div>
+					{:else if meeting.employee_id}
 						<a href="/employees/{meeting.employee_id}" class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
 							<div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-medium">
 								С
 							</div>
 							<span class="text-gray-900">Сотрудник</span>
 						</a>
+					{:else}
+						<p class="text-sm text-gray-500">Нет участников</p>
 					{/if}
 				</div>
 

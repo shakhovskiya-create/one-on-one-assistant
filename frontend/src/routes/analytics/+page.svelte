@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { subordinates } from '$lib/stores/auth';
+	import { subordinates, user } from '$lib/stores/auth';
 	import { analytics as analyticsApi, meetings } from '$lib/api/client';
 	import type { DashboardData, EmployeeAnalytics, MeetingCategory } from '$lib/api/client';
 
@@ -11,11 +11,12 @@
 	let selectedPeriod = $state('month');
 	let selectedEmployee = $state('');
 	let selectedCategory = $state('all');
+	let viewScope = $state<'my' | 'all'>('my'); // Default to "my team"
 
 	onMount(async () => {
 		try {
 			const [dashboardData, categoriesData] = await Promise.all([
-				analyticsApi.getDashboard().catch(() => null),
+				analyticsApi.getDashboard(selectedPeriod).catch(() => null),
 				meetings.getCategories().catch(() => [])
 			]);
 			dashboard = dashboardData;
@@ -27,13 +28,13 @@
 		}
 	});
 
-	async function loadEmployeeAnalytics(employeeId: string) {
+	async function loadEmployeeAnalytics(employeeId: string, period: string) {
 		if (!employeeId) {
 			employeeAnalytics = null;
 			return;
 		}
 		try {
-			employeeAnalytics = await analyticsApi.getEmployee(employeeId);
+			employeeAnalytics = await analyticsApi.getEmployee(employeeId, period);
 		} catch (e) {
 			console.error(e);
 			employeeAnalytics = null;
@@ -41,8 +42,15 @@
 	}
 
 	$effect(() => {
+		const period = selectedPeriod;
 		if (selectedEmployee) {
-			loadEmployeeAnalytics(selectedEmployee);
+			loadEmployeeAnalytics(selectedEmployee, period);
+		} else {
+			analyticsApi.getDashboard(period).then((data) => {
+				dashboard = data;
+			}).catch((e) => {
+				console.error(e);
+			});
 		}
 	});
 
@@ -115,19 +123,49 @@
 
 <div class="space-y-6">
 	<!-- Header -->
-	<div class="flex items-center justify-between flex-wrap gap-4">
-		<h1 class="text-2xl font-bold text-gray-900">Аналитика</h1>
-		<div class="flex gap-4">
+	<div class="flex items-center justify-between flex-wrap gap-3">
+		<div>
+			<h1 class="text-xl font-bold text-gray-900">Аналитика</h1>
+			<p class="text-sm text-gray-500">
+				{viewScope === 'my' ? 'Мои подчинённые' : 'Все сотрудники'}
+			</p>
+		</div>
+		<div class="flex flex-wrap items-center gap-3">
+			<!-- Scope Toggle -->
+			<div class="flex rounded-lg border border-gray-200 overflow-hidden bg-white">
+				<button
+					onclick={() => { viewScope = 'my'; selectedEmployee = ''; }}
+					class="px-3 py-1.5 text-sm transition-colors {viewScope === 'my' ? 'bg-ekf-red text-white' : 'text-gray-600 hover:bg-gray-50'}"
+				>
+					Мои
+				</button>
+				<button
+					onclick={() => { viewScope = 'all'; selectedEmployee = ''; }}
+					class="px-3 py-1.5 text-sm transition-colors {viewScope === 'all' ? 'bg-ekf-red text-white' : 'text-gray-600 hover:bg-gray-50'}"
+				>
+					Все
+				</button>
+			</div>
+
+			<!-- Employee Selector -->
 			<select
 				bind:value={selectedEmployee}
-				class="border rounded-lg px-4 py-2 focus:ring-2 focus:ring-ekf-red focus:border-transparent"
+				class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-ekf-red focus:border-ekf-red"
 			>
 				<option value="">Общая аналитика</option>
-				{#each $subordinates as emp}
-					<option value={emp.id}>{emp.name}</option>
-				{/each}
+				{#if viewScope === 'my'}
+					{#each $subordinates as emp}
+						<option value={emp.id}>{emp.name}</option>
+					{/each}
+				{:else}
+					{#each $subordinates as emp}
+						<option value={emp.id}>{emp.name}</option>
+					{/each}
+				{/if}
 			</select>
-			<div class="flex gap-2">
+
+			<!-- Period Selector -->
+			<div class="flex rounded-lg border border-gray-200 overflow-hidden bg-white">
 				{#each [
 					{ key: 'week', label: 'Неделя' },
 					{ key: 'month', label: 'Месяц' },
@@ -136,10 +174,10 @@
 				] as period}
 					<button
 						onclick={() => selectedPeriod = period.key}
-						class="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+						class="px-3 py-1.5 text-sm transition-colors
 							{selectedPeriod === period.key
 								? 'bg-ekf-red text-white'
-								: 'bg-white text-gray-600 hover:bg-gray-100'}"
+								: 'text-gray-600 hover:bg-gray-50'}"
 					>
 						{period.label}
 					</button>

@@ -100,12 +100,12 @@ func (h *Handler) StartProcess(c *fiber.Ctx) error {
 	// Save process instance to database for tracking
 	if h.DB != nil {
 		h.DB.Insert("bpmn_instances", map[string]interface{}{
-			"camunda_id":     instance.ID,
-			"definition_id":  instance.DefinitionID,
-			"business_key":   req.BusinessKey,
-			"process_key":    req.ProcessKey,
-			"status":         "active",
-			"variables":      req.Variables,
+			"camunda_id":    instance.ID,
+			"definition_id": instance.DefinitionID,
+			"business_key":  req.BusinessKey,
+			"process_key":   req.ProcessKey,
+			"status":        "active",
+			"variables":     req.Variables,
 		})
 	}
 
@@ -169,7 +169,7 @@ func (h *Handler) DeleteProcessInstance(c *fiber.Ctx) error {
 
 	// Update status in database
 	if h.DB != nil {
-		h.DB.Update("bpmn_instances", "camunda_id", id, map[string]string{"status": "cancelled"})
+		h.DB.Update("bpmn_instances", "camunda_id", id, map[string]interface{}{"status": "cancelled"})
 	}
 
 	return c.JSON(fiber.Map{"success": true, "message": "Процесс отменён"})

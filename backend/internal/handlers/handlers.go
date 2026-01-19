@@ -1,21 +1,23 @@
 package handlers
 
 import (
+	"github.com/ekf/one-on-one-backend/internal/ad"
 	"github.com/ekf/one-on-one-backend/internal/config"
 	"github.com/ekf/one-on-one-backend/internal/database"
+	"github.com/ekf/one-on-one-backend/internal/ews"
 	"github.com/ekf/one-on-one-backend/internal/services"
 	"github.com/ekf/one-on-one-backend/pkg/ai"
 	"github.com/ekf/one-on-one-backend/pkg/auth"
 	"github.com/ekf/one-on-one-backend/pkg/camunda"
-	"github.com/ekf/one-on-one-backend/pkg/ews"
 	"github.com/ekf/one-on-one-backend/pkg/telegram"
 )
 
 // Handler holds all handler dependencies
 type Handler struct {
 	Config    *config.Config
-	DB        *database.SupabaseClient
+	DB        database.DBClient
 	AI        *ai.Client
+	AD        *ad.Client
 	EWS       *ews.Client
 	Telegram  *telegram.Client
 	Connector *services.ConnectorManager
@@ -25,9 +27,17 @@ type Handler struct {
 
 // NewHandler creates a new handler with all dependencies
 func NewHandler(cfg *config.Config) *Handler {
-	var db *database.SupabaseClient
-	if cfg.SupabaseURL != "" && cfg.SupabaseKey != "" {
-		db = database.NewSupabaseClient(cfg.SupabaseURL, cfg.SupabaseKey)
+	var db database.DBClient
+
+	// Connect to PostgreSQL database
+	if cfg.DatabaseURL != "" {
+		pgClient, err := database.NewPostgresClient(cfg.DatabaseURL)
+		if err != nil {
+			// Log error but continue - some handlers may not need DB
+			println("Warning: Failed to connect to database:", err.Error())
+		} else {
+			db = pgClient
+		}
 	}
 
 	aiClient := ai.NewClient(
@@ -37,7 +47,10 @@ func NewHandler(cfg *config.Config) *Handler {
 		cfg.YandexFolderID,
 	)
 
+	// Initialize AD and EWS clients for direct access (no connector needed)
+	adClient := ad.NewClient(cfg.ADURL, cfg.ADBaseDN, cfg.ADBindUser, cfg.ADBindPassword, cfg.ADSkipVerify)
 	ewsClient := ews.NewClient(cfg.EWSURL, cfg.EWSDomain, cfg.EWSSkipTLSVerify)
+
 	tgClient := telegram.NewClient(cfg.TelegramBotToken)
 	connector := services.NewConnectorManager(cfg.ConnectorAPIKey)
 	jwtManager := auth.NewJWTManager(cfg.JWTSecret, 24) // 24 hours expiration
@@ -47,6 +60,7 @@ func NewHandler(cfg *config.Config) *Handler {
 		Config:    cfg,
 		DB:        db,
 		AI:        aiClient,
+		AD:        adClient,
 		EWS:       ewsClient,
 		Telegram:  tgClient,
 		Connector: connector,

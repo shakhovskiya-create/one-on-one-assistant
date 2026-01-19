@@ -20,7 +20,6 @@
 		{ href: '/messenger', label: 'Сообщения', icon: 'messenger' },
 		{ href: '/calendar', label: 'Календарь', icon: 'schedule' },
 		{ href: '/analytics', label: 'Аналитика', icon: 'chart' },
-		{ href: '/settings', label: 'Настройки', icon: 'settings' },
 	];
 </script>
 
@@ -31,7 +30,7 @@
 			<div class="bg-ekf-red text-white font-bold text-xl px-3 py-1 rounded">
 				EKF
 			</div>
-			<span class="text-lg font-semibold">Team Hub</span>
+			<span class="text-lg font-semibold">Hub</span>
 		</div>
 	</div>
 

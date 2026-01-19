@@ -2,9 +2,12 @@ package main
 
 import (
 	"log"
+	"os"
+	"time"
 
 	"github.com/ekf/one-on-one-backend/internal/config"
 	"github.com/ekf/one-on-one-backend/internal/handlers"
+	"github.com/ekf/one-on-one-backend/internal/middleware"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -21,16 +24,26 @@ func main() {
 
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
-		BodyLimit: 100 * 1024 * 1024, // 100MB for audio files
+		BodyLimit:    100 * 1024 * 1024, // 100MB for audio files
+		ReadTimeout:  120 * time.Second, // Увеличен таймаут для синхронизации календаря
+		WriteTimeout: 120 * time.Second,
 	})
 
 	// Middleware
 	app.Use(recover.New())
 	app.Use(logger.New())
+
+	// CORS configuration
+	corsOrigins := os.Getenv("CORS_ORIGINS")
+	if corsOrigins == "" {
+		corsOrigins = "http://localhost:5173,http://localhost:3000,https://one-on-one-front.up.railway.app"
+	}
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
-		AllowMethods: "GET,POST,PUT,DELETE,PATCH,OPTIONS",
-		AllowHeaders: "*",
+		AllowOrigins:     corsOrigins,
+		AllowMethods:     "GET,POST,PUT,DELETE,PATCH,OPTIONS",
+		AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
+		AllowCredentials: true,
+		MaxAge:           3600,
 	}))
 
 	// Health endpoints
@@ -54,93 +67,95 @@ func main() {
 	// API routes
 	api := app.Group("/api/v1")
 
+	// Public routes (no JWT required)
+	publicAPI := api.Group("")
+	publicAPI.Post("/ad/authenticate", h.AuthenticateAD)
+	publicAPI.Get("/connector/status", h.ConnectorStatus)
+
+	// Protected routes (JWT required)
+	protectedAPI := api.Group("", middleware.JWTAuth(h.JWT))
+
 	// Employees
-	api.Get("/employees", h.ListEmployees)
-	api.Post("/employees", h.CreateEmployee)
-	api.Get("/employees/:id", h.GetEmployee)
-	api.Put("/employees/:id", h.UpdateEmployee)
-	api.Delete("/employees/:id", h.DeleteEmployee)
-	api.Get("/employees/:id/dossier", h.GetEmployeeDossier)
-	api.Get("/employees/my-team", h.GetMyTeam)
+	protectedAPI.Get("/employees", h.ListEmployees)
+	protectedAPI.Post("/employees", h.CreateEmployee)
+	protectedAPI.Get("/employees/:id", h.GetEmployee)
+	protectedAPI.Put("/employees/:id", h.UpdateEmployee)
+	protectedAPI.Delete("/employees/:id", h.DeleteEmployee)
+	protectedAPI.Get("/employees/:id/dossier", h.GetEmployeeDossier)
+	protectedAPI.Get("/employees/my-team", h.GetMyTeam)
 
 	// Projects
-	api.Get("/projects", h.ListProjects)
-	api.Post("/projects", h.CreateProject)
-	api.Get("/projects/:id", h.GetProject)
-	api.Put("/projects/:id", h.UpdateProject)
-	api.Delete("/projects/:id", h.DeleteProject)
+	protectedAPI.Get("/projects", h.ListProjects)
+	protectedAPI.Post("/projects", h.CreateProject)
+	protectedAPI.Get("/projects/:id", h.GetProject)
+	protectedAPI.Put("/projects/:id", h.UpdateProject)
+	protectedAPI.Delete("/projects/:id", h.DeleteProject)
 
 	// Meetings
-	api.Get("/meetings", h.ListMeetings)
-	api.Get("/meetings/:id", h.GetMeeting)
-	api.Get("/meeting-categories", h.ListMeetingCategories)
-	api.Post("/process-meeting", h.ProcessMeeting)
+	protectedAPI.Get("/meetings", h.ListMeetings)
+	protectedAPI.Post("/meetings", h.CreateMeeting)
+	protectedAPI.Get("/meetings/:id", h.GetMeeting)
+	protectedAPI.Get("/meeting-categories", h.ListMeetingCategories)
+	protectedAPI.Post("/process-meeting", h.ProcessMeeting)
 
 	// Tasks
-	api.Get("/tasks", h.ListTasks)
-	api.Post("/tasks", h.CreateTask)
-	api.Get("/tasks/:id", h.GetTask)
-	api.Put("/tasks/:id", h.UpdateTask)
-	api.Delete("/tasks/:id", h.DeleteTask)
+	protectedAPI.Get("/tasks", h.ListTasks)
+	protectedAPI.Post("/tasks", h.CreateTask)
+	protectedAPI.Get("/tasks/:id", h.GetTask)
+	protectedAPI.Put("/tasks/:id", h.UpdateTask)
+	protectedAPI.Delete("/tasks/:id", h.DeleteTask)
 
 	// Kanban
-	api.Get("/kanban", h.GetKanban)
-	api.Put("/kanban/move", h.MoveTaskKanban)
+	protectedAPI.Get("/kanban", h.GetKanban)
+	protectedAPI.Put("/kanban/move", h.MoveTaskKanban)
 
 	// Calendar (EWS) - specific routes MUST come before parametric routes
-	api.Post("/calendar/sync", h.SyncCalendar)
-	api.Post("/calendar/free-slots", h.FindFreeSlots)
-	api.Get("/calendar/free-slots/simple", h.FreeSlotsSimple)
-	api.Post("/calendar/:id", h.GetCalendar)
-	api.Get("/calendar/:id/simple", h.GetCalendarSimple)
+	protectedAPI.Post("/calendar/sync", h.SyncCalendar)
+	protectedAPI.Post("/calendar/free-slots", h.FindFreeSlots)
+	protectedAPI.Get("/calendar/free-slots/simple", h.FreeSlotsSimple)
+	protectedAPI.Get("/calendar/:id", h.GetCalendar)
+	protectedAPI.Get("/calendar/:id/simple", h.GetCalendarSimple)
 
 	// Analytics
-	api.Get("/analytics/dashboard", h.GetDashboard)
-	api.Get("/analytics/employee/:id", h.GetEmployeeAnalytics)
-	api.Get("/analytics/employee/:id/by-category", h.GetEmployeeAnalyticsByCategory)
+	protectedAPI.Get("/analytics/dashboard", h.GetDashboard)
+	protectedAPI.Get("/analytics/employee/:id", h.GetEmployeeAnalytics)
+	protectedAPI.Get("/analytics/employee/:id/by-category", h.GetEmployeeAnalyticsByCategory)
 
 	// AD Integration
-	api.Get("/connector/status", h.ConnectorStatus)
-	api.Post("/ad/sync", h.SyncADUsers)
-	api.Post("/ad/authenticate", h.AuthenticateAD)
-	api.Get("/ad/subordinates/:id", h.GetSubordinates)
-
-	// Local User Management (works without connector)
-	api.Post("/users/local", h.CreateLocalUser)
-	api.Post("/users/set-password", h.SetLocalPassword)
-	api.Post("/users/change-password", h.ChangePassword)
+	protectedAPI.Post("/ad/sync", h.SyncADUsers)
+	protectedAPI.Get("/ad/subordinates/:id", h.GetSubordinates)
 
 	// JWT Token Management
-	api.Post("/auth/refresh", h.RefreshToken)
-	api.Get("/auth/me", h.GetMe)
+	protectedAPI.Post("/auth/refresh", h.RefreshToken)
+	protectedAPI.Get("/auth/me", h.GetMe)
 
 	// File Storage
-	api.Post("/files", h.UploadFile)
-	api.Get("/files", h.ListFiles)
-	api.Get("/files/:id", h.GetFile)
-	api.Get("/files/:id/url", h.GetFileURL)
-	api.Delete("/files/:id", h.DeleteFile)
-	api.Post("/files/attach", h.AttachFileToEntity)
+	protectedAPI.Post("/files", h.UploadFile)
+	protectedAPI.Get("/files", h.ListFiles)
+	protectedAPI.Get("/files/:id", h.GetFile)
+	protectedAPI.Get("/files/:id/url", h.GetFileURL)
+	protectedAPI.Delete("/files/:id", h.DeleteFile)
+	protectedAPI.Post("/files/attach", h.AttachFileToEntity)
 
 	// BPMN / Camunda
-	api.Get("/bpmn/status", h.BPMNStatus)
-	api.Get("/bpmn/definitions", h.ListProcessDefinitions)
-	api.Get("/bpmn/definitions/:key", h.GetProcessDefinition)
-	api.Post("/bpmn/processes", h.StartProcess)
-	api.Get("/bpmn/processes", h.ListProcessInstances)
-	api.Get("/bpmn/processes/:id", h.GetProcessInstance)
-	api.Delete("/bpmn/processes/:id", h.DeleteProcessInstance)
-	api.Get("/bpmn/tasks", h.ListBPMNTasks)
-	api.Get("/bpmn/tasks/:id", h.GetBPMNTask)
-	api.Post("/bpmn/tasks/:id/complete", h.CompleteBPMNTask)
-	api.Post("/bpmn/tasks/:id/claim", h.ClaimBPMNTask)
-	api.Post("/bpmn/tasks/:id/unclaim", h.UnclaimBPMNTask)
+	protectedAPI.Get("/bpmn/status", h.BPMNStatus)
+	protectedAPI.Get("/bpmn/definitions", h.ListProcessDefinitions)
+	protectedAPI.Get("/bpmn/definitions/:key", h.GetProcessDefinition)
+	protectedAPI.Post("/bpmn/processes", h.StartProcess)
+	protectedAPI.Get("/bpmn/processes", h.ListProcessInstances)
+	protectedAPI.Get("/bpmn/processes/:id", h.GetProcessInstance)
+	protectedAPI.Delete("/bpmn/processes/:id", h.DeleteProcessInstance)
+	protectedAPI.Get("/bpmn/tasks", h.ListBPMNTasks)
+	protectedAPI.Get("/bpmn/tasks/:id", h.GetBPMNTask)
+	protectedAPI.Post("/bpmn/tasks/:id/complete", h.CompleteBPMNTask)
+	protectedAPI.Post("/bpmn/tasks/:id/claim", h.ClaimBPMNTask)
+	protectedAPI.Post("/bpmn/tasks/:id/unclaim", h.UnclaimBPMNTask)
 
 	// Messenger
-	api.Get("/conversations", h.ListConversations)
-	api.Post("/conversations", h.CreateConversation)
-	api.Get("/conversations/:id", h.GetConversation)
-	api.Post("/messages", h.SendMessage)
+	protectedAPI.Get("/conversations", h.ListConversations)
+	protectedAPI.Post("/conversations", h.CreateConversation)
+	protectedAPI.Get("/conversations/:id", h.GetConversation)
+	protectedAPI.Post("/messages", h.SendMessage)
 
 	// Legacy routes (for backward compatibility)
 	app.Get("/employees", h.ListEmployees)
@@ -176,6 +191,7 @@ func main() {
 
 	app.Get("/connector/status", h.ConnectorStatus)
 	app.Post("/ad/sync", h.SyncADUsers)
+	app.Post("/ad/sync-direct", h.SyncADUsersDirect)
 	app.Post("/ad/authenticate", h.AuthenticateAD)
 
 	// WebSocket for messenger

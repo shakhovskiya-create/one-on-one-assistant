@@ -1,7 +1,9 @@
 import { browser } from '$app/environment';
 
-const BASE_URL = browser ? (import.meta.env.VITE_API_URL || 'http://localhost:8080') : 'http://localhost:8080';
-const API_URL = `${BASE_URL}/api/v1`;
+// All browser requests go through SvelteKit proxy (/api/v1/...)
+// Server-side requests go directly to backend
+const BASE_URL = browser ? '/api/v1' : 'http://backend:8080/api/v1';
+const API_URL = BASE_URL;
 
 interface RequestOptions {
 	method?: string;
@@ -72,6 +74,7 @@ export const meetings = {
 		return request<Meeting[]>(`/meetings${query ? `?${query}` : ''}`);
 	},
 	get: (id: string) => request<Meeting>(`/meetings/${id}`),
+	create: (data: Partial<Meeting>) => request<Meeting>('/meetings', { method: 'POST', body: data }),
 	getCategories: () => request<MeetingCategory[]>('/meeting-categories'),
 	process: async (formData: FormData) => {
 		const response = await fetch(`${API_URL}/process-meeting`, {
@@ -97,6 +100,8 @@ export const tasks = {
 	create: (data: Partial<Task>) => request<Task>('/tasks', { method: 'POST', body: data }),
 	update: (id: string, data: Partial<Task>) => request<Task>(`/tasks/${id}`, { method: 'PUT', body: data }),
 	delete: (id: string) => request(`/tasks/${id}`, { method: 'DELETE' }),
+	addComment: (id: string, data: { author_id: string; content: string }) =>
+		request(`/tasks/${id}/comments`, { method: 'POST', body: data }),
 	getKanban: (params?: { assignee_id?: string; project_id?: string }) => {
 		const query = new URLSearchParams(params as Record<string, string>).toString();
 		return request<KanbanBoard>(`/kanban${query ? `?${query}` : ''}`);
@@ -107,19 +112,20 @@ export const tasks = {
 
 // Analytics
 export const analytics = {
-	getDashboard: () => request<DashboardData>('/analytics/dashboard'),
-	getEmployee: (id: string) => request<EmployeeAnalytics>(`/analytics/employee/${id}`),
+	getDashboard: (period?: string) =>
+		request<DashboardData>(`/analytics/dashboard${period ? `?period=${period}` : ''}`),
+	getEmployee: (id: string, period?: string) =>
+		request<EmployeeAnalytics>(`/analytics/employee/${id}${period ? `?period=${period}` : ''}`),
 	getEmployeeByCategory: (id: string) => request(`/analytics/employee/${id}/by-category`),
 };
 
 // Calendar (EWS)
 export const calendar = {
-	get: (employeeId: string, auth: { username: string; password: string }) =>
-		request(`/calendar/${employeeId}`, { method: 'POST', body: auth }),
+	get: (employeeId: string) => request(`/calendar/${employeeId}`),
 	getSimple: (employeeId: string) => request<CalendarEvent[]>(`/calendar/${employeeId}/simple`),
 	findFreeSlots: (data: FreeSlotsRequest) =>
 		request('/calendar/free-slots', { method: 'POST', body: data }),
-	sync: (data: { employee_id: string; username: string; password: string; days_back?: number; days_forward?: number }) =>
+	sync: (data: CalendarSyncRequest) =>
 		request('/calendar/sync', { method: 'POST', body: data }),
 };
 
@@ -138,8 +144,15 @@ export const messenger = {
 	sendMessage: (data: { conversation_id: string; sender_id: string; content: string; reply_to_id?: string }) =>
 		request<Message>('/messages', { method: 'POST', body: data }),
 	getWebSocketUrl: (userId: string) => {
-		const wsBase = BASE_URL.replace('http', 'ws');
-		return `${wsBase}/ws/messenger?user_id=${userId}`;
+		// WebSocket connects directly to the backend, not through the API proxy
+		const wsProtocol = browser && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+		const wsHost = browser ? window.location.host : 'backend:8080';
+		const token = browser ? localStorage.getItem('auth_token') : null;
+		const params = new URLSearchParams({ user_id: userId });
+		if (token && token !== 'authenticated') {
+			params.append('token', token);
+		}
+		return `${wsProtocol}//${wsHost}/ws/messenger?${params.toString()}`;
 	},
 };
 
@@ -354,8 +367,8 @@ export interface Meeting {
 
 export interface MeetingAnalysis {
 	key_topics?: string[];
-	action_items?: string[];
-	agreements?: string[];
+	action_items?: Array<string | { task?: string; improvement?: string; responsible?: string; deadline?: string | null }>;
+	agreements?: Array<string | { task?: string; responsible?: string; deadline?: string | null }>;
 	red_flags?: {
 		burnout_signs?: string;
 		turnover_risk?: string;
@@ -439,6 +452,9 @@ export interface ConnectorStatus {
 	calendar_integration?: string;
 	ews_url?: string;
 	ews_configured?: boolean;
+	yandex_configured?: boolean;
+	openai_configured?: boolean;
+	anthropic_configured?: boolean;
 }
 
 export interface CalendarEvent {
@@ -461,8 +477,6 @@ export interface FreeSlotsRequest {
 
 export interface CalendarSyncRequest {
 	employee_id: string;
-	username: string;
-	password: string;
 	days_back?: number;
 	days_forward?: number;
 }

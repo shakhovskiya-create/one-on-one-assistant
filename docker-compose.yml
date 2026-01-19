@@ -1,34 +1,68 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:16
+    container_name: oneonone-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=oneonone
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - /opt/one-on-one/postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
     environment:
       - PORT=8080
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_KEY=${SUPABASE_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/oneonone?sslmode=disable
+      - AD_URL=${AD_URL}
+      - AD_BASE_DN=${AD_BASE_DN}
+      - AD_BIND_USER=${AD_BIND_USER}
+      - AD_BIND_PASSWORD=${AD_BIND_PASSWORD}
+      - AD_SKIP_VERIFY=${AD_SKIP_VERIFY:-true}
       - EWS_URL=${EWS_URL:-https://post.ekf.su/EWS/Exchange.asmx}
       - EWS_DOMAIN=${EWS_DOMAIN:-ekf.local}
+      - EWS_SKIP_TLS_VERIFY=${EWS_SKIP_TLS_VERIFY:-true}
+      - JWT_SECRET=${JWT_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - YANDEX_API_KEY=${YANDEX_API_KEY}
       - YANDEX_FOLDER_ID=${YANDEX_FOLDER_ID}
-      - CONNECTOR_API_KEY=${CONNECTOR_API_KEY}
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000,http://nginx:80,http://10.100.0.131
+    depends_on:
+      - postgres
     restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
+      args:
+        - VITE_API_URL=/api
+    expose:
+      - "3000"
     environment:
-      - VITE_API_URL=http://backend:8080
+      - BACKEND_URL=http://backend:8080
     depends_on:
+      - backend
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: oneonone-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
       - backend
     restart: unless-stopped
