@@ -372,7 +372,7 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 	}
 
 	// Try to parse body (JSON or form data)
-	bodyErr := c.BodyParser(&req)
+	c.BodyParser(&req)
 
 	// Fallback to manual form parsing
 	if req.Username == "" {
@@ -394,15 +394,7 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 	password := req.Password
 
 	if username == "" || password == "" {
-		debugInfo := fiber.Map{
-			"error":        "Username and password required",
-			"content_type": c.Get("Content-Type"),
-			"body":         string(c.Body()),
-		}
-		if bodyErr != nil {
-			debugInfo["parse_error"] = bodyErr.Error()
-		}
-		return c.Status(400).JSON(debugInfo)
+		return c.Status(400).JSON(fiber.Map{"error": "Username and password required"})
 	}
 
 	// Try direct AD authentication (no connector needed)
