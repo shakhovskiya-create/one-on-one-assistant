@@ -30,6 +30,9 @@
 	let searchQuery = $state('');
 	let showOnlyUnread = $state(false);
 
+	// Sidebar collapsed state
+	let sidebarCollapsed = $state(false);
+
 	// Auto-refresh interval (60 seconds)
 	let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -337,6 +340,28 @@
 		return person.name || person.email || 'Неизвестный';
 	}
 
+	function getAvatarColor(name: string): string {
+		const colors = [
+			'bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-yellow-500',
+			'bg-lime-500', 'bg-green-500', 'bg-emerald-500', 'bg-teal-500',
+			'bg-cyan-500', 'bg-sky-500', 'bg-blue-500', 'bg-indigo-500',
+			'bg-violet-500', 'bg-purple-500', 'bg-fuchsia-500', 'bg-pink-500'
+		];
+		let hash = 0;
+		for (let i = 0; i < name.length; i++) {
+			hash = name.charCodeAt(i) + ((hash << 5) - hash);
+		}
+		return colors[Math.abs(hash) % colors.length];
+	}
+
+	function getInitials(name: string): string {
+		const parts = name.trim().split(/\s+/);
+		if (parts.length >= 2) {
+			return (parts[0][0] + parts[1][0]).toUpperCase();
+		}
+		return name.substring(0, 2).toUpperCase();
+	}
+
 	let filteredEmails = $derived(() => {
 		let result = emails;
 
@@ -413,16 +438,19 @@
 	<!-- Mail Interface -->
 	<div class="h-[calc(100vh-100px)] flex bg-white rounded-xl shadow-sm overflow-hidden">
 		<!-- Folders sidebar -->
-		<div class="w-60 border-r border-gray-200 flex flex-col bg-gray-50">
-			<div class="p-3">
+		<div class="{sidebarCollapsed ? 'w-16' : 'w-60'} border-r border-gray-200 flex flex-col bg-gray-50 transition-all duration-200">
+			<div class="p-3 flex {sidebarCollapsed ? 'justify-center' : 'gap-2'}">
 				<button
 					onclick={() => showCompose = true}
-					class="w-full py-2 px-4 bg-ekf-red text-white rounded-lg font-medium hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
+					class="{sidebarCollapsed ? 'w-10 h-10 p-0 justify-center' : 'flex-1 py-2 px-4'} bg-ekf-red text-white rounded-lg font-medium hover:bg-red-700 transition-colors flex items-center gap-2"
+					title={sidebarCollapsed ? 'Написать' : ''}
 				>
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
 					</svg>
-					Написать
+					{#if !sidebarCollapsed}
+						<span>Написать</span>
+					{/if}
 				</button>
 			</div>
 
@@ -430,8 +458,9 @@
 				{#each sortedFolders as folder}
 					<button
 						onclick={() => selectFolder(folder)}
-						class="w-full px-3 py-2 flex items-center gap-3 rounded-lg text-left text-sm transition-colors mb-1
+						class="w-full {sidebarCollapsed ? 'px-0 justify-center relative' : 'px-3'} py-2 flex items-center gap-3 rounded-lg text-left text-sm transition-colors mb-1
 							{selectedFolder?.id === folder.id ? 'bg-ekf-red/10 text-ekf-red' : 'text-gray-700 hover:bg-gray-100'}"
+						title={sidebarCollapsed ? folder.display_name : ''}
 					>
 						<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							{#if getFolderIcon(folder.display_name) === 'inbox'}
@@ -450,14 +479,33 @@
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
 							{/if}
 						</svg>
-						<span class="flex-1 truncate">{folder.display_name}</span>
-						{#if folder.unread_count > 0}
-							<span class="text-xs bg-ekf-red text-white px-1.5 py-0.5 rounded-full">{folder.unread_count}</span>
+						{#if !sidebarCollapsed}
+							<span class="flex-1 truncate">{folder.display_name}</span>
+							{#if folder.unread_count > 0}
+								<span class="text-xs bg-ekf-red text-white px-1.5 py-0.5 rounded-full">{folder.unread_count}</span>
+							{/if}
+						{:else if folder.unread_count > 0}
+							<span class="absolute -top-1 -right-1 w-4 h-4 text-[10px] bg-ekf-red text-white rounded-full flex items-center justify-center">{folder.unread_count > 9 ? '9+' : folder.unread_count}</span>
 						{/if}
 					</button>
 				{/each}
 			</nav>
 
+			<!-- Collapse toggle button -->
+			<div class="p-2 border-t border-gray-200">
+				<button
+					onclick={() => sidebarCollapsed = !sidebarCollapsed}
+					class="w-full p-2 flex items-center justify-center gap-2 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+					title={sidebarCollapsed ? 'Развернуть' : 'Свернуть'}
+				>
+					<svg class="w-5 h-5 transition-transform {sidebarCollapsed ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+					</svg>
+					{#if !sidebarCollapsed}
+						<span class="text-sm">Свернуть</span>
+					{/if}
+				</button>
+			</div>
 		</div>
 
 		<!-- Email list -->
@@ -509,6 +557,7 @@
 					</div>
 				{:else}
 					{#each filteredEmails() as email}
+						{@const senderName = getPersonDisplay(email.from)}
 						<button
 							onclick={() => selectEmail(email)}
 							class="w-full px-4 py-3 text-left border-b border-gray-100 hover:bg-gray-50 transition-colors
@@ -516,13 +565,17 @@
 								{!email.is_read ? 'bg-blue-50/50' : ''}"
 						>
 							<div class="flex items-start gap-3">
+								<!-- Avatar -->
+								<div class="w-10 h-10 rounded-full {getAvatarColor(senderName)} flex items-center justify-center flex-shrink-0 relative">
+									<span class="text-white text-sm font-medium">{getInitials(senderName)}</span>
+									{#if !email.is_read}
+										<div class="absolute -top-0.5 -right-0.5 w-3 h-3 bg-ekf-red rounded-full border-2 border-white"></div>
+									{/if}
+								</div>
 								<div class="flex-1 min-w-0">
 									<div class="flex items-center gap-2 mb-1">
-										{#if !email.is_read}
-											<div class="w-2 h-2 bg-ekf-red rounded-full flex-shrink-0"></div>
-										{/if}
 										<span class="text-sm {!email.is_read ? 'font-semibold' : ''} text-gray-900 truncate">
-											{getPersonDisplay(email.from)}
+											{senderName}
 										</span>
 										<span class="text-xs text-gray-400 flex-shrink-0 ml-auto">
 											{formatDate(email.received_at)}
@@ -534,7 +587,7 @@
 									{/if}
 								</div>
 								{#if email.has_attachments}
-									<svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<svg class="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
 									</svg>
 								{/if}
