@@ -1,18 +1,29 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 	import { user, subordinates } from '$lib/stores/auth';
-	import { meetings as meetingsApi, tasks as tasksApi, analytics } from '$lib/api/client';
-	import type { Meeting, Task, TeamMemberStats } from '$lib/api/client';
+	import { meetings as meetingsApi, tasks as tasksApi, analytics, calendar } from '$lib/api/client';
+	import type { Meeting, Task, TeamMemberStats, CalendarEvent } from '$lib/api/client';
 
 	let recentMeetings: Meeting[] = $state([]);
 	let tasks: Task[] = $state([]);
 	let teamStats: TeamMemberStats[] = $state([]);
+	let todayEvents: CalendarEvent[] = $state([]);
 	let loading = $state(true);
 
 	// Filter subordinates with departments
 	const employeesWithDept = $derived($subordinates.filter(emp => emp.department));
 	const pendingTasks = $derived(tasks.filter(t => ['backlog', 'todo', 'in_progress', 'review'].includes(t.status)));
 	const overdueTasks = $derived(tasks.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status !== 'done'));
+
+	// Filter today's events
+	const todayMeetingsCount = $derived(() => {
+		if (todayEvents.length > 0) {
+			const today = new Date().toDateString();
+			return todayEvents.filter(e => new Date(e.start).toDateString() === today).length;
+		}
+		return null; // No calendar data available
+	});
 
 	// Extract greeting name (first name or patronymic from "Фамилия Имя Отчество")
 	function getGreetingName(fullName: string): string {
@@ -38,14 +49,24 @@
 
 	async function fetchData() {
 		try {
-			const [meetingsData, tasksData, teamData] = await Promise.all([
+			const fetchPromises: Promise<unknown>[] = [
 				meetingsApi.list().catch(() => []),
 				tasksApi.list().catch(() => []),
 				$user ? analytics.getTeamStats($user.id).catch(() => []) : Promise.resolve([])
-			]);
+			];
+
+			// Try to get calendar events for today if credentials exist
+			if (browser && $user) {
+				fetchPromises.push(
+					calendar.getSimple($user.id).catch(() => [])
+				);
+			}
+
+			const [meetingsData, tasksData, teamData, calendarData] = await Promise.all(fetchPromises) as [Meeting[], Task[], TeamMemberStats[], CalendarEvent[]];
 			recentMeetings = meetingsData || [];
 			tasks = tasksData || [];
 			teamStats = teamData || [];
+			todayEvents = calendarData || [];
 		} catch (error) {
 			console.error('Failed to fetch dashboard data:', error);
 		} finally {
@@ -102,8 +123,8 @@
 						</svg>
 					</div>
 					<div>
-						<p class="text-xl font-bold text-gray-900">{recentMeetings.length}</p>
-						<p class="text-gray-500 text-xs">Встреч</p>
+						<p class="text-xl font-bold text-gray-900">{todayMeetingsCount() ?? todayEvents.length}</p>
+						<p class="text-gray-500 text-xs">Встреч сегодня</p>
 					</div>
 				</div>
 			</a>
