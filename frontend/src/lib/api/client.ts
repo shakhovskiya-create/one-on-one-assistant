@@ -560,6 +560,8 @@ export const mail = {
 		if (limit) params.append('limit', limit.toString());
 		return request<EmailMessage[]>(`/mail/emails?${params}`);
 	},
+	getEmailBody: (data: { username: string; password: string; item_id: string; change_key?: string }) =>
+		request<{ body: string }>('/mail/body', { method: 'POST', body: data }),
 	sendEmail: (data: { username: string; password: string; to: string[]; cc?: string[]; subject: string; body: string }) =>
 		request('/mail/send', { method: 'POST', body: data }),
 	markAsRead: (data: { username: string; password: string; item_id: string; change_key?: string }) =>

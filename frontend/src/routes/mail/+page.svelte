@@ -120,14 +120,37 @@
 		}
 	}
 
-	function selectEmail(email: EmailMessage) {
+	let loadingBody = $state(false);
+
+	async function selectEmail(email: EmailMessage) {
 		selectedEmail = email;
+
+		// Load email body if not already loaded
+		if (!email.body || email.body === '') {
+			loadingBody = true;
+			try {
+				const result = await mail.getEmailBody({
+					username: credentials.username,
+					password: credentials.password,
+					item_id: email.id
+				});
+				// Update the email with body
+				const updatedEmail = { ...email, body: result.body };
+				selectedEmail = updatedEmail;
+				emails = emails.map(e => e.id === email.id ? updatedEmail : e);
+			} catch (err) {
+				console.error('Failed to load email body:', err);
+			} finally {
+				loadingBody = false;
+			}
+		}
+
 		if (!email.is_read) {
 			// Mark as read in UI immediately for better UX
 			emails = emails.map(e =>
 				e.id === email.id ? { ...e, is_read: true } : e
 			);
-			selectedEmail = { ...email, is_read: true };
+			selectedEmail = { ...selectedEmail, is_read: true };
 
 			// Update folder unread count
 			if (selectedFolder) {
@@ -149,7 +172,9 @@
 				emails = emails.map(e =>
 					e.id === email.id ? { ...e, is_read: false } : e
 				);
-				selectedEmail = { ...email, is_read: false };
+				if (selectedEmail) {
+					selectedEmail = { ...selectedEmail, is_read: false };
+				}
 			});
 		}
 	}
@@ -485,7 +510,16 @@
 				</div>
 				<div class="flex-1 overflow-y-auto p-6">
 					<div class="bg-white rounded-lg p-6 shadow-sm">
-						{@html selectedEmail.body || '<p class="text-gray-500">Нет содержимого</p>'}
+						{#if loadingBody}
+							<div class="flex items-center justify-center py-8">
+								<div class="animate-spin rounded-full h-6 w-6 border-b-2 border-ekf-red"></div>
+								<span class="ml-3 text-gray-500 text-sm">Загрузка письма...</span>
+							</div>
+						{:else if selectedEmail.body}
+							{@html selectedEmail.body}
+						{:else}
+							<p class="text-gray-500">Нет содержимого</p>
+						{/if}
 					</div>
 				</div>
 			{:else}
