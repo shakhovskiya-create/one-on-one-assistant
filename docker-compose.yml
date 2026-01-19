@@ -9,16 +9,21 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_KEY=${SUPABASE_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DATABASE_URL=${DATABASE_URL}
+      - AD_URL=${AD_URL}
+      - AD_BASE_DN=${AD_BASE_DN}
+      - AD_BIND_USER=${AD_BIND_USER}
+      - AD_BIND_PASSWORD=${AD_BIND_PASSWORD}
+      - AD_SKIP_VERIFY=${AD_SKIP_VERIFY:-true}
       - EWS_URL=${EWS_URL:-https://post.ekf.su/EWS/Exchange.asmx}
       - EWS_DOMAIN=${EWS_DOMAIN:-ekf.local}
+      - EWS_SKIP_TLS_VERIFY=${EWS_SKIP_TLS_VERIFY:-true}
+      - JWT_SECRET=${JWT_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - YANDEX_API_KEY=${YANDEX_API_KEY}
       - YANDEX_FOLDER_ID=${YANDEX_FOLDER_ID}
-      - CONNECTOR_API_KEY=${CONNECTOR_API_KEY}
     restart: unless-stopped
 
   frontend:
