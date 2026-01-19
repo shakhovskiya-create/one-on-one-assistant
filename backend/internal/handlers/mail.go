@@ -143,3 +143,34 @@ func (h *Handler) DeleteEmail(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{"success": true})
 }
+
+// GetEmailBodyRequest represents the request body for getting email body
+type GetEmailBodyRequest struct {
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	ItemID    string `json:"item_id"`
+	ChangeKey string `json:"change_key"`
+}
+
+// GetEmailBody returns the full body of an email
+func (h *Handler) GetEmailBody(c *fiber.Ctx) error {
+	if h.EWS == nil {
+		return c.Status(503).JSON(fiber.Map{"error": "EWS not configured"})
+	}
+
+	var req GetEmailBodyRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.Username == "" || req.Password == "" || req.ItemID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "username, password, and item_id required"})
+	}
+
+	body, err := h.EWS.GetEmailBody(req.Username, req.Password, req.ItemID, req.ChangeKey)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"body": body})
+}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 
@@ -37,11 +38,20 @@ func NewPostgresClient(connectionString string) (*PostgresClient, error) {
 	return &PostgresClient{db: db}, nil
 }
 
+// relationInfo stores information about a Supabase-style relationship
+type relationInfo struct {
+	alias       string   // e.g., "assignee"
+	table       string   // e.g., "employees"
+	foreignKey  string   // e.g., "tasks_assignee_id_fkey" (optional)
+	columns     []string // e.g., ["id", "name"]
+}
+
 // PostgresQueryBuilder helps build SQL queries
 type PostgresQueryBuilder struct {
 	client       *PostgresClient
 	table        string
 	columns      string
+	relations    []relationInfo
 	whereClauses []string
 	whereArgs    []interface{}
 	limitVal     int
@@ -59,9 +69,56 @@ func (c *PostgresClient) From(table string) QueryBuilder {
 	}
 }
 
+// parseSupabaseColumns parses Supabase-style column syntax and extracts relations
+// Example: "*, assignee:employees!tasks_assignee_id_fkey(id, name), project:projects(id, name)"
+func parseSupabaseColumns(columns string) (string, []relationInfo) {
+	var relations []relationInfo
+	var cleanColumns []string
+
+	// Regex to match relationship syntax: alias:table!foreignkey(cols) or alias:table(cols)
+	// Pattern: word:word(!word)?(...)
+	relationRegex := regexp.MustCompile(`(\w+):(\w+)(?:!(\w+))?\(([^)]+)\)`)
+
+	// Find all relations
+	matches := relationRegex.FindAllStringSubmatch(columns, -1)
+	for _, match := range matches {
+		cols := strings.Split(match[4], ",")
+		for i := range cols {
+			cols[i] = strings.TrimSpace(cols[i])
+		}
+		relations = append(relations, relationInfo{
+			alias:      match[1],
+			table:      match[2],
+			foreignKey: match[3],
+			columns:    cols,
+		})
+	}
+
+	// Remove relation syntax from columns string
+	cleanStr := relationRegex.ReplaceAllString(columns, "")
+
+	// Split by comma and clean up
+	parts := strings.Split(cleanStr, ",")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			cleanColumns = append(cleanColumns, part)
+		}
+	}
+
+	// If nothing left, default to *
+	if len(cleanColumns) == 0 {
+		cleanColumns = append(cleanColumns, "*")
+	}
+
+	return strings.Join(cleanColumns, ", "), relations
+}
+
 // Select specifies which columns to select
 func (qb *PostgresQueryBuilder) Select(columns string) QueryBuilder {
-	qb.columns = columns
+	cleanCols, relations := parseSupabaseColumns(columns)
+	qb.columns = cleanCols
+	qb.relations = relations
 	return qb
 }
 
@@ -197,6 +254,11 @@ func (qb *PostgresQueryBuilder) Execute(result interface{}) error {
 		results = append(results, row)
 	}
 
+	// Fetch related data for each relation
+	if len(qb.relations) > 0 {
+		results = qb.fetchRelations(results)
+	}
+
 	// Marshal and unmarshal to convert to target type
 	// If single mode and results exist, return first element
 	if qb.single {
@@ -216,6 +278,154 @@ func (qb *PostgresQueryBuilder) Execute(result interface{}) error {
 	}
 
 	return json.Unmarshal(jsonData, result)
+}
+
+// fetchRelations fetches related data for each result row
+func (qb *PostgresQueryBuilder) fetchRelations(results []map[string]interface{}) []map[string]interface{} {
+	for _, rel := range qb.relations {
+		// Determine the foreign key column name
+		fkColumn := rel.alias + "_id"
+		if rel.foreignKey != "" {
+			// Parse foreign key name like "tasks_assignee_id_fkey" to get "assignee_id"
+			parts := strings.Split(rel.foreignKey, "_")
+			if len(parts) >= 3 {
+				// Try to extract column name (e.g., "assignee_id" from "tasks_assignee_id_fkey")
+				fkParts := []string{}
+				for i := 1; i < len(parts)-1; i++ { // Skip table prefix and "fkey" suffix
+					fkParts = append(fkParts, parts[i])
+				}
+				if len(fkParts) > 0 {
+					fkColumn = strings.Join(fkParts, "_")
+				}
+			}
+		}
+
+		// Collect all foreign key values
+		fkValues := make(map[string]bool)
+		for _, row := range results {
+			if fkVal, ok := row[fkColumn]; ok && fkVal != nil {
+				fkValues[fmt.Sprintf("%v", fkVal)] = true
+			}
+		}
+
+		if len(fkValues) == 0 {
+			// No foreign keys, set all relations to null
+			for i := range results {
+				results[i][rel.alias] = nil
+			}
+			continue
+		}
+
+		// Fetch related data
+		relatedData := qb.fetchRelatedData(rel, fkValues)
+
+		// Merge related data into results
+		for i, row := range results {
+			if fkVal, ok := row[fkColumn]; ok && fkVal != nil {
+				fkStr := fmt.Sprintf("%v", fkVal)
+				if related, found := relatedData[fkStr]; found {
+					results[i][rel.alias] = related
+				} else {
+					results[i][rel.alias] = nil
+				}
+			} else {
+				results[i][rel.alias] = nil
+			}
+		}
+	}
+
+	return results
+}
+
+// fetchRelatedData fetches data from a related table
+func (qb *PostgresQueryBuilder) fetchRelatedData(rel relationInfo, fkValues map[string]bool) map[string]map[string]interface{} {
+	relatedData := make(map[string]map[string]interface{})
+
+	if len(fkValues) == 0 {
+		return relatedData
+	}
+
+	// Build columns list
+	cols := strings.Join(rel.columns, ", ")
+	if !containsColumn(rel.columns, "id") {
+		cols = "id, " + cols
+	}
+
+	// Build IN clause
+	fkList := make([]string, 0, len(fkValues))
+	for fk := range fkValues {
+		fkList = append(fkList, fk)
+	}
+
+	// Build placeholders
+	placeholders := make([]string, len(fkList))
+	args := make([]interface{}, len(fkList))
+	for i, fk := range fkList {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = fk
+	}
+
+	query := fmt.Sprintf(
+		"SELECT %s FROM %s WHERE id IN (%s)",
+		cols,
+		rel.table,
+		strings.Join(placeholders, ", "),
+	)
+
+	rows, err := qb.client.db.Query(query, args...)
+	if err != nil {
+		return relatedData
+	}
+	defer rows.Close()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return relatedData
+	}
+
+	for rows.Next() {
+		values := make([]interface{}, len(columns))
+		valuePtrs := make([]interface{}, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := rows.Scan(valuePtrs...); err != nil {
+			continue
+		}
+
+		row := make(map[string]interface{})
+		var id string
+		for i, col := range columns {
+			val := values[i]
+			if b, ok := val.([]byte); ok {
+				row[col] = string(b)
+				if col == "id" {
+					id = string(b)
+				}
+			} else {
+				row[col] = val
+				if col == "id" {
+					id = fmt.Sprintf("%v", val)
+				}
+			}
+		}
+		if id != "" {
+			relatedData[id] = row
+		}
+	}
+
+	return relatedData
+}
+
+// containsColumn checks if a column list contains a specific column
+func containsColumn(cols []string, col string) bool {
+	for _, c := range cols {
+		if c == col {
+			return true
+		}
+	}
+	return false
 }
 
 // Insert inserts data into table

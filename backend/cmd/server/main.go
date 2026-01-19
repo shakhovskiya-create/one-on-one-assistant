@@ -160,6 +160,7 @@ func main() {
 	// Mail (EWS)
 	protectedAPI.Get("/mail/folders", h.GetMailFolders)
 	protectedAPI.Get("/mail/emails", h.GetEmails)
+	protectedAPI.Post("/mail/body", h.GetEmailBody)
 	protectedAPI.Post("/mail/send", h.SendEmail)
 	protectedAPI.Post("/mail/mark-read", h.MarkEmailAsRead)
 	protectedAPI.Delete("/mail/email", h.DeleteEmail)
