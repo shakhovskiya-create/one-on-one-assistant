@@ -410,7 +410,7 @@
 
 		<!-- Overview Stats -->
 		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-			<div class="bg-white rounded-xl shadow-sm p-6">
+			<a href="/employees" class="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow cursor-pointer">
 				<div class="flex items-center gap-3">
 					<div class="w-12 h-12 bg-orange-50 rounded-lg flex items-center justify-center">
 						<svg class="w-6 h-6 text-ekf-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -422,8 +422,8 @@
 						<p class="text-3xl font-bold text-gray-900">{dashboard.total_employees}</p>
 					</div>
 				</div>
-			</div>
-			<div class="bg-white rounded-xl shadow-sm p-6">
+			</a>
+			<a href="/meetings" class="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow cursor-pointer">
 				<div class="flex items-center gap-3">
 					<div class="w-12 h-12 bg-green-50 rounded-lg flex items-center justify-center">
 						<svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -435,8 +435,8 @@
 						<p class="text-3xl font-bold text-ekf-red">{dashboard.meetings_this_month}</p>
 					</div>
 				</div>
-			</div>
-			<div class="bg-white rounded-xl shadow-sm p-6">
+			</a>
+			<a href="/meetings" class="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow cursor-pointer">
 				<div class="flex items-center gap-3">
 					<div class="w-12 h-12 rounded-lg flex items-center justify-center
 						{dashboard.average_mood >= 7 ? 'bg-green-50' : dashboard.average_mood >= 5 ? 'bg-yellow-50' : 'bg-red-50'}">
@@ -451,8 +451,8 @@
 						</p>
 					</div>
 				</div>
-			</div>
-			<div class="bg-white rounded-xl shadow-sm p-6">
+			</a>
+			<a href="/tasks?status=done" class="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow cursor-pointer">
 				<div class="flex items-center gap-3">
 					<div class="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
 						<svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -464,7 +464,7 @@
 						<p class="text-3xl font-bold text-green-600">{dashboard.tasks_completed}</p>
 					</div>
 				</div>
-			</div>
+			</a>
 		</div>
 
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -561,18 +561,18 @@
 			<div class="bg-white rounded-xl shadow-sm p-6">
 				<h3 class="font-semibold text-gray-900 mb-4">Статистика задач</h3>
 				<div class="space-y-4">
-					<div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+					<a href="/tasks?status=backlog,todo" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
 						<span class="text-gray-600">К выполнению</span>
 						<span class="font-bold text-gray-900">{dashboard.tasks_todo || 0}</span>
-					</div>
-					<div class="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+					</a>
+					<a href="/tasks?status=in_progress" class="flex items-center justify-between p-3 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer">
 						<span class="text-gray-600">В работе</span>
 						<span class="font-bold text-blue-600">{dashboard.tasks_in_progress || 0}</span>
-					</div>
-					<div class="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+					</a>
+					<a href="/tasks?status=done" class="flex items-center justify-between p-3 bg-green-50 rounded-lg hover:bg-green-100 transition-colors cursor-pointer">
 						<span class="text-gray-600">Выполнено</span>
 						<span class="font-bold text-green-600">{dashboard.tasks_completed || 0}</span>
-					</div>
+					</a>
 				</div>
 			</div>
 

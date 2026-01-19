@@ -218,8 +218,13 @@
 				type: 'direct',
 				participants: [employee.id, $user!.id]
 			});
-			conversations = [conv, ...conversations];
-			selectConversation(conv);
+			// Add participant info directly since we know who it is
+			const convWithParticipants = {
+				...conv,
+				participants: [employee, $user as Employee]
+			};
+			conversations = [convWithParticipants, ...conversations];
+			selectConversation(convWithParticipants);
 			activeTab = 'chats';
 		} catch (e) {
 			console.error('Failed to create conversation:', e);
@@ -268,13 +273,21 @@
 				name: newChatType !== 'direct' ? groupName : undefined,
 				participants
 			});
-			conversations = [conv, ...conversations];
+			// Add participant info from selected employees
+			const participantEmployees = employees.filter(e =>
+				selectedParticipants.includes(e.id) || e.id === $user?.id
+			);
+			const convWithParticipants = {
+				...conv,
+				participants: participantEmployees
+			};
+			conversations = [convWithParticipants, ...conversations];
 			showNewChat = false;
 			selectedParticipants = [];
 			groupName = '';
 			channelDescription = '';
-			selectConversation(conv);
-			activeTab = 'chats';
+			selectConversation(convWithParticipants);
+			activeTab = newChatType === 'channel' ? 'channels' : 'chats';
 		} catch (e) {
 			console.error('Failed to create conversation:', e);
 		}
@@ -365,7 +378,23 @@
 	function handleMessageContextMenu(event: MouseEvent, msg: Message) {
 		event.preventDefault();
 		contextMenuMessage = msg;
-		contextMenuPosition = { x: event.clientX, y: event.clientY };
+
+		// Calculate position to keep menu on screen
+		const menuWidth = 160; // min-w-40 = 160px
+		const menuHeight = 120; // approximate height for 3 buttons
+		let x = event.clientX;
+		let y = event.clientY;
+
+		// Adjust if would go off right edge
+		if (x + menuWidth > window.innerWidth) {
+			x = window.innerWidth - menuWidth - 10;
+		}
+		// Adjust if would go off bottom edge
+		if (y + menuHeight > window.innerHeight) {
+			y = window.innerHeight - menuHeight - 10;
+		}
+
+		contextMenuPosition = { x, y };
 	}
 
 	function closeContextMenu() {
