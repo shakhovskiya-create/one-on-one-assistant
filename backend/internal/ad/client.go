@@ -138,10 +138,14 @@ func (c *Client) Authenticate(username, password string) (*User, error) {
 
 	if len(sr.Entries) == 0 {
 		// User authenticated but not found in search - create minimal user info
+		email := username
+		if !strings.Contains(username, "@") {
+			email = fmt.Sprintf("%s@%s", username, extractDomainFromDN(c.BaseDN))
+		}
 		return &User{
 			Username: username,
 			Login:    username,
-			Email:    fmt.Sprintf("%s@%s", username, extractDomainFromDN(c.BaseDN)),
+			Email:    email,
 			Name:     username,
 			Enabled:  true,
 		}, nil
