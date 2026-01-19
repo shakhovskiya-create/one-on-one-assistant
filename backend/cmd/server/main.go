@@ -191,6 +191,7 @@ func main() {
 
 	app.Get("/connector/status", h.ConnectorStatus)
 	app.Post("/ad/sync", h.SyncADUsers)
+	app.Post("/ad/sync-direct", h.SyncADUsersDirect)
 	app.Post("/ad/authenticate", h.AuthenticateAD)
 
 	// WebSocket for messenger

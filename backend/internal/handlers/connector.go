@@ -69,6 +69,126 @@ func (h *Handler) ConnectorWebSocket(conn *websocket.Conn) {
 	}
 }
 
+// SyncADUsersDirect syncs users directly from AD (not via connector)
+func (h *Handler) SyncADUsersDirect(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
+	if h.AD == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "AD not configured"})
+	}
+
+	includePhotos := c.Query("include_photos", "true") == "true"
+
+	// Get all users from AD
+	users, err := h.AD.GetAllUsers(includePhotos)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Stats tracking
+	stats := fiber.Map{
+		"total_in_ad":   len(users),
+		"new_users":     0,
+		"updated_users": 0,
+	}
+
+	// Get existing emails
+	var existing []struct {
+		Email string `json:"email"`
+	}
+	h.DB.From("employees").Select("email").Execute(&existing)
+	existingEmails := make(map[string]bool)
+	for _, e := range existing {
+		if e.Email != "" {
+			existingEmails[strings.ToLower(e.Email)] = true
+		}
+	}
+
+	// Process users
+	var batch []map[string]interface{}
+	newCount := 0
+	updatedCount := 0
+
+	for _, user := range users {
+		if user.Email == "" {
+			continue
+		}
+
+		isExisting := existingEmails[strings.ToLower(user.Email)]
+
+		userData := map[string]interface{}{
+			"name":       user.Name,
+			"email":      user.Email,
+			"position":   user.Title,
+			"department": user.Department,
+			"ad_dn":      user.DN,
+			"manager_dn": user.ManagerDN,
+			"ad_login":   user.Login,
+			"phone":      user.Phone,
+			"mobile":     user.Mobile,
+		}
+
+		if includePhotos && user.PhotoBase64 != "" {
+			userData["photo_base64"] = user.PhotoBase64
+		}
+
+		batch = append(batch, userData)
+
+		if isExisting {
+			updatedCount++
+		} else {
+			newCount++
+		}
+	}
+
+	// Upsert batch
+	if len(batch) > 0 {
+		_, err := h.DB.Upsert("employees", batch, "email")
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+	}
+
+	// Update manager relationships
+	var employees []struct {
+		ID        string  `json:"id"`
+		ADDN      *string `json:"ad_dn"`
+		ManagerDN *string `json:"manager_dn"`
+	}
+	h.DB.From("employees").Select("id, ad_dn, manager_dn").Execute(&employees)
+
+	dnToID := make(map[string]string)
+	for _, e := range employees {
+		if e.ADDN != nil {
+			dnToID[*e.ADDN] = e.ID
+		}
+	}
+
+	managersUpdated := 0
+	for _, emp := range employees {
+		if emp.ManagerDN != nil {
+			if managerID, ok := dnToID[*emp.ManagerDN]; ok {
+				h.DB.Update("employees", "id", emp.ID, map[string]interface{}{
+					"manager_id": managerID,
+				})
+				managersUpdated++
+			}
+		}
+	}
+
+	stats["new_users"] = newCount
+	stats["updated_users"] = updatedCount
+	stats["managers_updated"] = managersUpdated
+
+	return c.JSON(fiber.Map{
+		"success":  true,
+		"imported": newCount + updatedCount,
+		"stats":    stats,
+	})
+}
+
 // SyncADUsers syncs users from Active Directory
 func (h *Handler) SyncADUsers(c *fiber.Ctx) error {
 	if h.DB == nil {
