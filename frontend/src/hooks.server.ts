@@ -39,11 +39,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 			let body: BodyInit | null = null;
 			if (event.request.method !== 'GET' && event.request.method !== 'HEAD') {
-				// For file uploads, pass body as-is
+				// For file uploads, we need to forward the exact body and Content-Type with boundary
 				if (contentType?.includes('multipart/form-data')) {
 					body = await event.request.arrayBuffer();
-					// Don't set Content-Type for multipart - let fetch set it with boundary
-					headers.delete('Content-Type');
+					// IMPORTANT: Keep the Content-Type header as-is - it contains the boundary
+					// The contentType was already set above, so it includes the boundary
 				} else {
 					body = await event.request.text();
 				}
