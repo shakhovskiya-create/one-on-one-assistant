@@ -1,6 +1,8 @@
 import { browser } from '$app/environment';
 
-const BASE_URL = browser ? '/api' : 'http://backend:8080';
+// All browser requests go through SvelteKit proxy (/api/v1/...)
+// Server-side requests go directly to backend
+const BASE_URL = browser ? '/api/v1' : 'http://backend:8080/api/v1';
 const API_URL = BASE_URL;
 
 interface RequestOptions {
@@ -142,13 +144,15 @@ export const messenger = {
 	sendMessage: (data: { conversation_id: string; sender_id: string; content: string; reply_to_id?: string }) =>
 		request<Message>('/messages', { method: 'POST', body: data }),
 	getWebSocketUrl: (userId: string) => {
-		const wsBase = BASE_URL.replace('http', 'ws');
+		// WebSocket connects directly to the backend, not through the API proxy
+		const wsProtocol = browser && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+		const wsHost = browser ? window.location.host : 'backend:8080';
 		const token = browser ? localStorage.getItem('auth_token') : null;
 		const params = new URLSearchParams({ user_id: userId });
 		if (token && token !== 'authenticated') {
 			params.append('token', token);
 		}
-		return `${wsBase}/ws/messenger?${params.toString()}`;
+		return `${wsProtocol}//${wsHost}/ws/messenger?${params.toString()}`;
 	},
 };
 

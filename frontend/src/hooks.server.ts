@@ -5,8 +5,25 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://backend:8080';
 export const handle: Handle = async ({ event, resolve }) => {
 	// Proxy /api requests to backend
 	if (event.url.pathname.startsWith('/api/')) {
-		const backendPath = event.url.pathname.replace('/api', '');
+		// Remove /api prefix and forward to backend
+		// /api/v1/employees -> /api/v1/employees (keep /api/v1 for protected routes)
+		// /api/employees -> /employees (legacy routes)
+
+		let backendPath = event.url.pathname;
+
+		// If it's /api/v1/... keep as is (protected routes)
+		// If it's /api/... without v1, strip /api (legacy routes)
+		if (event.url.pathname.startsWith('/api/v1/')) {
+			// Protected route - forward as /api/v1/...
+			backendPath = event.url.pathname;
+		} else {
+			// Legacy route - strip /api
+			backendPath = event.url.pathname.replace(/^\/api/, '');
+		}
+
 		const backendUrl = `${BACKEND_URL}${backendPath}${event.url.search}`;
+
+		console.log(`[Proxy] ${event.url.pathname} -> ${backendUrl}`);
 
 		try {
 			const headers = new Headers();
@@ -48,7 +65,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 			});
 		} catch (error) {
 			console.error('Proxy error:', error);
-			return new Response(JSON.stringify({ error: 'Backend unavailable' }), {
+			return new Response(JSON.stringify({ error: 'Backend unavailable', details: String(error) }), {
 				status: 502,
 				headers: { 'Content-Type': 'application/json' }
 			});
