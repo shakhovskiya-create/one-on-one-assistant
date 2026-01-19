@@ -247,6 +247,10 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 	// Try direct AD authentication (no connector needed)
 	if h.AD != nil {
 		adUser, authErr := h.AD.Authenticate(username, password)
+		if authErr != nil {
+			// Log AD authentication error for debugging
+			c.Locals("ad_error", authErr.Error())
+		}
 		if authErr == nil && adUser != nil {
 			email := adUser.Email
 			name := adUser.Name
@@ -378,13 +382,19 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 		}
 	}
 
-	// AD auth failed
-	return c.JSON(fiber.Map{
+	// AD auth failed - include debug info if available
+	response := fiber.Map{
 		"authenticated": false,
 		"error":         "Неверные учётные данные",
-	})
-}
+	}
 
+	// Add debug error in development
+	if adError := c.Locals("ad_error"); adError != nil {
+		response["debug_error"] = adError
+	}
+
+	return c.JSON(response)
+}
 
 // RefreshToken refreshes a JWT token
 func (h *Handler) RefreshToken(c *fiber.Ctx) error {
