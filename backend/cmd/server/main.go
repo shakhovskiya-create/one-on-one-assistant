@@ -120,6 +120,7 @@ func main() {
 	protectedAPI.Get("/analytics/dashboard", h.GetDashboard)
 	protectedAPI.Get("/analytics/employee/:id", h.GetEmployeeAnalytics)
 	protectedAPI.Get("/analytics/employee/:id/by-category", h.GetEmployeeAnalyticsByCategory)
+	protectedAPI.Get("/analytics/team/:id", h.GetTeamStats)
 
 	// AD Integration
 	protectedAPI.Post("/ad/sync", h.SyncADUsers)
@@ -196,6 +197,7 @@ func main() {
 	app.Get("/analytics/dashboard", h.GetDashboard)
 	app.Get("/analytics/employee/:id", h.GetEmployeeAnalytics)
 	app.Get("/analytics/employee/:id/by-category", h.GetEmployeeAnalyticsByCategory)
+	app.Get("/analytics/team/:id", h.GetTeamStats)
 
 	app.Get("/connector/status", h.ConnectorStatus)
 	app.Post("/ad/sync", h.SyncADUsers)

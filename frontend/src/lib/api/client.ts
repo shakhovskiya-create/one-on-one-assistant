@@ -122,6 +122,7 @@ export const analytics = {
 	getEmployee: (id: string, period?: string) =>
 		request<EmployeeAnalytics>(`/analytics/employee/${id}${period ? `?period=${period}` : ''}`),
 	getEmployeeByCategory: (id: string) => request(`/analytics/employee/${id}/by-category`),
+	getTeamStats: (managerId: string) => request<TeamMemberStats[]>(`/analytics/team/${managerId}`),
 };
 
 // Calendar (EWS)
@@ -446,6 +447,17 @@ export interface EmployeeAnalytics {
 	task_stats: { total: number; done: number; in_progress: number };
 	agreement_stats: { total: number; completed: number; pending: number; overdue: number };
 	total_meetings: number;
+}
+
+export interface TeamMemberStats {
+	id: string;
+	name: string;
+	position: string;
+	photo_base64?: string;
+	subordinates: number;
+	open_tasks: number;
+	overdue_tasks: number;
+	meetings: number;
 }
 
 export interface ConnectorStatus {

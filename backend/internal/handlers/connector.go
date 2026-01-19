@@ -629,7 +629,7 @@ func (h *Handler) GetSubordinates(c *fiber.Ctx) error {
 
 	if fromDB {
 		var subordinates []map[string]interface{}
-		h.DB.From("employees").Select("id, name, email, position, department, manager_id").Eq("manager_id", employeeID).Execute(&subordinates)
+		h.DB.From("employees").Select("id, name, email, position, department, manager_id, photo_base64").Eq("manager_id", employeeID).Execute(&subordinates)
 		return c.JSON(subordinates)
 	}
 

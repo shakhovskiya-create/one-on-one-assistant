@@ -449,3 +449,66 @@ func (h *Handler) GetEmployeeAnalyticsByCategory(c *fiber.Ctx) error {
 
 	return c.JSON(result)
 }
+
+// GetTeamStats returns stats for each team member
+func (h *Handler) GetTeamStats(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
+	managerID := c.Params("id")
+	if managerID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Manager ID required"})
+	}
+
+	// Get direct subordinates
+	var subordinates []models.Employee
+	h.DB.From("employees").Select("id, name, position, photo_base64").Eq("manager_id", managerID).Execute(&subordinates)
+
+	today := time.Now().Format("2006-01-02")
+	var result []fiber.Map
+
+	for _, emp := range subordinates {
+		// Count subordinates of this employee
+		var subCount int
+		var subs []struct{ ID string }
+		h.DB.From("employees").Select("id").Eq("manager_id", emp.ID).Execute(&subs)
+		subCount = len(subs)
+
+		// Get task stats
+		var tasks []struct {
+			Status  string  `json:"status"`
+			DueDate *string `json:"due_date"`
+		}
+		h.DB.From("tasks").Select("status, due_date").Eq("assignee_id", emp.ID).Execute(&tasks)
+
+		openTasks := 0
+		overdueTasks := 0
+		for _, t := range tasks {
+			if t.Status != "done" {
+				openTasks++
+				if t.DueDate != nil && *t.DueDate < today {
+					overdueTasks++
+				}
+			}
+		}
+
+		// Get meetings count (from meetings table for this month)
+		startOfMonth := time.Now().Format("2006-01") + "-01"
+		var meetings []struct{ ID string }
+		h.DB.From("meetings").Select("id").Eq("employee_id", emp.ID).Gte("date", startOfMonth).Execute(&meetings)
+
+		result = append(result, fiber.Map{
+			"id":            emp.ID,
+			"name":          emp.Name,
+			"position":      emp.Position,
+			"photo_base64":  emp.PhotoBase64,
+			"subordinates":  subCount,
+			"open_tasks":    openTasks,
+			"overdue_tasks": overdueTasks,
+			"meetings":      len(meetings),
+		})
+	}
+
+	return c.JSON(result)
+}
