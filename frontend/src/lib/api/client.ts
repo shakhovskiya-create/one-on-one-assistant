@@ -480,13 +480,31 @@ export interface ConnectorStatus {
 	anthropic_configured?: boolean;
 }
 
+export interface CalendarPerson {
+	name: string;
+	email: string;
+}
+
+export interface CalendarAttendee {
+	name: string;
+	email: string;
+	response?: string; // "Accept", "Decline", "Tentative", "Unknown"
+}
+
 export interface CalendarEvent {
 	id: string;
 	subject: string;
+	title?: string;
 	start: string;
+	start_time?: string;
 	end: string;
+	end_time?: string;
+	date?: string;
 	location?: string;
-	organizer?: string;
+	organizer?: CalendarPerson;
+	attendees?: CalendarAttendee[];
+	is_recurring?: boolean;
+	is_cancelled?: boolean;
 }
 
 export interface FreeSlotsRequest {
@@ -507,7 +525,7 @@ export interface CalendarSyncRequest {
 // Messenger types
 export interface Conversation {
 	id: string;
-	type: 'direct' | 'group';
+	type: 'direct' | 'group' | 'channel';
 	name?: string;
 	created_at?: string;
 	updated_at?: string;
@@ -544,6 +562,9 @@ export interface EmailPerson {
 
 export interface EmailMessage {
 	id: string;
+	change_key?: string;
+	conversation_id?: string;
+	item_class?: string;
 	subject: string;
 	from?: EmailPerson;
 	to?: EmailPerson[];
@@ -554,6 +575,15 @@ export interface EmailMessage {
 	is_read: boolean;
 	has_attachments: boolean;
 	folder_id?: string;
+}
+
+export interface EmailAttachment {
+	id: string;
+	name: string;
+	content_type: string;
+	size: number;
+	is_inline: boolean;
+	content_id?: string;
 }
 
 // Mail API
@@ -574,6 +604,10 @@ export const mail = {
 		request('/mail/mark-read', { method: 'POST', body: data }),
 	deleteEmail: (data: { username: string; password: string; item_id: string; change_key?: string }) =>
 		request('/mail/email', { method: 'DELETE', body: data }),
+	getAttachments: (data: { username: string; password: string; item_id: string; change_key?: string }) =>
+		request<{ attachments: EmailAttachment[] }>('/mail/attachments', { method: 'POST', body: data }),
+	getAttachmentContent: (data: { username: string; password: string; attachment_id: string }) =>
+		request<{ name: string; content_type: string; content: string }>('/mail/attachment/content', { method: 'POST', body: data }),
 };
 
 // Combined API object for convenience

@@ -25,8 +25,20 @@
 		room: '',
 		is_online: false,
 		online_service: 'teams',
-		participants: [] as string[]
+		participants: [] as string[],
+		recurrence: 'none' as 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly',
+		recurrence_end: '' as string,
+		recurrence_count: 10
 	});
+
+	// Recurrence options
+	const recurrenceOptions = [
+		{ id: 'none', name: 'Не повторять' },
+		{ id: 'daily', name: 'Каждый день' },
+		{ id: 'weekly', name: 'Каждую неделю' },
+		{ id: 'monthly', name: 'Каждый месяц' },
+		{ id: 'yearly', name: 'Каждый год' }
+	];
 
 	// Meeting rooms (could be loaded from backend)
 	const meetingRooms = [
@@ -119,7 +131,10 @@
 			room: '',
 			is_online: false,
 			online_service: 'teams',
-			participants: []
+			participants: [],
+			recurrence: 'none',
+			recurrence_end: '',
+			recurrence_count: 10
 		};
 		participantSearch = '';
 		showEventDialog = true;
@@ -805,14 +820,82 @@
 							</svg>
 							<span class="text-sm font-medium">Участники ({selectedEvent.attendees.length})</span>
 						</div>
-						<div class="ml-8 space-y-1">
-							{#each selectedEvent.attendees.slice(0, 5) as attendee}
-								<div class="text-sm text-gray-600">{attendee.name || attendee.email}</div>
+						<div class="ml-8 max-h-48 overflow-y-auto space-y-1.5">
+							{#each selectedEvent.attendees as attendee}
+								<div class="flex items-center gap-2 text-sm">
+									<!-- Response status indicator -->
+									{#if attendee.response === 'Accept'}
+										<span class="w-4 h-4 flex-shrink-0 rounded-full bg-green-100 text-green-600 flex items-center justify-center" title="Принял">
+											<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+											</svg>
+										</span>
+									{:else if attendee.response === 'Decline'}
+										<span class="w-4 h-4 flex-shrink-0 rounded-full bg-red-100 text-red-600 flex items-center justify-center" title="Отклонил">
+											<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12" />
+											</svg>
+										</span>
+									{:else if attendee.response === 'Tentative'}
+										<span class="w-4 h-4 flex-shrink-0 rounded-full bg-yellow-100 text-yellow-600 flex items-center justify-center" title="Возможно">
+											<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 6v6m0 4h.01" />
+											</svg>
+										</span>
+									{:else}
+										<span class="w-4 h-4 flex-shrink-0 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center" title="Ожидает ответа">
+											<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01" />
+											</svg>
+										</span>
+									{/if}
+									<span class="text-gray-700 truncate" title={attendee.email}>
+										{attendee.name || attendee.email}
+									</span>
+								</div>
 							{/each}
-							{#if selectedEvent.attendees.length > 5}
-								<div class="text-sm text-gray-400">+{selectedEvent.attendees.length - 5} ещё</div>
-							{/if}
 						</div>
+						<!-- Response summary -->
+						{#if selectedEvent.attendees.length > 0}
+							{@const accepted = selectedEvent.attendees.filter(a => a.response === 'Accept').length}
+							{@const declined = selectedEvent.attendees.filter(a => a.response === 'Decline').length}
+							{@const tentative = selectedEvent.attendees.filter(a => a.response === 'Tentative').length}
+							{@const pending = selectedEvent.attendees.length - accepted - declined - tentative}
+							<div class="ml-8 mt-2 flex flex-wrap gap-2 text-xs">
+								{#if accepted > 0}
+									<span class="px-2 py-0.5 bg-green-100 text-green-700 rounded-full">Принято: {accepted}</span>
+								{/if}
+								{#if declined > 0}
+									<span class="px-2 py-0.5 bg-red-100 text-red-700 rounded-full">Отклонено: {declined}</span>
+								{/if}
+								{#if tentative > 0}
+									<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full">Возможно: {tentative}</span>
+								{/if}
+								{#if pending > 0}
+									<span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">Ожидает: {pending}</span>
+								{/if}
+							</div>
+						{/if}
+					</div>
+				{/if}
+
+				<!-- Recurring indicator -->
+				{#if selectedEvent.is_recurring}
+					<div class="flex items-center gap-3 text-gray-600">
+						<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+						</svg>
+						<span class="text-sm">Повторяющееся событие</span>
+					</div>
+				{/if}
+
+				<!-- Cancelled indicator -->
+				{#if selectedEvent.is_cancelled}
+					<div class="flex items-center gap-3 text-red-600 bg-red-50 rounded-lg p-2 -mx-2">
+						<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+						</svg>
+						<span class="text-sm font-medium">Событие отменено</span>
 					</div>
 				{/if}
 			</div>
@@ -1028,6 +1111,97 @@
 								placeholder="Или укажите место вручную..."
 								class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-ekf-red"
 							/>
+						{/if}
+					</div>
+				</div>
+
+				<!-- Recurrence -->
+				<div>
+					<div class="flex items-center gap-3 mb-2">
+						<svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+						</svg>
+						<span class="text-sm text-gray-700">Повторение</span>
+					</div>
+					<div class="ml-8 space-y-3">
+						<!-- Recurrence type buttons -->
+						<div class="flex flex-wrap gap-2">
+							{#each recurrenceOptions as option}
+								<button
+									onclick={() => newEvent.recurrence = option.id as typeof newEvent.recurrence}
+									class="px-3 py-1.5 text-sm rounded-lg border transition-colors
+										{newEvent.recurrence === option.id ? 'border-ekf-red bg-red-50 text-ekf-red' : 'border-gray-200 hover:bg-gray-50'}"
+								>
+									{option.name}
+								</button>
+							{/each}
+						</div>
+
+						<!-- Recurrence end options (only if recurrence is set) -->
+						{#if newEvent.recurrence !== 'none'}
+							<div class="bg-gray-50 rounded-lg p-3 space-y-3">
+								<div class="text-xs text-gray-500 font-medium">Завершить повторение:</div>
+								<div class="flex items-center gap-4">
+									<label class="flex items-center gap-2 text-sm cursor-pointer">
+										<input
+											type="radio"
+											name="recurrence_end_type"
+											checked={!newEvent.recurrence_end && newEvent.recurrence_count > 0}
+											onchange={() => { newEvent.recurrence_end = ''; newEvent.recurrence_count = 10; }}
+											class="text-ekf-red focus:ring-ekf-red"
+										/>
+										<span class="text-gray-700">После</span>
+										<input
+											type="number"
+											bind:value={newEvent.recurrence_count}
+											min="1"
+											max="365"
+											class="w-16 px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-ekf-red"
+										/>
+										<span class="text-gray-600">повторений</span>
+									</label>
+								</div>
+								<div class="flex items-center gap-4">
+									<label class="flex items-center gap-2 text-sm cursor-pointer">
+										<input
+											type="radio"
+											name="recurrence_end_type"
+											checked={!!newEvent.recurrence_end}
+											onchange={() => {
+												const d = new Date();
+												d.setMonth(d.getMonth() + 1);
+												newEvent.recurrence_end = d.toISOString().split('T')[0];
+												newEvent.recurrence_count = 0;
+											}}
+											class="text-ekf-red focus:ring-ekf-red"
+										/>
+										<span class="text-gray-700">До даты</span>
+										<input
+											type="date"
+											bind:value={newEvent.recurrence_end}
+											min={newEvent.date}
+											class="px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-ekf-red"
+										/>
+									</label>
+								</div>
+								<!-- Recurrence summary -->
+								<div class="text-xs text-gray-500 mt-2 p-2 bg-white rounded border border-gray-200">
+									{#if newEvent.recurrence === 'daily'}
+										Событие будет повторяться каждый день
+									{:else if newEvent.recurrence === 'weekly'}
+										Событие будет повторяться каждую {new Date(newEvent.date + 'T00:00:00').toLocaleDateString('ru-RU', { weekday: 'long' })}
+									{:else if newEvent.recurrence === 'monthly'}
+										Событие будет повторяться каждое {new Date(newEvent.date + 'T00:00:00').getDate()}-е число месяца
+									{:else if newEvent.recurrence === 'yearly'}
+										Событие будет повторяться каждый год {new Date(newEvent.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
+									{/if}
+									{#if newEvent.recurrence_end}
+										до {new Date(newEvent.recurrence_end + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
+									{:else if newEvent.recurrence_count > 0}
+										({newEvent.recurrence_count} повторений)
+									{/if}
+								</div>
+							</div>
 						{/if}
 					</div>
 				</div>

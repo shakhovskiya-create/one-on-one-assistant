@@ -174,3 +174,68 @@ func (h *Handler) GetEmailBody(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{"body": body})
 }
+
+// GetAttachmentsRequest represents the request body for getting attachments
+type GetAttachmentsRequest struct {
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	ItemID    string `json:"item_id"`
+	ChangeKey string `json:"change_key"`
+}
+
+// GetAttachments returns the list of attachments for an email
+func (h *Handler) GetAttachments(c *fiber.Ctx) error {
+	if h.EWS == nil {
+		return c.Status(503).JSON(fiber.Map{"error": "EWS not configured"})
+	}
+
+	var req GetAttachmentsRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.Username == "" || req.Password == "" || req.ItemID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "username, password, and item_id required"})
+	}
+
+	attachments, err := h.EWS.GetAttachments(req.Username, req.Password, req.ItemID, req.ChangeKey)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"attachments": attachments})
+}
+
+// GetAttachmentContentRequest represents the request for downloading attachment
+type GetAttachmentContentRequest struct {
+	Username     string `json:"username"`
+	Password     string `json:"password"`
+	AttachmentID string `json:"attachment_id"`
+}
+
+// GetAttachmentContent returns the content of a specific attachment
+func (h *Handler) GetAttachmentContent(c *fiber.Ctx) error {
+	if h.EWS == nil {
+		return c.Status(503).JSON(fiber.Map{"error": "EWS not configured"})
+	}
+
+	var req GetAttachmentContentRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.Username == "" || req.Password == "" || req.AttachmentID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "username, password, and attachment_id required"})
+	}
+
+	name, contentType, content, err := h.EWS.GetAttachmentContent(req.Username, req.Password, req.AttachmentID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"name":         name,
+		"content_type": contentType,
+		"content":      string(content), // Base64 encoded content
+	})
+}

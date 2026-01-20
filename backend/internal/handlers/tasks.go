@@ -148,6 +148,8 @@ func (h *Handler) CreateTask(c *fiber.Ctx) error {
 		Description  *string  `json:"description"`
 		Status       string   `json:"status"`
 		Priority     int      `json:"priority"`
+		StoryPoints  *int     `json:"story_points"`
+		Sprint       *string  `json:"sprint"`
 		FlagColor    *string  `json:"flag_color"`
 		AssigneeID   *string  `json:"assignee_id"`
 		CoAssigneeID *string  `json:"co_assignee_id"`
@@ -176,6 +178,8 @@ func (h *Handler) CreateTask(c *fiber.Ctx) error {
 		"description":    input.Description,
 		"status":         input.Status,
 		"priority":       input.Priority,
+		"story_points":   input.StoryPoints,
+		"sprint":         input.Sprint,
 		"flag_color":     input.FlagColor,
 		"assignee_id":    input.AssigneeID,
 		"co_assignee_id": input.CoAssigneeID,
@@ -251,6 +255,10 @@ func (h *Handler) UpdateTask(c *fiber.Ctx) error {
 			oldValue = current.Status
 		case "priority":
 			oldValue = current.Priority
+		case "story_points":
+			oldValue = current.StoryPoints
+		case "sprint":
+			oldValue = current.Sprint
 		case "assignee_id":
 			oldValue = current.AssigneeID
 		case "due_date":

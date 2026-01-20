@@ -98,6 +98,8 @@ type Task struct {
 	Description     *string       `json:"description,omitempty"`
 	Status          string        `json:"status"`
 	Priority        int           `json:"priority"`
+	StoryPoints     *int          `json:"story_points,omitempty"`
+	Sprint          *string       `json:"sprint,omitempty"`
 	FlagColor       *string       `json:"flag_color,omitempty"`
 	AssigneeID      *string       `json:"assignee_id,omitempty"`
 	CoAssigneeID    *string       `json:"co_assignee_id,omitempty"`
@@ -160,7 +162,7 @@ type TelegramUser struct {
 // Conversation represents a chat between users
 type Conversation struct {
 	ID           string     `json:"id"`
-	Type         string     `json:"type"` // "direct" or "group"
+	Type         string     `json:"type"` // "direct", "group", or "channel"
 	Name         *string    `json:"name,omitempty"`
 	CreatedAt    *time.Time `json:"created_at,omitempty"`
 	UpdatedAt    *time.Time `json:"updated_at,omitempty"`

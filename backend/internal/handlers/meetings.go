@@ -182,6 +182,27 @@ func (h *Handler) ListMeetingCategories(c *fiber.Ctx) error {
 	return c.JSON(categories)
 }
 
+// AIStatus returns status of AI transcription services
+func (h *Handler) AIStatus(c *fiber.Ctx) error {
+	status := fiber.Map{
+		"transcription": fiber.Map{
+			"whisper": h.AI != nil && h.Config.OpenAIKey != "",
+			"yandex":  h.AI != nil && h.Config.YandexAPIKey != "" && h.Config.YandexFolderID != "",
+		},
+		"analysis": fiber.Map{
+			"openai":    h.AI != nil && h.Config.OpenAIKey != "",
+			"anthropic": h.AI != nil && h.Config.AnthropicKey != "",
+		},
+		"available": h.AI != nil && (h.Config.OpenAIKey != "" || (h.Config.YandexAPIKey != "" && h.Config.YandexFolderID != "")),
+	}
+
+	if !status["available"].(bool) {
+		status["hint"] = "Для работы транскрипции необходимо установить OPENAI_API_KEY или YANDEX_API_KEY + YANDEX_FOLDER_ID"
+	}
+
+	return c.JSON(status)
+}
+
 // ProcessMeeting processes an audio file and creates a meeting
 func (h *Handler) ProcessMeeting(c *fiber.Ctx) error {
 	if h.DB == nil {
@@ -239,7 +260,18 @@ func (h *Handler) ProcessMeeting(c *fiber.Ctx) error {
 	}
 
 	if mergedTranscript == "" {
-		return c.Status(500).JSON(fiber.Map{"error": "Transcription failed"})
+		// Provide more helpful error message
+		aiStatus := "Сервисы транскрипции недоступны. "
+		if h.AI == nil {
+			aiStatus += "AI клиент не инициализирован. "
+		} else {
+			aiStatus += "Проверьте настройки: OPENAI_API_KEY или YANDEX_API_KEY. "
+		}
+		return c.Status(500).JSON(fiber.Map{
+			"error":   "Transcription failed",
+			"details": aiStatus,
+			"hint":    "Установите OPENAI_API_KEY в переменных окружения для работы транскрипции",
+		})
 	}
 
 	// Build context

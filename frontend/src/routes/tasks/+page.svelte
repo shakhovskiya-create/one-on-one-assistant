@@ -10,6 +10,7 @@
 		description?: string;
 		status: 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
 		priority?: number;
+		story_points?: number;
 		assignee_id?: string;
 		assignee?: any;
 		project_id?: string;
@@ -17,6 +18,7 @@
 		tags?: { name: string; color: string }[];
 		due_date?: string;
 		parent_id?: string;
+		sprint?: string;
 		created_at: string;
 	}
 
@@ -45,13 +47,13 @@
 	let editingTask: Partial<Task> | null = $state(null);
 	let selectedTask: Task | null = $state(null);
 
-	// Status columns for Kanban
+	// Status columns for Kanban with WIP limits
 	const statusColumns = [
-		{ id: 'backlog', label: 'Backlog', color: 'bg-gray-100' },
-		{ id: 'todo', label: 'К выполнению', color: 'bg-blue-50' },
-		{ id: 'in_progress', label: 'В работе', color: 'bg-yellow-50' },
-		{ id: 'review', label: 'На проверке', color: 'bg-purple-50' },
-		{ id: 'done', label: 'Готово', color: 'bg-green-50' }
+		{ id: 'backlog', label: 'Backlog', color: 'bg-gray-100', wipLimit: 0 },
+		{ id: 'todo', label: 'К выполнению', color: 'bg-blue-50', wipLimit: 10 },
+		{ id: 'in_progress', label: 'В работе', color: 'bg-yellow-50', wipLimit: 5 },
+		{ id: 'review', label: 'На проверке', color: 'bg-purple-50', wipLimit: 3 },
+		{ id: 'done', label: 'Готово', color: 'bg-green-50', wipLimit: 0 }
 	];
 
 	const priorityLabels: Record<number, { label: string; color: string }> = {
@@ -89,12 +91,16 @@
 			description: '',
 			status: 'todo',
 			priority: 3,
+			story_points: undefined,
 			assignee_id: $user?.id || '',
 			project_id: filterProject || '',
 			due_date: ''
 		};
 		showTaskModal = true;
 	}
+
+	// Story points options (Fibonacci-like)
+	const storyPointsOptions = [1, 2, 3, 5, 8, 13, 21];
 
 	function openEditTask(task: Task) {
 		editingTask = { ...task };
@@ -110,7 +116,8 @@
 				assignee_id: editingTask.assignee_id || undefined,
 				project_id: editingTask.project_id || undefined,
 				due_date: editingTask.due_date || undefined,
-				priority: Number(editingTask.priority) || 3
+				priority: Number(editingTask.priority) || 3,
+				story_points: editingTask.story_points ? Number(editingTask.story_points) : undefined
 			};
 
 			if (editingTask.id) {
@@ -180,6 +187,54 @@
 		return filteredTasks().filter(t => t.status === status);
 	}
 
+	function getStoryPointsByStatus(status: string): number {
+		return getTasksByStatus(status).reduce((sum, t) => sum + (t.story_points || 0), 0);
+	}
+
+	function getTotalStoryPoints(): number {
+		return filteredTasks().reduce((sum, t) => sum + (t.story_points || 0), 0);
+	}
+
+	function isWipLimitExceeded(status: string): boolean {
+		const column = statusColumns.find(c => c.id === status);
+		if (!column || column.wipLimit === 0) return false;
+		return getTasksByStatus(status).length > column.wipLimit;
+	}
+
+	function getCompletedTasksCount(): number {
+		return filteredTasks().filter(t => t.status === 'done').length;
+	}
+
+	function getInProgressTasksCount(): number {
+		return filteredTasks().filter(t => t.status === 'in_progress').length;
+	}
+
+	// Quick add task in column
+	let quickAddColumn: string | null = $state(null);
+	let quickAddTitle = $state('');
+
+	async function quickAddTask(status: string) {
+		if (!quickAddTitle.trim()) {
+			quickAddColumn = null;
+			return;
+		}
+		try {
+			const taskData = {
+				title: quickAddTitle,
+				status,
+				priority: 3,
+				assignee_id: $user?.id || undefined,
+				project_id: filterProject || undefined
+			};
+			const created = await api.tasks.create(taskData);
+			tasks = [created, ...tasks];
+			quickAddTitle = '';
+			quickAddColumn = null;
+		} catch (e) {
+			console.error('Error creating task:', e);
+		}
+	}
+
 	function getEmployeeName(id: string): string {
 		if (!id) return 'Не назначен';
 		const emp = employees.find(e => e.id === id);
@@ -244,7 +299,20 @@
 	<div class="flex items-center justify-between">
 		<div>
 			<h1 class="text-xl font-bold text-gray-900">Задачи</h1>
-			<p class="text-sm text-gray-500">{filteredTasks().length} задач</p>
+			<div class="flex items-center gap-3 text-sm text-gray-500">
+				<span>{filteredTasks().length} задач</span>
+				{#if getTotalStoryPoints() > 0}
+					<span class="text-indigo-600 font-medium">{getTotalStoryPoints()} SP</span>
+				{/if}
+				<span class="flex items-center gap-1">
+					<span class="w-2 h-2 rounded-full bg-yellow-400"></span>
+					{getInProgressTasksCount()} в работе
+				</span>
+				<span class="flex items-center gap-1">
+					<span class="w-2 h-2 rounded-full bg-green-500"></span>
+					{getCompletedTasksCount()} выполнено
+				</span>
+			</div>
 		</div>
 		<button
 			onclick={openNewTask}
@@ -335,8 +403,9 @@
 						<tr>
 							<th class="px-4 py-2 text-left font-medium text-gray-500">Задача</th>
 							<th class="px-4 py-2 text-left font-medium text-gray-500 w-32">Статус</th>
-							<th class="px-4 py-2 text-left font-medium text-gray-500 w-24">Приоритет</th>
-							<th class="px-4 py-2 text-left font-medium text-gray-500 w-40">Исполнитель</th>
+							<th class="px-4 py-2 text-left font-medium text-gray-500 w-20">Приор.</th>
+							<th class="px-4 py-2 text-center font-medium text-gray-500 w-12" title="Story Points">SP</th>
+							<th class="px-4 py-2 text-left font-medium text-gray-500 w-36">Исполнитель</th>
 							<th class="px-4 py-2 text-left font-medium text-gray-500 w-24">Срок</th>
 							<th class="px-4 py-2 w-16"></th>
 						</tr>
@@ -368,7 +437,16 @@
 										P{task.priority || 3}
 									</span>
 								</td>
-								<td class="px-4 py-2 text-gray-600">{getEmployeeName(task.assignee_id || '')}</td>
+								<td class="px-4 py-2 text-center">
+									{#if task.story_points}
+										<span class="px-1.5 py-0.5 text-xs rounded bg-indigo-50 text-indigo-600 font-medium">
+											{task.story_points}
+										</span>
+									{:else}
+										<span class="text-gray-300">—</span>
+									{/if}
+								</td>
+								<td class="px-4 py-2 text-gray-600 text-xs">{getEmployeeName(task.assignee_id || '')}</td>
 								<td class="px-4 py-2">
 									{#if task.due_date}
 										<span class="{isOverdue(task.due_date) && task.status !== 'done' ? 'text-red-600 font-medium' : 'text-gray-600'}">
@@ -400,38 +478,108 @@
 		<div class="flex gap-3 overflow-x-auto pb-4" style="min-height: calc(100vh - 280px);">
 			{#each statusColumns as column}
 				<div
-					class="flex-shrink-0 w-72 flex flex-col rounded-lg {column.color}"
+					class="flex-shrink-0 w-72 flex flex-col rounded-lg {column.color} {isWipLimitExceeded(column.id) ? 'ring-2 ring-red-400' : ''}"
 					ondragover={handleDragOver}
 					ondrop={(e) => handleDrop(e, column.id)}
 				>
-					<div class="p-3 font-medium text-gray-700 flex items-center justify-between border-b border-gray-200/50">
-						<span>{column.label}</span>
-						<span class="text-xs bg-white/80 px-1.5 py-0.5 rounded">{getTasksByStatus(column.id).length}</span>
+					<div class="p-3 font-medium text-gray-700 border-b border-gray-200/50">
+						<div class="flex items-center justify-between">
+							<span>{column.label}</span>
+							<div class="flex items-center gap-1.5">
+								{#if getStoryPointsByStatus(column.id) > 0}
+									<span class="text-xs bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded font-medium" title="Story Points">
+										{getStoryPointsByStatus(column.id)} SP
+									</span>
+								{/if}
+								<span class="text-xs px-1.5 py-0.5 rounded {isWipLimitExceeded(column.id) ? 'bg-red-100 text-red-600 font-bold' : 'bg-white/80'}">
+									{getTasksByStatus(column.id).length}{#if column.wipLimit > 0}/{column.wipLimit}{/if}
+								</span>
+							</div>
+						</div>
+						{#if isWipLimitExceeded(column.id)}
+							<div class="mt-1 text-xs text-red-600 flex items-center gap-1">
+								<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+								</svg>
+								WIP лимит превышен!
+							</div>
+						{/if}
+						<!-- Quick Add Button -->
+						<button
+							onclick={() => quickAddColumn = quickAddColumn === column.id ? null : column.id}
+							class="mt-2 w-full py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-white/50 rounded border border-dashed border-gray-300 flex items-center justify-center gap-1 transition-colors"
+						>
+							<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+							</svg>
+							Добавить
+						</button>
+						{#if quickAddColumn === column.id}
+							<div class="mt-2">
+								<input
+									type="text"
+									bind:value={quickAddTitle}
+									placeholder="Название задачи"
+									class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-ekf-red"
+									onkeydown={(e) => e.key === 'Enter' && quickAddTask(column.id)}
+								/>
+								<div class="flex gap-1 mt-1">
+									<button
+										onclick={() => quickAddTask(column.id)}
+										class="flex-1 py-1 bg-ekf-red text-white text-xs rounded hover:bg-red-700"
+									>
+										Создать
+									</button>
+									<button
+										onclick={() => { quickAddColumn = null; quickAddTitle = ''; }}
+										class="px-2 py-1 text-gray-500 text-xs hover:bg-gray-100 rounded"
+									>
+										Отмена
+									</button>
+								</div>
+							</div>
+						{/if}
 					</div>
 					<div class="flex-1 p-2 space-y-2 overflow-y-auto">
 						{#each getTasksByStatus(column.id) as task (task.id)}
 							<div
-								class="bg-white rounded-lg shadow-sm p-3 cursor-pointer hover:shadow-md transition-shadow"
+								class="bg-white rounded-lg shadow-sm p-3 cursor-pointer hover:shadow-md transition-shadow border-l-4 {task.priority === 1 ? 'border-red-500' : task.priority === 2 ? 'border-orange-500' : task.priority === 4 ? 'border-blue-300' : task.priority === 5 ? 'border-gray-300' : 'border-yellow-400'}"
 								draggable="true"
 								ondragstart={(e) => handleDragStart(e, task)}
 								onclick={() => openEditTask(task)}
 							>
+								<!-- Task ID / Project -->
+								{#if task.project_id}
+									<div class="text-xs text-gray-400 mb-1 flex items-center gap-1">
+										<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+										</svg>
+										{getProjectName(task.project_id)}
+									</div>
+								{/if}
 								<div class="font-medium text-gray-900 text-sm mb-1">{task.title}</div>
 								{#if task.description}
 									<p class="text-xs text-gray-500 line-clamp-2 mb-2">{task.description}</p>
 								{/if}
 								<div class="flex items-center justify-between text-xs">
-									<span class="px-1.5 py-0.5 rounded {priorityLabels[task.priority || 3].color}">
-										P{task.priority || 3}
-									</span>
+									<div class="flex items-center gap-1.5">
+										<span class="px-1.5 py-0.5 rounded {priorityLabels[task.priority || 3].color}">
+											P{task.priority || 3}
+										</span>
+										{#if task.story_points}
+											<span class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 font-medium" title="Story Points">
+												{task.story_points}
+											</span>
+										{/if}
+									</div>
 									<div class="flex items-center gap-2">
 										{#if task.due_date}
-											<span class="{isOverdue(task.due_date) && task.status !== 'done' ? 'text-red-600' : 'text-gray-400'}">
+											<span class="{isOverdue(task.due_date) && task.status !== 'done' ? 'text-red-600 font-medium' : 'text-gray-400'}" title="Срок">
 												{formatDate(task.due_date)}
 											</span>
 										{/if}
 										{#if task.assignee_id}
-											<div class="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[10px] font-medium" title={getEmployeeName(task.assignee_id)}>
+											<div class="w-5 h-5 rounded-full bg-gradient-to-br from-gray-400 to-gray-500 text-white flex items-center justify-center text-[10px] font-medium shadow-sm" title={getEmployeeName(task.assignee_id)}>
 												{getEmployeeName(task.assignee_id).charAt(0)}
 											</div>
 										{/if}
@@ -506,7 +654,7 @@
 						</select>
 					</div>
 				</div>
-				<div class="grid grid-cols-3 gap-3">
+				<div class="grid grid-cols-4 gap-3">
 					<div>
 						<label class="block text-xs font-medium text-gray-500 mb-1">Статус</label>
 						<select bind:value={editingTask.status} class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
@@ -523,6 +671,15 @@
 							<option value={3}>P3 - Средний</option>
 							<option value={4}>P4 - Низкий</option>
 							<option value={5}>P5 - Минимальный</option>
+						</select>
+					</div>
+					<div>
+						<label class="block text-xs font-medium text-gray-500 mb-1">Story Points</label>
+						<select bind:value={editingTask.story_points} class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+							<option value={undefined}>—</option>
+							{#each storyPointsOptions as sp}
+								<option value={sp}>{sp}</option>
+							{/each}
 						</select>
 					</div>
 					<div>

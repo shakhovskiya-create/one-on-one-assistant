@@ -33,9 +33,128 @@
 	// Reply feature
 	let replyingTo: Message | null = $state(null);
 
+	// Edit feature
+	let editingMessage: Message | null = $state(null);
+
 	// Context menu
 	let contextMenuMessage: Message | null = $state(null);
 	let contextMenuPosition = $state({ x: 0, y: 0 });
+
+	// Emoji picker
+	let showEmojiPicker = $state(false);
+	const emojiCategories = {
+		'Смайлики': ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷'],
+		'Жесты': ['👍', '👎', '👌', '🤌', '✌️', '🤞', '🤟', '🤘', '👊', '✊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏', '💪', '🦾'],
+		'Сердца': ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝'],
+		'Работа': ['💼', '📁', '📂', '📅', '📆', '📊', '📈', '📉', '📋', '📌', '📍', '✏️', '📝', '💻', '🖥️', '⌨️', '🖱️', '📱', '☎️', '📞', '✉️', '📧', '📨'],
+		'Другое': ['✅', '❌', '❓', '❗', '💯', '🔥', '⭐', '🌟', '✨', '💡', '🎉', '🎊', '🏆', '🥇', '🎯', '🚀', '⏰', '⏳', '🔔', '🔕']
+	};
+
+	// Voice recording
+	let isRecording = $state(false);
+	let recordingTime = $state(0);
+	let recordingInterval: ReturnType<typeof setInterval> | null = null;
+	let mediaRecorder: MediaRecorder | null = null;
+	let audioChunks: Blob[] = [];
+
+	// Call state
+	let showCallModal = $state(false);
+	let callType: 'audio' | 'video' = $state('audio');
+	let callStatus: 'calling' | 'connected' | 'ended' = $state('calling');
+
+	async function startRecording() {
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			mediaRecorder = new MediaRecorder(stream);
+			audioChunks = [];
+
+			mediaRecorder.ondataavailable = (e) => {
+				audioChunks.push(e.data);
+			};
+
+			mediaRecorder.onstop = () => {
+				const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+				// В реальном приложении здесь бы отправлялось голосовое сообщение
+				console.log('Голосовое сообщение записано:', audioBlob.size, 'байт');
+				// Показать превью или отправить
+				sendVoiceMessage(audioBlob);
+				stream.getTracks().forEach(track => track.stop());
+			};
+
+			mediaRecorder.start();
+			isRecording = true;
+			recordingTime = 0;
+			recordingInterval = setInterval(() => {
+				recordingTime++;
+			}, 1000);
+		} catch (err) {
+			console.error('Ошибка доступа к микрофону:', err);
+			alert('Не удалось получить доступ к микрофону');
+		}
+	}
+
+	function stopRecording() {
+		if (mediaRecorder && isRecording) {
+			mediaRecorder.stop();
+			isRecording = false;
+			if (recordingInterval) {
+				clearInterval(recordingInterval);
+				recordingInterval = null;
+			}
+		}
+	}
+
+	function cancelRecording() {
+		if (mediaRecorder && isRecording) {
+			mediaRecorder.stop();
+			isRecording = false;
+			audioChunks = [];
+			if (recordingInterval) {
+				clearInterval(recordingInterval);
+				recordingInterval = null;
+			}
+			if (mediaRecorder.stream) {
+				mediaRecorder.stream.getTracks().forEach(track => track.stop());
+			}
+		}
+	}
+
+	function sendVoiceMessage(audioBlob: Blob) {
+		// Демо: показываем уведомление
+		// В реальном приложении здесь бы загружался файл и отправлялось сообщение
+		const duration = recordingTime;
+		const msg = `🎤 Голосовое сообщение (${formatRecordingTime(duration)})`;
+		// Отправляем как текстовое сообщение для демо
+		if (currentConversation && $user) {
+			newMessage = msg;
+			sendMessage();
+		}
+	}
+
+	function formatRecordingTime(seconds: number): string {
+		const mins = Math.floor(seconds / 60);
+		const secs = seconds % 60;
+		return `${mins}:${secs.toString().padStart(2, '0')}`;
+	}
+
+	function startCall(type: 'audio' | 'video') {
+		callType = type;
+		callStatus = 'calling';
+		showCallModal = true;
+		// Симуляция подключения через 2 секунды
+		setTimeout(() => {
+			if (showCallModal) {
+				callStatus = 'connected';
+			}
+		}, 2000);
+	}
+
+	function endCall() {
+		callStatus = 'ended';
+		setTimeout(() => {
+			showCallModal = false;
+		}, 500);
+	}
 
 	// Build department hierarchy from employees
 	let departmentHierarchy = $derived.by(() => {
@@ -247,6 +366,8 @@
 				reply_to_id: replyToId
 			});
 			messages = [...messages, msg];
+			// Update last_message in sidebar
+			updateConversationLastMessage(currentConversation.id, msg);
 			scrollToBottom();
 		} catch (e) {
 			console.error('Failed to send message:', e);
@@ -410,9 +531,75 @@
 		replyingTo = null;
 	}
 
+	function startEditMessage(msg: Message) {
+		editingMessage = msg;
+		newMessage = msg.content;
+		contextMenuMessage = null;
+	}
+
+	function cancelEdit() {
+		editingMessage = null;
+		newMessage = '';
+	}
+
+	async function saveEdit() {
+		if (!editingMessage || !newMessage.trim()) return;
+
+		const updatedContent = newMessage.trim();
+		// Update locally (in a real app this would be synced with backend)
+		messages = messages.map(m =>
+			m.id === editingMessage!.id
+				? { ...m, content: updatedContent, edited_at: new Date().toISOString() }
+				: m
+		);
+
+		editingMessage = null;
+		newMessage = '';
+	}
+
 	function copyMessageText(msg: Message) {
 		navigator.clipboard.writeText(msg.content);
 		contextMenuMessage = null;
+	}
+
+	function insertEmoji(emoji: string) {
+		newMessage += emoji;
+		showEmojiPicker = false;
+	}
+
+	// Store reactions locally (in a real app this would be synced with backend)
+	let messageReactions: Record<string, { emoji: string; users: string[] }[]> = $state({});
+
+	function addReaction(msg: Message, emoji: string) {
+		const msgId = msg.id;
+		if (!messageReactions[msgId]) {
+			messageReactions[msgId] = [];
+		}
+
+		const existingReaction = messageReactions[msgId].find(r => r.emoji === emoji);
+		if (existingReaction) {
+			if (existingReaction.users.includes($user!.id)) {
+				// Remove user's reaction
+				existingReaction.users = existingReaction.users.filter(u => u !== $user!.id);
+				if (existingReaction.users.length === 0) {
+					messageReactions[msgId] = messageReactions[msgId].filter(r => r.emoji !== emoji);
+				}
+			} else {
+				// Add user to existing reaction
+				existingReaction.users.push($user!.id);
+			}
+		} else {
+			// Add new reaction
+			messageReactions[msgId].push({ emoji, users: [$user!.id] });
+		}
+
+		// Force reactivity
+		messageReactions = { ...messageReactions };
+		contextMenuMessage = null;
+	}
+
+	function getMessageReactions(msgId: string) {
+		return messageReactions[msgId] || [];
 	}
 
 	function getGroupedMessages(): { date: string; messages: Message[] }[] {
@@ -847,6 +1034,27 @@
 						</div>
 					{/if}
 				</div>
+				<!-- Кнопки звонков -->
+				{#if currentConversation.type === 'direct'}
+					<button
+						onclick={() => startCall('audio')}
+						class="p-2 hover:bg-gray-100 rounded-full transition-colors"
+						title="Аудиозвонок"
+					>
+						<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+						</svg>
+					</button>
+					<button
+						onclick={() => startCall('video')}
+						class="p-2 hover:bg-gray-100 rounded-full transition-colors"
+						title="Видеозвонок"
+					>
+						<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+						</svg>
+					</button>
+				{/if}
 				<button class="p-2 hover:bg-gray-100 rounded-full transition-colors">
 					<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -902,6 +1110,7 @@
 										</div>
 									{/if}
 
+									<div class="flex flex-col {isOwn ? 'items-end' : 'items-start'}">
 									<div class="px-3 py-2 rounded-2xl shadow-sm {isOwn ? 'bg-ekf-red text-white rounded-br-sm' : 'bg-white rounded-bl-sm'}">
 										{#if msg.reply_to}
 											<div class="border-l-2 {isOwn ? 'border-white/50' : 'border-ekf-red'} pl-2 mb-1 text-sm {isOwn ? 'text-white/80' : ''}">
@@ -917,6 +1126,9 @@
 										<div class="break-words leading-relaxed text-sm">{msg.content}</div>
 
 										<div class="flex items-center justify-end gap-1 mt-1">
+											{#if msg.edited_at}
+												<span class="text-xs {isOwn ? 'text-white/50' : 'text-gray-400'} italic">ред.</span>
+											{/if}
 											<span class="text-xs {isOwn ? 'text-white/70' : 'text-gray-400'}">{formatTime(msg.created_at)}</span>
 											{#if isOwn}
 												<svg class="w-4 h-4 text-white/70" fill="currentColor" viewBox="0 0 24 24">
@@ -925,15 +1137,44 @@
 											{/if}
 										</div>
 									</div>
+									<!-- Reactions -->
+									{#if getMessageReactions(msg.id).length > 0}
+										<div class="flex flex-wrap gap-1 mt-1 {isOwn ? 'mr-1' : 'ml-1'}">
+											{#each getMessageReactions(msg.id) as reaction}
+												<button
+													onclick={() => addReaction(msg, reaction.emoji)}
+													class="inline-flex items-center gap-1 px-2 py-0.5 bg-white rounded-full shadow-sm border border-gray-100 text-xs hover:bg-gray-50 transition-colors"
+												>
+													<span>{reaction.emoji}</span>
+													<span class="text-gray-500">{reaction.users.length}</span>
+												</button>
+											{/each}
+										</div>
+									{/if}
 								</div>
 							</div>
+						</div>
 						{/each}
 					{/each}
 				{/if}
 			</div>
 
+			<!-- Edit Preview -->
+			{#if editingMessage}
+				<div class="bg-white border-t border-gray-200 px-4 py-2 flex items-center gap-3">
+					<div class="w-1 h-10 bg-blue-500 rounded"></div>
+					<div class="flex-1 min-w-0">
+						<div class="text-sm font-medium text-blue-500">Редактирование</div>
+						<div class="text-sm text-gray-500 truncate">{editingMessage.content}</div>
+					</div>
+					<button onclick={cancelEdit} class="p-1 hover:bg-gray-100 rounded-full">
+						<svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+			{:else if replyingTo}
 			<!-- Reply Preview -->
-			{#if replyingTo}
 				<div class="bg-white border-t border-gray-200 px-4 py-2 flex items-center gap-3">
 					<div class="w-1 h-10 bg-ekf-red rounded"></div>
 					<div class="flex-1 min-w-0">
@@ -949,11 +1190,44 @@
 			{/if}
 
 			<!-- Message Input -->
-			<div class="bg-white px-4 py-3 border-t border-gray-200">
-				<form onsubmit={(e) => { e.preventDefault(); sendMessage(); }} class="flex items-center gap-2">
+			<div class="bg-white px-4 py-3 border-t border-gray-200 relative">
+				<!-- Emoji Picker -->
+				{#if showEmojiPicker}
+					<div class="absolute bottom-full left-0 right-0 mb-2 mx-4 bg-white rounded-xl shadow-lg border border-gray-200 max-h-64 overflow-y-auto z-10">
+						<div class="p-3">
+							{#each Object.entries(emojiCategories) as [category, emojis]}
+								<div class="mb-3">
+									<div class="text-xs font-medium text-gray-500 mb-2">{category}</div>
+									<div class="flex flex-wrap gap-1">
+										{#each emojis as emoji}
+											<button
+												type="button"
+												onclick={() => insertEmoji(emoji)}
+												class="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded text-lg transition-colors"
+											>
+												{emoji}
+											</button>
+										{/each}
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
+
+				<form onsubmit={(e) => { e.preventDefault(); editingMessage ? saveEdit() : sendMessage(); }} class="flex items-center gap-2">
 					<button type="button" class="p-2 hover:bg-gray-100 rounded-full transition-colors">
 						<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+						</svg>
+					</button>
+					<button
+						type="button"
+						onclick={() => showEmojiPicker = !showEmojiPicker}
+						class="p-2 hover:bg-gray-100 rounded-full transition-colors {showEmojiPicker ? 'bg-gray-100' : ''}"
+					>
+						<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 						</svg>
 					</button>
 					<div class="flex-1">
@@ -961,18 +1235,52 @@
 							type="text"
 							bind:value={newMessage}
 							oninput={sendTyping}
+							onfocus={() => showEmojiPicker = false}
 							placeholder="Сообщение"
 							class="w-full px-4 py-2 bg-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ekf-red/20 text-sm"
 						/>
 					</div>
-					{#if newMessage.trim()}
+					{#if isRecording}
+						<!-- Recording UI -->
+						<div class="flex items-center gap-2">
+							<button
+								type="button"
+								onclick={cancelRecording}
+								class="p-2 hover:bg-gray-100 rounded-full transition-colors"
+								title="Отменить"
+							>
+								<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+								</svg>
+							</button>
+							<div class="flex items-center gap-2 px-3 py-1 bg-red-50 rounded-full">
+								<div class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+								<span class="text-red-600 text-sm font-medium">{formatRecordingTime(recordingTime)}</span>
+							</div>
+							<button
+								type="button"
+								onclick={stopRecording}
+								class="p-2 bg-ekf-red text-white rounded-full hover:bg-red-700 transition-colors"
+								title="Отправить"
+							>
+								<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+									<path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+								</svg>
+							</button>
+						</div>
+					{:else if newMessage.trim()}
 						<button type="submit" class="p-2 bg-ekf-red text-white rounded-full hover:bg-red-700 transition-colors">
 							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
 							</svg>
 						</button>
 					{:else}
-						<button type="button" class="p-2 hover:bg-gray-100 rounded-full transition-colors">
+						<button
+							type="button"
+							onclick={startRecording}
+							class="p-2 hover:bg-gray-100 rounded-full transition-colors"
+							title="Записать голосовое сообщение"
+						>
 							<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
 							</svg>
@@ -1003,27 +1311,134 @@
 <!-- Context Menu -->
 {#if contextMenuMessage}
 	<div
-		class="fixed bg-white rounded-lg shadow-lg py-1 z-50 min-w-40 border border-gray-200"
+		class="fixed bg-white rounded-xl shadow-lg z-50 border border-gray-200 overflow-hidden"
 		style="left: {contextMenuPosition.x}px; top: {contextMenuPosition.y}px;"
 		onclick={(e) => e.stopPropagation()}
 	>
-		<button onclick={() => replyToMessage(contextMenuMessage!)} class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-			</svg>
-			Ответить
-		</button>
-		<button onclick={() => copyMessageText(contextMenuMessage!)} class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-			</svg>
-			Копировать
-		</button>
-		<button class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-			</svg>
-			Переслать
-		</button>
+		<!-- Quick Reactions -->
+		<div class="flex items-center gap-1 px-3 py-2 border-b border-gray-100">
+			{#each ['👍', '❤️', '😂', '😮', '😢', '🔥'] as emoji}
+				<button
+					onclick={() => addReaction(contextMenuMessage!, emoji)}
+					class="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-full text-lg transition-transform hover:scale-110"
+				>
+					{emoji}
+				</button>
+			{/each}
+		</div>
+		<!-- Menu items -->
+		<div class="py-1">
+			<button onclick={() => replyToMessage(contextMenuMessage!)} class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+				</svg>
+				Ответить
+			</button>
+			{#if contextMenuMessage.sender_id === $user?.id}
+				<button onclick={() => startEditMessage(contextMenuMessage!)} class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+					</svg>
+					Редактировать
+				</button>
+			{/if}
+			<button onclick={() => copyMessageText(contextMenuMessage!)} class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+				</svg>
+				Копировать
+			</button>
+			<button class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+				</svg>
+				Переслать
+			</button>
+		</div>
+	</div>
+{/if}
+
+<!-- Call Modal -->
+{#if showCallModal}
+	<div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+		<div class="bg-gradient-to-b from-gray-800 to-gray-900 rounded-2xl w-80 p-6 text-center shadow-2xl">
+			<!-- Avatar -->
+			<div class="mb-4">
+				{#if currentConversation && getConversationAvatar(currentConversation)}
+					<img
+						src="data:image/jpeg;base64,{getConversationAvatar(currentConversation)}"
+						alt=""
+						class="w-24 h-24 rounded-full mx-auto object-cover border-4 border-white/20"
+					/>
+				{:else}
+					<div class="w-24 h-24 rounded-full mx-auto {getAvatarColor(currentConversation ? getConversationName(currentConversation) : '')} text-white flex items-center justify-center text-3xl font-medium border-4 border-white/20">
+						{currentConversation ? getInitials(getConversationName(currentConversation)) : '?'}
+					</div>
+				{/if}
+			</div>
+
+			<!-- Name -->
+			<h3 class="text-xl font-semibold text-white mb-1">
+				{currentConversation ? getConversationName(currentConversation) : ''}
+			</h3>
+
+			<!-- Status -->
+			<div class="text-gray-300 text-sm mb-8">
+				{#if callStatus === 'calling'}
+					<div class="flex items-center justify-center gap-2">
+						<span>Вызов</span>
+						<span class="flex gap-1">
+							<span class="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style="animation-delay: 0ms"></span>
+							<span class="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style="animation-delay: 150ms"></span>
+							<span class="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style="animation-delay: 300ms"></span>
+						</span>
+					</div>
+				{:else if callStatus === 'connected'}
+					<span class="text-green-400">{callType === 'video' ? 'Видеозвонок' : 'Аудиозвонок'} активен</span>
+				{:else}
+					<span class="text-red-400">Звонок завершён</span>
+				{/if}
+			</div>
+
+			<!-- Video preview placeholder -->
+			{#if callType === 'video' && callStatus === 'connected'}
+				<div class="bg-gray-700 rounded-xl h-32 mb-6 flex items-center justify-center">
+					<svg class="w-12 h-12 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+					</svg>
+				</div>
+			{/if}
+
+			<!-- Controls -->
+			<div class="flex items-center justify-center gap-4">
+				{#if callStatus === 'connected'}
+					<!-- Mute button -->
+					<button class="w-12 h-12 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center transition-colors">
+						<svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+						</svg>
+					</button>
+
+					{#if callType === 'video'}
+						<!-- Camera toggle -->
+						<button class="w-12 h-12 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center transition-colors">
+							<svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+							</svg>
+						</button>
+					{/if}
+				{/if}
+
+				<!-- End call button -->
+				<button
+					onclick={endCall}
+					class="w-14 h-14 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center transition-colors shadow-lg"
+				>
+					<svg class="w-7 h-7 text-white transform rotate-135" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+					</svg>
+				</button>
+			</div>
+		</div>
 	</div>
 {/if}

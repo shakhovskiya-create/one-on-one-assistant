@@ -96,6 +96,7 @@ func main() {
 	protectedAPI.Post("/meetings", h.CreateMeeting)
 	protectedAPI.Get("/meetings/:id", h.GetMeeting)
 	protectedAPI.Get("/meeting-categories", h.ListMeetingCategories)
+	protectedAPI.Get("/ai/status", h.AIStatus)
 	protectedAPI.Post("/process-meeting", h.ProcessMeeting)
 
 	// Tasks
@@ -165,6 +166,8 @@ func main() {
 	protectedAPI.Post("/mail/send", h.SendEmail)
 	protectedAPI.Post("/mail/mark-read", h.MarkEmailAsRead)
 	protectedAPI.Delete("/mail/email", h.DeleteEmail)
+	protectedAPI.Post("/mail/attachments", h.GetAttachments)
+	protectedAPI.Post("/mail/attachment/content", h.GetAttachmentContent)
 
 	// Legacy routes (for backward compatibility)
 	app.Get("/employees", h.ListEmployees)

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { mail } from '$lib/api/client';
-	import type { MailFolder, EmailMessage, EmailPerson } from '$lib/api/client';
+	import type { MailFolder, EmailMessage, EmailPerson, EmailAttachment } from '$lib/api/client';
 	import { user } from '$lib/stores/auth';
 	import { browser } from '$app/environment';
 
@@ -25,10 +25,23 @@
 	let composeSubject = $state('');
 	let composeBody = $state('');
 	let sending = $state(false);
+	let composeMode: 'new' | 'reply' | 'replyAll' | 'forward' = $state('new');
+
+	// Full email view modal
+	let showEmailModal = $state(false);
+
+	// Attachments
+	let attachments: EmailAttachment[] = $state([]);
+	let loadingAttachments = $state(false);
+	let downloadingAttachment = $state<string | null>(null);
 
 	// Search & Filter
 	let searchQuery = $state('');
 	let showOnlyUnread = $state(false);
+
+	// Threading
+	let showThreaded = $state(true);
+	let expandedThreads = $state<Set<string>>(new Set());
 
 	// Sidebar collapsed state
 	let sidebarCollapsed = $state(false);
@@ -164,6 +177,7 @@
 	async function selectEmail(email: EmailMessage) {
 		selectedEmail = email;
 		bodyError = '';
+		attachments = [];
 
 		// Load email body if not already loaded
 		if (!email.body || email.body === '') {
@@ -191,6 +205,24 @@
 			}
 		}
 
+		// Load attachments if email has attachments
+		if (email.has_attachments) {
+			loadingAttachments = true;
+			try {
+				const result = await mail.getAttachments({
+					username: credentials.username,
+					password: credentials.password,
+					item_id: email.id,
+					change_key: email.change_key
+				});
+				attachments = result.attachments || [];
+			} catch (err) {
+				console.error('Failed to load attachments:', err);
+			} finally {
+				loadingAttachments = false;
+			}
+		}
+
 		if (!email.is_read) {
 			// Mark as read in UI immediately for better UX
 			emails = emails.map(e =>
@@ -211,7 +243,8 @@
 			mail.markAsRead({
 				username: credentials.username,
 				password: credentials.password,
-				item_id: email.id
+				item_id: email.id,
+				change_key: email.change_key
 			}).catch(err => {
 				console.error('Failed to mark as read:', err);
 				// Revert on error
@@ -230,7 +263,8 @@
 			await mail.deleteEmail({
 				username: credentials.username,
 				password: credentials.password,
-				item_id: email.id
+				item_id: email.id,
+				change_key: email.change_key
 			});
 			emails = emails.filter(e => e.id !== email.id);
 			if (selectedEmail?.id === email.id) {
@@ -239,6 +273,60 @@
 		} catch (e) {
 			console.error('Failed to delete email:', e);
 		}
+	}
+
+	async function downloadAttachment(attachment: EmailAttachment) {
+		downloadingAttachment = attachment.id;
+		try {
+			const result = await mail.getAttachmentContent({
+				username: credentials.username,
+				password: credentials.password,
+				attachment_id: attachment.id
+			});
+
+			// Decode base64 and create download
+			const byteCharacters = atob(result.content);
+			const byteNumbers = new Array(byteCharacters.length);
+			for (let i = 0; i < byteCharacters.length; i++) {
+				byteNumbers[i] = byteCharacters.charCodeAt(i);
+			}
+			const byteArray = new Uint8Array(byteNumbers);
+			const blob = new Blob([byteArray], { type: result.content_type });
+
+			// Create download link
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = result.name || attachment.name;
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+			URL.revokeObjectURL(url);
+		} catch (err) {
+			console.error('Failed to download attachment:', err);
+		} finally {
+			downloadingAttachment = null;
+		}
+	}
+
+	function formatFileSize(bytes: number): string {
+		if (bytes === 0) return '0 B';
+		const k = 1024;
+		const sizes = ['B', 'KB', 'MB', 'GB'];
+		const i = Math.floor(Math.log(bytes) / Math.log(k));
+		return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+	}
+
+	function getFileIcon(contentType: string, name: string): string {
+		const ext = name.split('.').pop()?.toLowerCase() || '';
+		if (contentType.startsWith('image/')) return '🖼️';
+		if (contentType.includes('pdf') || ext === 'pdf') return '📄';
+		if (contentType.includes('word') || ['doc', 'docx'].includes(ext)) return '📝';
+		if (contentType.includes('excel') || contentType.includes('spreadsheet') || ['xls', 'xlsx'].includes(ext)) return '📊';
+		if (contentType.includes('powerpoint') || contentType.includes('presentation') || ['ppt', 'pptx'].includes(ext)) return '📊';
+		if (contentType.includes('zip') || contentType.includes('archive') || ['zip', 'rar', '7z'].includes(ext)) return '📦';
+		if (contentType.startsWith('text/')) return '📃';
+		return '📎';
 	}
 
 	async function sendEmail() {
@@ -362,6 +450,41 @@
 		return name.substring(0, 2).toUpperCase();
 	}
 
+	// Meeting invite detection
+	function isMeetingInvite(email: EmailMessage): boolean {
+		// IPM.Schedule.Meeting.Request - приглашение на встречу
+		// IPM.Schedule.Meeting.Resp.* - ответы на приглашение
+		// IPM.Schedule.Meeting.Canceled - отмена встречи
+		return email.item_class?.includes('IPM.Schedule.Meeting') || false;
+	}
+
+	function getMeetingInviteType(email: EmailMessage): 'request' | 'response' | 'cancel' | null {
+		if (!email.item_class) return null;
+		if (email.item_class.includes('Meeting.Request')) return 'request';
+		if (email.item_class.includes('Meeting.Resp')) return 'response';
+		if (email.item_class.includes('Meeting.Canceled')) return 'cancel';
+		return null;
+	}
+
+	// Thread type for grouping emails
+	interface EmailThread {
+		conversationId: string;
+		emails: EmailMessage[];
+		latestDate: string;
+		hasUnread: boolean;
+		subject: string;
+	}
+
+	function toggleThread(conversationId: string) {
+		const newSet = new Set(expandedThreads);
+		if (newSet.has(conversationId)) {
+			newSet.delete(conversationId);
+		} else {
+			newSet.add(conversationId);
+		}
+		expandedThreads = newSet;
+	}
+
 	let filteredEmails = $derived(() => {
 		let result = emails;
 
@@ -382,6 +505,107 @@
 
 		return result;
 	});
+
+	let groupedEmails = $derived(() => {
+		if (!showThreaded) return null;
+
+		const filtered = filteredEmails();
+		const threads = new Map<string, EmailThread>();
+
+		for (const email of filtered) {
+			const convId = email.conversation_id || email.id; // Use email id if no conversation_id
+			if (!threads.has(convId)) {
+				threads.set(convId, {
+					conversationId: convId,
+					emails: [],
+					latestDate: email.received_at,
+					hasUnread: false,
+					subject: email.subject
+				});
+			}
+			const thread = threads.get(convId)!;
+			thread.emails.push(email);
+			if (!email.is_read) thread.hasUnread = true;
+			if (email.received_at > thread.latestDate) {
+				thread.latestDate = email.received_at;
+			}
+		}
+
+		// Sort threads by latest date
+		const sortedThreads = Array.from(threads.values())
+			.filter(t => t.emails.length > 0)
+			.sort((a, b) => b.latestDate.localeCompare(a.latestDate));
+
+		// Sort emails within each thread by date (oldest first)
+		for (const thread of sortedThreads) {
+			thread.emails.sort((a, b) => a.received_at.localeCompare(b.received_at));
+		}
+
+		return sortedThreads;
+	});
+
+	function openEmailModal() {
+		if (selectedEmail) {
+			showEmailModal = true;
+		}
+	}
+
+	function replyToEmail(mode: 'reply' | 'replyAll' = 'reply') {
+		if (!selectedEmail) return;
+		composeMode = mode;
+
+		// Set recipient
+		if (mode === 'reply') {
+			composeTo = selectedEmail.from?.email || '';
+		} else {
+			// Reply all - include sender and all recipients except self
+			const recipients = [selectedEmail.from?.email || ''];
+			if (selectedEmail.to) {
+				recipients.push(...selectedEmail.to.filter(p => p.email !== credentials.username).map(p => p.email));
+			}
+			composeTo = recipients.filter(Boolean).join(', ');
+			if (selectedEmail.cc) {
+				composeCc = selectedEmail.cc.filter(p => p.email !== credentials.username).map(p => p.email).join(', ');
+			}
+		}
+
+		// Set subject with Re: prefix
+		composeSubject = selectedEmail.subject.startsWith('Re:')
+			? selectedEmail.subject
+			: `Re: ${selectedEmail.subject}`;
+
+		// Quote original message
+		const originalDate = new Date(selectedEmail.received_at).toLocaleString('ru-RU');
+		const originalFrom = selectedEmail.from?.name || selectedEmail.from?.email || 'Неизвестный';
+		composeBody = `\n\n---\n${originalDate}, ${originalFrom} написал(а):\n\n${stripHtml(selectedEmail.body || '')}`;
+
+		showCompose = true;
+	}
+
+	function forwardEmail() {
+		if (!selectedEmail) return;
+		composeMode = 'forward';
+		composeTo = '';
+		composeCc = '';
+
+		// Set subject with Fwd: prefix
+		composeSubject = selectedEmail.subject.startsWith('Fwd:') || selectedEmail.subject.startsWith('FW:')
+			? selectedEmail.subject
+			: `Fwd: ${selectedEmail.subject}`;
+
+		// Include original message
+		const originalDate = new Date(selectedEmail.received_at).toLocaleString('ru-RU');
+		const originalFrom = selectedEmail.from?.name || selectedEmail.from?.email || 'Неизвестный';
+		const originalTo = selectedEmail.to?.map(p => p.name || p.email).join(', ') || '';
+		composeBody = `\n\n---------- Пересылаемое сообщение ----------\nОт: ${originalFrom}\nДата: ${originalDate}\nТема: ${selectedEmail.subject}\nКому: ${originalTo}\n\n${stripHtml(selectedEmail.body || '')}`;
+
+		showCompose = true;
+	}
+
+	function stripHtml(html: string): string {
+		const doc = new DOMParser().parseFromString(html, 'text/html');
+		return doc.body.textContent || '';
+	}
 </script>
 
 <svelte:head>
@@ -441,7 +665,7 @@
 		<div class="{sidebarCollapsed ? 'w-16' : 'w-60'} border-r border-gray-200 flex flex-col bg-gray-50 transition-all duration-200">
 			<div class="p-3 flex {sidebarCollapsed ? 'justify-center' : 'gap-2'}">
 				<button
-					onclick={() => showCompose = true}
+					onclick={() => { composeMode = 'new'; composeTo = ''; composeCc = ''; composeSubject = ''; composeBody = ''; showCompose = true; }}
 					class="{sidebarCollapsed ? 'w-10 h-10 p-0 justify-center' : 'flex-1 py-2 px-4'} bg-ekf-red text-white rounded-lg font-medium hover:bg-red-700 transition-colors flex items-center gap-2"
 					title={sidebarCollapsed ? 'Написать' : ''}
 				>
@@ -458,34 +682,37 @@
 				{#each sortedFolders as folder}
 					<button
 						onclick={() => selectFolder(folder)}
-						class="w-full {sidebarCollapsed ? 'px-0 justify-center relative' : 'px-3'} py-2 flex items-center gap-3 rounded-lg text-left text-sm transition-colors mb-1
+						class="w-full {sidebarCollapsed ? 'px-2 justify-center' : 'px-3'} py-2 flex items-center gap-3 rounded-lg text-left text-sm transition-colors mb-1 relative
 							{selectedFolder?.id === folder.id ? 'bg-ekf-red/10 text-ekf-red' : 'text-gray-700 hover:bg-gray-100'}"
 						title={sidebarCollapsed ? folder.display_name : ''}
 					>
-						<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							{#if getFolderIcon(folder.display_name) === 'inbox'}
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-							{:else if getFolderIcon(folder.display_name) === 'send'}
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-							{:else if getFolderIcon(folder.display_name) === 'draft'}
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-							{:else if getFolderIcon(folder.display_name) === 'trash'}
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-							{:else if getFolderIcon(folder.display_name) === 'spam'}
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-							{:else if getFolderIcon(folder.display_name) === 'archive'}
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-							{:else}
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+						<div class="relative flex-shrink-0">
+							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								{#if getFolderIcon(folder.display_name) === 'inbox'}
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+								{:else if getFolderIcon(folder.display_name) === 'send'}
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+								{:else if getFolderIcon(folder.display_name) === 'draft'}
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+								{:else if getFolderIcon(folder.display_name) === 'trash'}
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+								{:else if getFolderIcon(folder.display_name) === 'spam'}
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+								{:else if getFolderIcon(folder.display_name) === 'archive'}
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+								{:else}
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+								{/if}
+							</svg>
+							{#if sidebarCollapsed && folder.unread_count > 0}
+								<span class="absolute -top-2 -right-2 min-w-[16px] h-4 text-[10px] bg-ekf-red text-white rounded-full flex items-center justify-center px-1">{folder.unread_count > 9 ? '9+' : folder.unread_count}</span>
 							{/if}
-						</svg>
+						</div>
 						{#if !sidebarCollapsed}
 							<span class="flex-1 truncate">{folder.display_name}</span>
 							{#if folder.unread_count > 0}
 								<span class="text-xs bg-ekf-red text-white px-1.5 py-0.5 rounded-full">{folder.unread_count}</span>
 							{/if}
-						{:else if folder.unread_count > 0}
-							<span class="absolute -top-1 -right-1 w-4 h-4 text-[10px] bg-ekf-red text-white rounded-full flex items-center justify-center">{folder.unread_count > 9 ? '9+' : folder.unread_count}</span>
 						{/if}
 					</button>
 				{/each}
@@ -534,16 +761,30 @@
 						</svg>
 					</button>
 				</div>
-				<button
-					onclick={() => showOnlyUnread = !showOnlyUnread}
-					class="flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg transition-colors w-full
-						{showOnlyUnread ? 'bg-ekf-red text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}"
-				>
-					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2 2v10a2 2 0 002 2z" />
-					</svg>
-					{showOnlyUnread ? 'Только непрочитанные' : 'Все письма'}
-				</button>
+				<div class="flex gap-1">
+					<button
+						onclick={() => showOnlyUnread = !showOnlyUnread}
+						class="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg transition-colors
+							{showOnlyUnread ? 'bg-ekf-red text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}"
+						title={showOnlyUnread ? 'Показать все' : 'Только непрочитанные'}
+					>
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2 2v10a2 2 0 002 2z" />
+						</svg>
+						Непрочит.
+					</button>
+					<button
+						onclick={() => showThreaded = !showThreaded}
+						class="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg transition-colors
+							{showThreaded ? 'bg-ekf-red text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}"
+						title={showThreaded ? 'Список' : 'По цепочкам'}
+					>
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+						</svg>
+						Цепочки
+					</button>
+				</div>
 			</div>
 
 			<div class="flex-1 overflow-y-auto">
@@ -555,7 +796,94 @@
 					<div class="text-center py-12 text-gray-500 text-sm">
 						{showOnlyUnread ? 'Нет непрочитанных писем' : 'Нет писем'}
 					</div>
+				{:else if showThreaded && groupedEmails()}
+					<!-- Threaded view -->
+					{#each groupedEmails() as thread}
+						{@const isExpanded = expandedThreads.has(thread.conversationId)}
+						{@const latestEmail = thread.emails[thread.emails.length - 1]}
+						{@const senderName = getPersonDisplay(latestEmail.from)}
+						<div class="border-b border-gray-100">
+							<!-- Thread header -->
+							<button
+								onclick={() => thread.emails.length > 1 ? toggleThread(thread.conversationId) : selectEmail(latestEmail)}
+								class="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors
+									{selectedEmail?.conversation_id === thread.conversationId ? 'bg-ekf-red/5' : ''}
+									{thread.hasUnread ? 'bg-blue-50/50' : ''}"
+							>
+								<div class="flex items-start gap-3">
+									<!-- Avatar -->
+									<div class="w-10 h-10 rounded-full {getAvatarColor(senderName)} flex items-center justify-center flex-shrink-0 relative">
+										<span class="text-white text-sm font-medium">{getInitials(senderName)}</span>
+										{#if thread.hasUnread}
+											<div class="absolute -top-0.5 -right-0.5 w-3 h-3 bg-ekf-red rounded-full border-2 border-white"></div>
+										{/if}
+									</div>
+									<div class="flex-1 min-w-0">
+										<div class="flex items-center gap-2 mb-1">
+											<span class="text-sm {thread.hasUnread ? 'font-semibold' : ''} text-gray-900 truncate">
+												{senderName}
+											</span>
+											{#if thread.emails.length > 1}
+												<span class="px-1.5 py-0.5 bg-gray-200 text-gray-600 text-xs rounded-full">
+													{thread.emails.length}
+												</span>
+											{/if}
+											<span class="text-xs text-gray-400 flex-shrink-0 ml-auto">
+												{formatDate(thread.latestDate)}
+											</span>
+										</div>
+										<div class="text-sm {thread.hasUnread ? 'font-medium' : ''} text-gray-800 truncate">{thread.subject}</div>
+										{#if latestEmail.body_preview}
+											<div class="text-xs text-gray-500 truncate mt-0.5">{latestEmail.body_preview}</div>
+										{/if}
+									</div>
+									{#if thread.emails.some(e => e.has_attachments)}
+										<svg class="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+										</svg>
+									{/if}
+									{#if thread.emails.length > 1}
+										<svg class="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform {isExpanded ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+										</svg>
+									{/if}
+								</div>
+							</button>
+							<!-- Expanded thread emails -->
+							{#if isExpanded && thread.emails.length > 1}
+								<div class="bg-gray-50 border-t border-gray-200">
+									{#each thread.emails as email, idx}
+										{@const emailSender = getPersonDisplay(email.from)}
+										<button
+											onclick={() => selectEmail(email)}
+											class="w-full pl-12 pr-4 py-2 text-left hover:bg-gray-100 transition-colors border-b border-gray-100 last:border-b-0
+												{selectedEmail?.id === email.id ? 'bg-ekf-red/10' : ''}
+												{!email.is_read ? 'bg-blue-50/30' : ''}"
+										>
+											<div class="flex items-center gap-2">
+												<div class="w-6 h-6 rounded-full {getAvatarColor(emailSender)} flex items-center justify-center flex-shrink-0">
+													<span class="text-white text-xs">{getInitials(emailSender).charAt(0)}</span>
+												</div>
+												<span class="text-xs {!email.is_read ? 'font-semibold' : ''} text-gray-700 truncate flex-1">
+													{emailSender}
+												</span>
+												<span class="text-xs text-gray-400 flex-shrink-0">
+													{formatDate(email.received_at)}
+												</span>
+												{#if email.has_attachments}
+													<svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+													</svg>
+												{/if}
+											</div>
+										</button>
+									{/each}
+								</div>
+							{/if}
+						</div>
+					{/each}
 				{:else}
+					<!-- Flat list view -->
 					{#each filteredEmails() as email}
 						{@const senderName = getPersonDisplay(email.from)}
 						<button
@@ -586,11 +914,18 @@
 										<div class="text-xs text-gray-500 truncate mt-0.5">{email.body_preview}</div>
 									{/if}
 								</div>
-								{#if email.has_attachments}
-									<svg class="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-									</svg>
-								{/if}
+								<div class="flex items-center gap-1 flex-shrink-0 mt-1">
+									{#if isMeetingInvite(email)}
+										<svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" title="Приглашение на встречу">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+										</svg>
+									{/if}
+									{#if email.has_attachments}
+										<svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+										</svg>
+									{/if}
+								</div>
 							</div>
 						</button>
 					{/each}
@@ -603,20 +938,31 @@
 			{#if selectedEmail}
 				<div class="bg-white border-b border-gray-200 px-6 py-4">
 					<div class="flex items-start justify-between mb-3">
-						<h2 class="text-lg font-medium text-gray-900">{selectedEmail.subject}</h2>
-						<div class="flex items-center gap-2">
-							<button class="p-2 hover:bg-gray-100 rounded-lg" title="Ответить">
+						<button onclick={openEmailModal} class="text-lg font-medium text-gray-900 hover:text-ekf-red transition-colors text-left flex items-center gap-2">
+							{selectedEmail.subject}
+							<svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+							</svg>
+						</button>
+						<div class="flex items-center gap-1">
+							<button onclick={() => replyToEmail('reply')} class="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Ответить">
 								<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
 								</svg>
 							</button>
-							<button class="p-2 hover:bg-gray-100 rounded-lg" title="Переслать">
+							<button onclick={() => replyToEmail('replyAll')} class="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Ответить всем">
+								<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h7a8 8 0 018 8v2M3 10l5 5m-5-5l5-5M10 10h7a5 5 0 015 5v2" />
+								</svg>
+							</button>
+							<button onclick={forwardEmail} class="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Переслать">
 								<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
 								</svg>
 							</button>
-							<button onclick={() => deleteEmail(selectedEmail!)} class="p-2 hover:bg-gray-100 rounded-lg" title="Удалить">
-								<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<div class="w-px h-5 bg-gray-200 mx-1"></div>
+							<button onclick={() => deleteEmail(selectedEmail!)} class="p-2 hover:bg-red-50 rounded-lg transition-colors" title="Удалить">
+								<svg class="w-5 h-5 text-gray-500 hover:text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
 								</svg>
 							</button>
@@ -639,6 +985,54 @@
 						</span>
 					</div>
 				</div>
+
+				<!-- Meeting Invite Banner -->
+				{#if isMeetingInvite(selectedEmail)}
+					<div class="mx-4 mb-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+						<div class="flex items-center gap-3">
+							<div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+								<svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+								</svg>
+							</div>
+							<div class="flex-1">
+								{#if getMeetingInviteType(selectedEmail) === 'request'}
+									<div class="text-sm font-medium text-blue-900">Приглашение на встречу</div>
+									<div class="text-xs text-blue-700">Вас приглашают на встречу</div>
+								{:else if getMeetingInviteType(selectedEmail) === 'cancel'}
+									<div class="text-sm font-medium text-red-900">Встреча отменена</div>
+									<div class="text-xs text-red-700">Организатор отменил встречу</div>
+								{:else}
+									<div class="text-sm font-medium text-blue-900">Ответ на приглашение</div>
+									<div class="text-xs text-blue-700">Ответ от участника</div>
+								{/if}
+							</div>
+							{#if getMeetingInviteType(selectedEmail) === 'request'}
+								<div class="flex items-center gap-2">
+									<button class="px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-lg hover:bg-green-600 transition-colors">
+										Принять
+									</button>
+									<button class="px-3 py-1.5 bg-yellow-500 text-white text-xs font-medium rounded-lg hover:bg-yellow-600 transition-colors">
+										Под вопросом
+									</button>
+									<button class="px-3 py-1.5 bg-red-500 text-white text-xs font-medium rounded-lg hover:bg-red-600 transition-colors">
+										Отклонить
+									</button>
+								</div>
+							{/if}
+							<a
+								href="/calendar"
+								class="flex items-center gap-1 px-3 py-1.5 bg-blue-500 text-white text-xs font-medium rounded-lg hover:bg-blue-600 transition-colors"
+							>
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+								</svg>
+								Календарь
+							</a>
+						</div>
+					</div>
+				{/if}
+
 				<div class="flex-1 overflow-y-auto p-6">
 					<div class="bg-white rounded-lg p-6 shadow-sm">
 						{#if loadingBody}
@@ -660,6 +1054,47 @@
 						{:else}
 							<p class="text-gray-500">Нет содержимого</p>
 						{/if}
+
+						<!-- Attachments -->
+						{#if selectedEmail.has_attachments}
+							<div class="mt-4 pt-4 border-t border-gray-200">
+								<h4 class="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+									</svg>
+									Вложения
+									{#if loadingAttachments}
+										<span class="animate-spin inline-block w-4 h-4 border-2 border-gray-300 border-t-ekf-red rounded-full"></span>
+									{/if}
+								</h4>
+								{#if attachments.length > 0}
+									<div class="grid gap-2">
+										{#each attachments.filter(a => !a.is_inline) as attachment}
+											<button
+												onclick={() => downloadAttachment(attachment)}
+												disabled={downloadingAttachment === attachment.id}
+												class="flex items-center gap-3 p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-left transition-colors disabled:opacity-50"
+											>
+												<span class="text-2xl">{getFileIcon(attachment.content_type, attachment.name)}</span>
+												<div class="flex-1 min-w-0">
+													<div class="text-sm font-medium text-gray-900 truncate">{attachment.name}</div>
+													<div class="text-xs text-gray-500">{formatFileSize(attachment.size)}</div>
+												</div>
+												{#if downloadingAttachment === attachment.id}
+													<div class="animate-spin rounded-full h-4 w-4 border-b-2 border-ekf-red"></div>
+												{:else}
+													<svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+													</svg>
+												{/if}
+											</button>
+										{/each}
+									</div>
+								{:else if !loadingAttachments}
+									<p class="text-sm text-gray-500">Вложения не найдены</p>
+								{/if}
+							</div>
+						{/if}
 					</div>
 				</div>
 			{:else}
@@ -677,12 +1112,173 @@
 		</div>
 	</div>
 
+	<!-- Full Email Modal -->
+	{#if showEmailModal && selectedEmail}
+		<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+			<div class="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col m-4">
+				<div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+					<h3 class="text-lg font-semibold text-gray-900 truncate flex-1 mr-4">{selectedEmail.subject}</h3>
+					<div class="flex items-center gap-2">
+						<button onclick={() => replyToEmail('reply')} class="p-2 hover:bg-gray-100 rounded-lg" title="Ответить">
+							<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+							</svg>
+						</button>
+						<button onclick={() => replyToEmail('replyAll')} class="p-2 hover:bg-gray-100 rounded-lg" title="Ответить всем">
+							<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h7a8 8 0 018 8v2M3 10l5 5m-5-5l5-5M10 10h7a5 5 0 015 5v2" />
+							</svg>
+						</button>
+						<button onclick={forwardEmail} class="p-2 hover:bg-gray-100 rounded-lg" title="Переслать">
+							<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+							</svg>
+						</button>
+						<button onclick={() => { deleteEmail(selectedEmail!); showEmailModal = false; }} class="p-2 hover:bg-red-50 rounded-lg" title="Удалить">
+							<svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+							</svg>
+						</button>
+						<button onclick={() => showEmailModal = false} class="p-2 hover:bg-gray-100 rounded-lg ml-2">
+							<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+							</svg>
+						</button>
+					</div>
+				</div>
+				<div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+					<div class="flex items-center gap-4">
+						<div class="w-12 h-12 rounded-full {getAvatarColor(selectedEmail.from?.name || selectedEmail.from?.email || '')} flex items-center justify-center flex-shrink-0">
+							<span class="text-white text-lg font-medium">{getInitials(selectedEmail.from?.name || selectedEmail.from?.email || '?')}</span>
+						</div>
+						<div class="flex-1 min-w-0">
+							<div class="font-medium text-gray-900">{getPersonDisplay(selectedEmail.from)}</div>
+							<div class="text-sm text-gray-500">
+								Кому: {selectedEmail.to?.map(p => getPersonDisplay(p)).join(', ') || 'Вам'}
+								{#if selectedEmail.cc && selectedEmail.cc.length > 0}
+									<span class="ml-2">| Копия: {selectedEmail.cc.map(p => getPersonDisplay(p)).join(', ')}</span>
+								{/if}
+							</div>
+						</div>
+						<div class="text-sm text-gray-400">
+							{new Date(selectedEmail.received_at).toLocaleString('ru-RU')}
+						</div>
+					</div>
+					{#if selectedEmail.has_attachments}
+						<div class="mt-3 pt-3 border-t border-gray-200">
+							<div class="flex items-center gap-2 text-sm text-gray-600">
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+								</svg>
+								<span>Вложения (загрузка вложений скоро будет доступна)</span>
+							</div>
+						</div>
+					{/if}
+				</div>
+
+				<!-- Meeting Invite Banner in Modal -->
+				{#if isMeetingInvite(selectedEmail)}
+					<div class="mx-6 my-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+						<div class="flex items-center gap-3">
+							<div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+								<svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+								</svg>
+							</div>
+							<div class="flex-1 min-w-0">
+								{#if getMeetingInviteType(selectedEmail) === 'request'}
+									<div class="text-sm font-medium text-blue-900">Приглашение на встречу</div>
+									<div class="text-xs text-blue-700">Вас приглашают на встречу</div>
+								{:else if getMeetingInviteType(selectedEmail) === 'cancel'}
+									<div class="text-sm font-medium text-red-900">Встреча отменена</div>
+									<div class="text-xs text-red-700">Организатор отменил встречу</div>
+								{:else}
+									<div class="text-sm font-medium text-blue-900">Ответ на приглашение</div>
+									<div class="text-xs text-blue-700">Ответ от участника</div>
+								{/if}
+							</div>
+							{#if getMeetingInviteType(selectedEmail) === 'request'}
+								<div class="flex items-center gap-2">
+									<button class="px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-lg hover:bg-green-600 transition-colors">
+										Принять
+									</button>
+									<button class="px-3 py-1.5 bg-yellow-500 text-white text-xs font-medium rounded-lg hover:bg-yellow-600 transition-colors">
+										Под вопросом
+									</button>
+									<button class="px-3 py-1.5 bg-red-500 text-white text-xs font-medium rounded-lg hover:bg-red-600 transition-colors">
+										Отклонить
+									</button>
+								</div>
+							{/if}
+							<a
+								href="/calendar"
+								class="flex items-center gap-1 px-3 py-1.5 bg-blue-500 text-white text-xs font-medium rounded-lg hover:bg-blue-600 transition-colors flex-shrink-0"
+							>
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+								</svg>
+								Календарь
+							</a>
+						</div>
+					</div>
+				{/if}
+
+				<div class="flex-1 overflow-y-auto p-6">
+					{#if loadingBody}
+						<div class="flex items-center justify-center py-8">
+							<div class="animate-spin rounded-full h-6 w-6 border-b-2 border-ekf-red"></div>
+							<span class="ml-3 text-gray-500 text-sm">Загрузка письма...</span>
+						</div>
+					{:else if selectedEmail.body}
+						<div class="prose max-w-none bg-white rounded-lg p-4">
+							{@html selectedEmail.body}
+						</div>
+					{:else}
+						<p class="text-gray-500 text-center py-8">Нет содержимого</p>
+					{/if}
+
+					<!-- Attachments in modal -->
+					{#if selectedEmail.has_attachments && attachments.length > 0}
+						<div class="mt-6 pt-4 border-t border-gray-200">
+							<h4 class="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+								</svg>
+								Вложения ({attachments.filter(a => !a.is_inline).length})
+							</h4>
+							<div class="flex flex-wrap gap-2">
+								{#each attachments.filter(a => !a.is_inline) as attachment}
+									<button
+										onclick={() => downloadAttachment(attachment)}
+										disabled={downloadingAttachment === attachment.id}
+										class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-left transition-colors disabled:opacity-50"
+									>
+										<span class="text-xl">{getFileIcon(attachment.content_type, attachment.name)}</span>
+										<div class="min-w-0">
+											<div class="text-sm font-medium text-gray-900 truncate max-w-[200px]">{attachment.name}</div>
+											<div class="text-xs text-gray-500">{formatFileSize(attachment.size)}</div>
+										</div>
+										{#if downloadingAttachment === attachment.id}
+											<div class="animate-spin rounded-full h-4 w-4 border-b-2 border-ekf-red"></div>
+										{/if}
+									</button>
+								{/each}
+							</div>
+						</div>
+					{/if}
+				</div>
+			</div>
+		</div>
+	{/if}
+
 	<!-- Compose Modal -->
 	{#if showCompose}
 		<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
 			<div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
 				<div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-					<h3 class="text-lg font-semibold">Новое письмо</h3>
+					<h3 class="text-lg font-semibold">
+						{#if composeMode === 'reply'}Ответ{:else if composeMode === 'replyAll'}Ответ всем{:else if composeMode === 'forward'}Пересылка{:else}Новое письмо{/if}
+					</h3>
 					<button onclick={() => showCompose = false} class="p-1 hover:bg-gray-100 rounded">
 						<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />

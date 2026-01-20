@@ -54,17 +54,20 @@ type BusyTime struct {
 
 // EmailMessage represents an email from Exchange
 type EmailMessage struct {
-	ID          string   `json:"id"`
-	Subject     string   `json:"subject"`
-	From        *Person  `json:"from,omitempty"`
-	To          []Person `json:"to,omitempty"`
-	CC          []Person `json:"cc,omitempty"`
-	Body        string   `json:"body"`
-	BodyPreview string   `json:"body_preview,omitempty"`
-	ReceivedAt  string   `json:"received_at"`
-	IsRead      bool     `json:"is_read"`
-	HasAttach   bool     `json:"has_attachments"`
-	FolderID    string   `json:"folder_id,omitempty"`
+	ID             string   `json:"id"`
+	ChangeKey      string   `json:"change_key,omitempty"`
+	ConversationID string   `json:"conversation_id,omitempty"`
+	ItemClass      string   `json:"item_class,omitempty"`
+	Subject        string   `json:"subject"`
+	From           *Person  `json:"from,omitempty"`
+	To             []Person `json:"to,omitempty"`
+	CC             []Person `json:"cc,omitempty"`
+	Body           string   `json:"body"`
+	BodyPreview    string   `json:"body_preview,omitempty"`
+	ReceivedAt     string   `json:"received_at"`
+	IsRead         bool     `json:"is_read"`
+	HasAttach      bool     `json:"has_attachments"`
+	FolderID       string   `json:"folder_id,omitempty"`
 }
 
 // MailFolder represents a mail folder
@@ -73,6 +76,16 @@ type MailFolder struct {
 	DisplayName string `json:"display_name"`
 	UnreadCount int    `json:"unread_count"`
 	TotalCount  int    `json:"total_count"`
+}
+
+// Attachment represents an email attachment
+type Attachment struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	ContentType string `json:"content_type"`
+	Size        int    `json:"size"`
+	IsInline    bool   `json:"is_inline"`
+	ContentID   string `json:"content_id,omitempty"`
 }
 
 // NewClient creates a new EWS client
@@ -462,6 +475,8 @@ func (c *Client) GetEmails(email, username, password, folderID string, limit int
         <t:AdditionalProperties>
           <t:FieldURI FieldURI="item:Subject"/>
           <t:FieldURI FieldURI="item:DateTimeReceived"/>
+          <t:FieldURI FieldURI="item:ConversationId"/>
+          <t:FieldURI FieldURI="item:ItemClass"/>
           <t:FieldURI FieldURI="message:From"/>
           <t:FieldURI FieldURI="message:ToRecipients"/>
           <t:FieldURI FieldURI="message:IsRead"/>
@@ -573,6 +588,134 @@ func extractBodyContent(xml string) string {
 	content = strings.ReplaceAll(content, "&apos;", "'")
 
 	return content
+}
+
+// GetAttachments fetches attachment list for an email
+func (c *Client) GetAttachments(username, password, itemID, changeKey string) ([]Attachment, error) {
+	var itemIdElement string
+	if changeKey != "" {
+		itemIdElement = fmt.Sprintf(`<t:ItemId Id="%s" ChangeKey="%s"/>`, itemID, changeKey)
+	} else {
+		itemIdElement = fmt.Sprintf(`<t:ItemId Id="%s"/>`, itemID)
+	}
+
+	soap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:GetItem>
+      <m:ItemShape>
+        <t:BaseShape>IdOnly</t:BaseShape>
+        <t:AdditionalProperties>
+          <t:FieldURI FieldURI="item:Attachments"/>
+        </t:AdditionalProperties>
+      </m:ItemShape>
+      <m:ItemIds>
+        %s
+      </m:ItemIds>
+    </m:GetItem>
+  </soap:Body>
+</soap:Envelope>`, itemIdElement)
+
+	body, err := c.doRequest(soap, username, password)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.parseAttachmentsResponse(string(body)), nil
+}
+
+// GetAttachmentContent fetches the content of a specific attachment
+func (c *Client) GetAttachmentContent(username, password, attachmentID string) (string, string, []byte, error) {
+	soap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:GetAttachment>
+      <m:AttachmentIds>
+        <t:AttachmentId Id="%s"/>
+      </m:AttachmentIds>
+    </m:GetAttachment>
+  </soap:Body>
+</soap:Envelope>`, attachmentID)
+
+	body, err := c.doRequest(soap, username, password)
+	if err != nil {
+		return "", "", nil, err
+	}
+
+	// Parse attachment response
+	xml := string(body)
+	name := extractValue(xml, "<t:Name>", "</t:Name>")
+	contentType := extractValue(xml, "<t:ContentType>", "</t:ContentType>")
+	contentB64 := extractValue(xml, "<t:Content>", "</t:Content>")
+
+	// Decode base64 content
+	var content []byte
+	if contentB64 != "" {
+		import_encoding_b64 := strings.ReplaceAll(contentB64, "\n", "")
+		import_encoding_b64 = strings.ReplaceAll(import_encoding_b64, "\r", "")
+		import_encoding_b64 = strings.ReplaceAll(import_encoding_b64, " ", "")
+		// We'll return base64 string and let handler decode it
+		content = []byte(import_encoding_b64)
+	}
+
+	return name, contentType, content, nil
+}
+
+func (c *Client) parseAttachmentsResponse(xml string) []Attachment {
+	var attachments []Attachment
+
+	// Parse FileAttachment
+	for _, tag := range []string{"<t:FileAttachment>", "<t:ItemAttachment>"} {
+		isItem := strings.Contains(tag, "ItemAttachment")
+		items := strings.Split(xml, tag)
+		for _, item := range items[1:] {
+			var endTag string
+			if isItem {
+				endTag = "</t:ItemAttachment>"
+			} else {
+				endTag = "</t:FileAttachment>"
+			}
+			endIdx := strings.Index(item, endTag)
+			if endIdx == -1 {
+				continue
+			}
+			attXML := item[:endIdx]
+
+			attachment := Attachment{
+				ID:          extractValue(attXML, `<t:AttachmentId Id="`, `"`),
+				Name:        extractValue(attXML, "<t:Name>", "</t:Name>"),
+				ContentType: extractValue(attXML, "<t:ContentType>", "</t:ContentType>"),
+				Size:        parseSize(extractValue(attXML, "<t:Size>", "</t:Size>")),
+				IsInline:    strings.Contains(strings.ToLower(attXML), "<t:isinline>true"),
+				ContentID:   extractValue(attXML, "<t:ContentId>", "</t:ContentId>"),
+			}
+
+			if attachment.ID != "" {
+				attachments = append(attachments, attachment)
+			}
+		}
+	}
+
+	return attachments
+}
+
+func parseSize(s string) int {
+	if s == "" {
+		return 0
+	}
+	var size int
+	fmt.Sscanf(s, "%d", &size)
+	return size
 }
 
 // SendEmail sends an email via Exchange
@@ -721,11 +864,14 @@ func (c *Client) parseEmailsResponse(xml string) []EmailMessage {
 		itemXML := item[:endIdx]
 
 		email := EmailMessage{
-			ID:         extractValue(itemXML, `<t:ItemId Id="`, `"`),
-			Subject:    extractValue(itemXML, "<t:Subject>", "</t:Subject>"),
-			ReceivedAt: extractValue(itemXML, "<t:DateTimeReceived>", "</t:DateTimeReceived>"),
-			IsRead:     strings.Contains(strings.ToLower(itemXML), "<t:isread>true"),
-			HasAttach:  strings.Contains(strings.ToLower(itemXML), "<t:hasattachments>true"),
+			ID:             extractValue(itemXML, `<t:ItemId Id="`, `"`),
+			ChangeKey:      extractChangeKey(itemXML),
+			ConversationID: extractValue(itemXML, `<t:ConversationId Id="`, `"`),
+			ItemClass:      extractValue(itemXML, "<t:ItemClass>", "</t:ItemClass>"),
+			Subject:        extractValue(itemXML, "<t:Subject>", "</t:Subject>"),
+			ReceivedAt:     extractValue(itemXML, "<t:DateTimeReceived>", "</t:DateTimeReceived>"),
+			IsRead:         strings.Contains(strings.ToLower(itemXML), "<t:isread>true"),
+			HasAttach:      strings.Contains(strings.ToLower(itemXML), "<t:hasattachments>true"),
 		}
 
 		// Parse From
@@ -773,4 +919,18 @@ func escapeXML(s string) string {
 	s = strings.ReplaceAll(s, "\"", "&quot;")
 	s = strings.ReplaceAll(s, "'", "&apos;")
 	return s
+}
+
+func extractChangeKey(xml string) string {
+	// ChangeKey is in <t:ItemId Id="..." ChangeKey="..."/>
+	start := strings.Index(xml, `ChangeKey="`)
+	if start == -1 {
+		return ""
+	}
+	start += len(`ChangeKey="`)
+	end := strings.Index(xml[start:], `"`)
+	if end == -1 {
+		return ""
+	}
+	return xml[start : start+end]
 }
