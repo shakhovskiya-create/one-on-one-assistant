@@ -470,7 +470,12 @@
 		return null;
 	}
 
-	function playVideo(videoId: string) {
+	function playVideo(videoId: string, serverUrl?: string) {
+		// If not in local cache but we have server URL, use that
+		if (!videoMessages[videoId] && serverUrl) {
+			videoMessages[videoId] = { url: serverUrl, duration: 0 };
+		}
+		
 		if (playingVideoId === videoId) {
 			playingVideoId = null;
 		} else {
@@ -845,6 +850,19 @@
 		return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 	}
 
+	function formatLastMessagePreview(msg: Message): string {
+		// New format with message_type
+		if (msg.message_type === 'voice') return '🎤 Голосовое сообщение';
+		if (msg.message_type === 'video') return '📹 Видеосообщение';
+		if (msg.message_type === 'file') return '📎 Файл';
+		if (msg.message_type === 'sticker') return '🏷️ Стикер';
+		if (msg.message_type === 'gif') return '🎬 GIF';
+		// Legacy format fallback
+		if (msg.content.startsWith('[VOICE:')) return '🎤 Голосовое сообщение';
+		if (msg.content.startsWith('[VIDEO:')) return '📹 Видеосообщение';
+		return msg.content;
+	}
+
 	function toggleParticipant(id: string) {
 		if (selectedParticipants.includes(id)) {
 			selectedParticipants = selectedParticipants.filter((p) => p !== id);
@@ -1127,7 +1145,7 @@
 									{/if}
 								</div>
 								{#if conv.last_message}
-									<p class="text-sm text-gray-500 truncate mt-0.5">{conv.last_message.content}</p>
+									<p class="text-sm text-gray-500 truncate mt-0.5">{formatLastMessagePreview(conv.last_message)}</p>
 								{:else}
 									<p class="text-sm text-gray-400 italic mt-0.5">Нет сообщений</p>
 								{/if}
@@ -1359,7 +1377,7 @@
 						{/each}
 					</div>
 
-					{#if selectedParticipants.length > 0}
+					{#if selectedParticipants.length > 0 || newChatType === 'channel'}
 						<div class="mt-4">
 							<button
 								onclick={createConversation}
@@ -1523,7 +1541,7 @@
 									{#if videoInfo && (videoMessages[videoInfo.id] || videoInfo.url)}
 										<div class="relative">
 											<button
-												onclick={() => playVideo(videoInfo.id)}
+												onclick={() => playVideo(videoInfo.id, videoInfo.url)}
 												class="relative w-48 h-48 rounded-full overflow-hidden bg-black flex items-center justify-center group"
 											>
 												<video
