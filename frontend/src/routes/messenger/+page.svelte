@@ -623,6 +623,16 @@
 					}, 3000);
 				}
 				break;
+			case 'message_edited':
+				if (data.message && currentConversation?.id === data.conversation_id) {
+					messages = messages.map(m => m.id === data.message!.id ? data.message! : m);
+				}
+				break;
+			case 'message_deleted':
+				if (data.data?.message_id && currentConversation?.id === data.conversation_id) {
+					messages = messages.filter(m => m.id !== data.data!.message_id);
+				}
+				break;
 		}
 	}
 
@@ -951,15 +961,28 @@
 		if (!editingMessage || !newMessage.trim()) return;
 
 		const updatedContent = newMessage.trim();
-		// Update locally (in a real app this would be synced with backend)
-		messages = messages.map(m =>
-			m.id === editingMessage!.id
-				? { ...m, content: updatedContent, edited_at: new Date().toISOString() }
-				: m
-		);
+		try {
+			const updatedMsg = await messenger.updateMessage(editingMessage.id, updatedContent);
+			messages = messages.map(m => m.id === editingMessage!.id ? updatedMsg : m);
+		} catch (e) {
+			console.error('Failed to update message:', e);
+			alert('Не удалось изменить сообщение');
+		}
 
 		editingMessage = null;
 		newMessage = '';
+	}
+
+	async function deleteMessageHandler(msg: Message) {
+		if (!confirm('Удалить сообщение?')) return;
+		try {
+			await messenger.deleteMessage(msg.id);
+			messages = messages.filter(m => m.id !== msg.id);
+		} catch (e) {
+			console.error('Failed to delete message:', e);
+			alert('Не удалось удалить сообщение');
+		}
+		contextMenuMessage = null;
 	}
 
 	function copyMessageText(msg: Message) {
@@ -2013,6 +2036,14 @@
 				</svg>
 				Переслать
 			</button>
+			{#if contextMenuMessage.sender_id === $user?.id}
+				<button onclick={() => deleteMessageHandler(contextMenuMessage!)} class="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+					</svg>
+					Удалить
+				</button>
+			{/if}
 		</div>
 	</div>
 {/if}

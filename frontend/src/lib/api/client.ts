@@ -163,6 +163,10 @@ export const messenger = {
 		duration_seconds?: number;
 		reply_to_id?: string
 	}) => request<Message>('/messages', { method: 'POST', body: data }),
+	updateMessage: (messageId: string, content: string) =>
+		request<Message>(`/messages/${messageId}`, { method: 'PUT', body: { content } }),
+	deleteMessage: (messageId: string) =>
+		request<{ success: boolean }>(`/messages/${messageId}`, { method: 'DELETE' }),
 	getWebSocketUrl: (userId: string) => {
 		// WebSocket connects directly to the backend, not through the API proxy
 		const wsProtocol = browser && window.location.protocol === 'https:' ? 'wss:' : 'ws:';

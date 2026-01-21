@@ -643,3 +643,132 @@ func (h *Handler) SendMessage(c *fiber.Ctx) error {
 
 	return c.Status(201).JSON(newMsg)
 }
+
+// UpdateMessage updates an existing message
+func (h *Handler) UpdateMessage(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
+	userID, _ := c.Locals("user_id").(string)
+	if userID == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "Not authenticated"})
+	}
+
+	messageID := c.Params("id")
+	if messageID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Message ID required"})
+	}
+
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
+	}
+
+	if req.Content == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Content cannot be empty"})
+	}
+
+	// Get the message to verify ownership
+	var msg models.Message
+	err := h.DB.From("messages").Select("*").Eq("id", messageID).Single().Execute(&msg)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Message not found"})
+	}
+
+	// Only the sender can edit their message
+	if msg.SenderID != userID {
+		return c.Status(403).JSON(fiber.Map{"error": "Cannot edit other user's message"})
+	}
+
+	// Update the message
+	now := time.Now().Format(time.RFC3339)
+	_, err = h.DB.Update("messages", "id", messageID, map[string]interface{}{
+		"content":   req.Content,
+		"edited_at": now,
+	})
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to update message"})
+	}
+
+	// Get updated message
+	var updatedMsg models.Message
+	h.DB.From("messages").Select("*, employees:sender_id(id, name, photo_base64)").Eq("id", messageID).Single().Execute(&updatedMsg)
+
+	// Broadcast update to conversation participants
+	var participants []struct {
+		EmployeeID string `json:"employee_id"`
+	}
+	h.DB.From("conversation_participants").Select("employee_id").Eq("conversation_id", msg.ConversationID).Execute(&participants)
+
+	recipients := make([]string, 0, len(participants))
+	for _, p := range participants {
+		recipients = append(recipients, p.EmployeeID)
+	}
+
+	hub.broadcast <- WSMessage{
+		Type:           "message_edited",
+		ConversationID: msg.ConversationID,
+		Message:        updatedMsg,
+		Recipients:     recipients,
+	}
+
+	return c.JSON(updatedMsg)
+}
+
+// DeleteMessage deletes a message
+func (h *Handler) DeleteMessage(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
+	userID, _ := c.Locals("user_id").(string)
+	if userID == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "Not authenticated"})
+	}
+
+	messageID := c.Params("id")
+	if messageID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Message ID required"})
+	}
+
+	// Get the message to verify ownership
+	var msg models.Message
+	err := h.DB.From("messages").Select("*").Eq("id", messageID).Single().Execute(&msg)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Message not found"})
+	}
+
+	// Only the sender can delete their message
+	if msg.SenderID != userID {
+		return c.Status(403).JSON(fiber.Map{"error": "Cannot delete other user's message"})
+	}
+
+	// Delete the message
+	err = h.DB.Delete("messages", "id", messageID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to delete message"})
+	}
+
+	// Broadcast deletion to conversation participants
+	var participants []struct {
+		EmployeeID string `json:"employee_id"`
+	}
+	h.DB.From("conversation_participants").Select("employee_id").Eq("conversation_id", msg.ConversationID).Execute(&participants)
+
+	recipients := make([]string, 0, len(participants))
+	for _, p := range participants {
+		recipients = append(recipients, p.EmployeeID)
+	}
+
+	hub.broadcast <- WSMessage{
+		Type:           "message_deleted",
+		ConversationID: msg.ConversationID,
+		Data:           map[string]string{"message_id": messageID},
+		Recipients:     recipients,
+	}
+
+	return c.JSON(fiber.Map{"success": true})
+}

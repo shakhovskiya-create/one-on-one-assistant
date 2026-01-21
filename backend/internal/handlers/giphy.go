@@ -42,12 +42,12 @@ type GiphyGif struct {
 
 // GifResult is the simplified response for the frontend
 type GifResult struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	URL         string `json:"url"`
-	PreviewURL  string `json:"preview_url"`
-	Width       string `json:"width"`
-	Height      string `json:"height"`
+	ID         string `json:"id"`
+	Title      string `json:"title"`
+	URL        string `json:"url"`
+	PreviewURL string `json:"preview_url"`
+	Width      string `json:"width"`
+	Height     string `json:"height"`
 }
 
 // SearchGifs searches GIPHY for GIFs

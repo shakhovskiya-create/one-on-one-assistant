@@ -207,6 +207,8 @@ func main() {
 	protectedAPI.Post("/conversations", h.CreateConversation)
 	protectedAPI.Get("/conversations/:id", h.GetConversation)
 	protectedAPI.Post("/messages", h.SendMessage)
+	protectedAPI.Put("/messages/:id", h.UpdateMessage)
+	protectedAPI.Delete("/messages/:id", h.DeleteMessage)
 
 	// Telegram integration for channels (protected)
 	protectedAPI.Get("/channels/:channel_id/telegram", h.GetTelegramConfig)

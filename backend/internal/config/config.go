@@ -5,9 +5,9 @@ import (
 )
 
 type Config struct {
-	Port        string
-	DatabaseURL string // PostgreSQL connection string
-	OpenAIKey   string
+	Port             string
+	DatabaseURL      string // PostgreSQL connection string
+	OpenAIKey        string
 	AnthropicKey     string
 	TelegramBotToken string
 	YandexAPIKey     string
@@ -42,9 +42,9 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		Port:        getEnv("PORT", "8080"),
-		DatabaseURL: getEnv("DATABASE_URL", ""),
-		OpenAIKey:   getEnv("OPENAI_API_KEY", ""),
+		Port:             getEnv("PORT", "8080"),
+		DatabaseURL:      getEnv("DATABASE_URL", ""),
+		OpenAIKey:        getEnv("OPENAI_API_KEY", ""),
 		AnthropicKey:     getEnv("ANTHROPIC_API_KEY", ""),
 		TelegramBotToken: getEnv("TELEGRAM_BOT_TOKEN", ""),
 		YandexAPIKey:     getEnv("YANDEX_API_KEY", ""),
