@@ -195,6 +195,9 @@ func (h *Handler) handleSendMessage(senderID, conversationID, content, replyToID
 		Message:        newMsg,
 		Recipients:     recipients,
 	}
+
+	// Forward to Telegram if channel has it enabled (async, non-blocking)
+	go h.ForwardToTelegram(conversationID, sender.Name, content, "text")
 }
 
 func (h *Handler) handleTyping(userID, conversationID string) {
@@ -640,6 +643,9 @@ func (h *Handler) SendMessage(c *fiber.Ctx) error {
 			Recipients:     recipients,
 		}
 	}
+
+	// Forward to Telegram if channel has it enabled (async, non-blocking)
+	go h.ForwardToTelegram(req.ConversationID, sender.Name, req.Content, msgType)
 
 	return c.Status(201).JSON(newMsg)
 }

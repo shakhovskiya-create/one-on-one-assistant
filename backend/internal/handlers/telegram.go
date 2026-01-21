@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/ekf/one-on-one-backend/internal/models"
@@ -234,4 +236,107 @@ func (h *Handler) GetTelegramConfig(c *fiber.Ctx) error {
 		"chat_id":     conv.TelegramChatID,
 		"webhook_url": webhookURL,
 	})
+}
+
+// ForwardToTelegram forwards a message from EKF Hub to a linked Telegram chat
+func (h *Handler) ForwardToTelegram(conversationID, senderName, content, messageType string) error {
+	if h.DB == nil {
+		return fmt.Errorf("database not configured")
+	}
+
+	// Get conversation Telegram settings
+	var conv struct {
+		ID               string  `json:"id"`
+		Type             string  `json:"type"`
+		TelegramEnabled  bool    `json:"telegram_enabled"`
+		TelegramBotToken *string `json:"telegram_bot_token"`
+		TelegramChatID   *int64  `json:"telegram_chat_id"`
+	}
+	err := h.DB.From("conversations").
+		Select("id, type, telegram_enabled, telegram_bot_token, telegram_chat_id").
+		Eq("id", conversationID).Single().Execute(&conv)
+	if err != nil {
+		return nil // Conversation not found, not an error for forwarding
+	}
+
+	// Check if Telegram is enabled and configured
+	if !conv.TelegramEnabled || conv.TelegramBotToken == nil || conv.TelegramChatID == nil {
+		return nil // Not configured, silently skip
+	}
+
+	if *conv.TelegramBotToken == "" || *conv.TelegramChatID == 0 {
+		return nil // Not properly configured
+	}
+
+	// Format message based on type
+	var text string
+	switch messageType {
+	case "voice":
+		text = fmt.Sprintf("🎤 *%s* отправил голосовое сообщение", senderName)
+	case "video":
+		text = fmt.Sprintf("📹 *%s* отправил видеосообщение", senderName)
+	case "file":
+		text = fmt.Sprintf("📎 *%s* отправил файл", senderName)
+	case "gif":
+		text = fmt.Sprintf("🎬 *%s* отправил GIF", senderName)
+	default:
+		text = fmt.Sprintf("*%s*: %s", senderName, content)
+	}
+
+	// Send to Telegram
+	telegramURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", *conv.TelegramBotToken)
+
+	payload := map[string]interface{}{
+		"chat_id":    *conv.TelegramChatID,
+		"text":       text,
+		"parse_mode": "Markdown",
+	}
+
+	jsonPayload, _ := json.Marshal(payload)
+	resp, err := http.Post(telegramURL, "application/json", bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return fmt.Errorf("failed to send to Telegram: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("Telegram API returned status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// SendTelegramNotification sends a notification to a user via Telegram bot
+func (h *Handler) SendTelegramNotification(userID, message string) error {
+	if h.DB == nil || h.Config.TelegramBotToken == "" {
+		return nil // Not configured
+	}
+
+	// Get user's Telegram chat ID (if linked)
+	var employee struct {
+		TelegramChatID *int64 `json:"telegram_chat_id"`
+	}
+	err := h.DB.From("employees").Select("telegram_chat_id").
+		Eq("id", userID).Single().Execute(&employee)
+	if err != nil || employee.TelegramChatID == nil {
+		return nil // User doesn't have Telegram linked
+	}
+
+	// Send notification
+	telegramURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", h.Config.TelegramBotToken)
+
+	payload := map[string]interface{}{
+		"chat_id":    *employee.TelegramChatID,
+		"text":       message,
+		"parse_mode": "HTML",
+	}
+
+	jsonPayload, _ := json.Marshal(payload)
+	resp, err := http.Post(telegramURL, "application/json", bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return fmt.Errorf("failed to send notification: %w", err)
+	}
+	defer resp.Body.Close()
+
+	return nil
 }
