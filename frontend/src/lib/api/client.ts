@@ -777,6 +777,108 @@ export const giphy = {
 	}
 };
 
+// Admin types
+export interface AdminStats {
+	total_users: number;
+	active_users: number;
+	total_tasks: number;
+	completed_tasks: number;
+	total_meetings: number;
+	total_messages: number;
+	admin_count: number;
+	departments_count: number;
+}
+
+export interface AdminUser {
+	id: string;
+	name: string;
+	email: string;
+	department?: string;
+	position: string;
+	role?: string;
+	created_at?: string;
+}
+
+export interface AuditLog {
+	id: string;
+	user_id?: string;
+	action: string;
+	entity_type?: string;
+	entity_id?: string;
+	old_value?: Record<string, unknown>;
+	new_value?: Record<string, unknown>;
+	ip_address?: string;
+	user_agent?: string;
+	created_at: string;
+	user?: { id: string; name: string };
+}
+
+export interface SystemSetting {
+	id: string;
+	key: string;
+	value: unknown;
+	description?: string;
+	updated_by?: string;
+	updated_at: string;
+}
+
+export interface DepartmentInfo {
+	name: string;
+	employee_count: number;
+	workflow_mode_id?: string;
+}
+
+// Admin API (requires admin role)
+const ADMIN_URL = browser ? '/api/admin' : 'http://backend:8080/api/admin';
+
+async function adminRequest<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+	const { method = 'GET', body, headers = {} } = options;
+
+	const config: RequestInit = {
+		method,
+		headers: {
+			'Content-Type': 'application/json',
+			...getAuthHeaders(),
+			...headers
+		}
+	};
+
+	if (body) {
+		config.body = JSON.stringify(body);
+	}
+
+	const response = await fetch(`${ADMIN_URL}${endpoint}`, config);
+
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ error: response.statusText }));
+		throw new Error(error.error || error.message || 'Request failed');
+	}
+
+	return response.json();
+}
+
+export const admin = {
+	getStats: () => adminRequest<AdminStats>('/stats'),
+	listUsers: () => adminRequest<AdminUser[]>('/users'),
+	updateUserRole: (userId: string, role: string) =>
+		adminRequest(`/users/${userId}/role`, { method: 'PUT', body: { role } }),
+	getSettings: () => adminRequest<SystemSetting[]>('/settings'),
+	updateSetting: (key: string, value: unknown) =>
+		adminRequest('/settings', { method: 'PUT', body: { key, value } }),
+	getAuditLogs: (params?: { limit?: number; offset?: number; action?: string; entity_type?: string }) => {
+		const query = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+		return adminRequest<AuditLog[]>(`/audit-logs${query}`);
+	},
+	getDepartments: () => adminRequest<DepartmentInfo[]>('/departments'),
+};
+
+// Auth - get current user role
+export const auth = {
+	getRole: () => request<{ role: string }>('/auth/role'),
+	getMe: () => request<{ id: string; name: string; email: string; department?: string }>('/auth/me'),
+	refresh: () => request<{ token: string }>('/auth/refresh', { method: 'POST' }),
+};
+
 // Combined API object for convenience
 export const api = {
 	employees,
@@ -790,5 +892,7 @@ export const api = {
 	files,
 	bpmn,
 	mail,
-	giphy
+	giphy,
+	admin,
+	auth
 };

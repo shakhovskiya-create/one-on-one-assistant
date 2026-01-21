@@ -12,9 +12,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 		let backendPath = event.url.pathname;
 
 		// If it's /api/v1/... keep as is (protected routes)
-		// If it's /api/... without v1, strip /api (legacy routes)
-		if (event.url.pathname.startsWith('/api/v1/')) {
-			// Protected route - forward as /api/v1/...
+		// If it's /api/admin/... keep as is (admin routes)
+		// If it's /api/... without v1 or admin, strip /api (legacy routes)
+		if (event.url.pathname.startsWith('/api/v1/') || event.url.pathname.startsWith('/api/admin')) {
+			// Protected route - forward as is
 			backendPath = event.url.pathname;
 		} else {
 			// Legacy route - strip /api

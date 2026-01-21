@@ -245,6 +245,20 @@ func main() {
 	protectedAPI.Post("/mail/attachment/content", h.GetAttachmentContent)
 	protectedAPI.Post("/mail/meeting/respond", h.RespondToMeeting)
 
+	// User role (for current user)
+	protectedAPI.Get("/auth/role", h.GetCurrentUserRole)
+
+	// Admin routes (requires admin role)
+	adminAPI := api.Group("/admin", middleware.JWTAuth(h.JWT), middleware.AdminAuth(h.DB))
+	adminAPI.Use(middleware.CSRFProtection())
+	adminAPI.Get("/stats", h.GetAdminStats)
+	adminAPI.Get("/users", h.ListUsers)
+	adminAPI.Put("/users/:id/role", h.UpdateUserRole)
+	adminAPI.Get("/settings", h.GetSystemSettings)
+	adminAPI.Put("/settings", h.UpdateSystemSetting)
+	adminAPI.Get("/audit-logs", h.GetAuditLogs)
+	adminAPI.Get("/departments", h.GetDepartments)
+
 	// WebSocket for messenger
 	app.Use("/ws/messenger", func(c *fiber.Ctx) error {
 		if websocket.IsWebSocketUpgrade(c) {
