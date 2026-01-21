@@ -633,6 +633,12 @@
 					messages = messages.filter(m => m.id !== data.data!.message_id);
 				}
 				break;
+			case 'reactions_updated':
+				if (data.data?.message_id) {
+					messageReactions[data.data.message_id] = data.data.reactions || [];
+					messageReactions = { ...messageReactions };
+				}
+				break;
 		}
 	}
 
@@ -1056,34 +1062,18 @@
 		}
 	}
 
-	// Store reactions locally (in a real app this would be synced with backend)
+	// Store reactions (synced with backend)
 	let messageReactions: Record<string, { emoji: string; users: string[] }[]> = $state({});
 
-	function addReaction(msg: Message, emoji: string) {
-		const msgId = msg.id;
-		if (!messageReactions[msgId]) {
-			messageReactions[msgId] = [];
+	async function addReaction(msg: Message, emoji: string) {
+		try {
+			const result = await messenger.addReaction(msg.id, emoji);
+			// Update local state with server response
+			messageReactions[msg.id] = result.reactions;
+			messageReactions = { ...messageReactions };
+		} catch (e) {
+			console.error('Failed to add reaction:', e);
 		}
-
-		const existingReaction = messageReactions[msgId].find(r => r.emoji === emoji);
-		if (existingReaction) {
-			if (existingReaction.users.includes($user!.id)) {
-				// Remove user's reaction
-				existingReaction.users = existingReaction.users.filter(u => u !== $user!.id);
-				if (existingReaction.users.length === 0) {
-					messageReactions[msgId] = messageReactions[msgId].filter(r => r.emoji !== emoji);
-				}
-			} else {
-				// Add user to existing reaction
-				existingReaction.users.push($user!.id);
-			}
-		} else {
-			// Add new reaction
-			messageReactions[msgId].push({ emoji, users: [$user!.id] });
-		}
-
-		// Force reactivity
-		messageReactions = { ...messageReactions };
 		contextMenuMessage = null;
 	}
 

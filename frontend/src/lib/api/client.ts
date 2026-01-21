@@ -167,6 +167,10 @@ export const messenger = {
 		request<Message>(`/messages/${messageId}`, { method: 'PUT', body: { content } }),
 	deleteMessage: (messageId: string) =>
 		request<{ success: boolean }>(`/messages/${messageId}`, { method: 'DELETE' }),
+	addReaction: (messageId: string, emoji: string) =>
+		request<{ success: boolean; reactions: { emoji: string; users: string[] }[] }>(`/messages/${messageId}/reactions`, { method: 'POST', body: { emoji } }),
+	getReactions: (messageId: string) =>
+		request<{ reactions: { emoji: string; users: string[] }[] }>(`/messages/${messageId}/reactions`),
 	getWebSocketUrl: (userId: string) => {
 		// WebSocket connects directly to the backend, not through the API proxy
 		const wsProtocol = browser && window.location.protocol === 'https:' ? 'wss:' : 'ws:';

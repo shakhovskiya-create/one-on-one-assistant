@@ -772,3 +772,131 @@ func (h *Handler) DeleteMessage(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{"success": true})
 }
+
+// Reaction represents a grouped reaction with users
+type Reaction struct {
+	Emoji string   `json:"emoji"`
+	Users []string `json:"users"`
+}
+
+// AddReaction adds or removes a reaction to a message (toggle)
+func (h *Handler) AddReaction(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
+	userID, _ := c.Locals("user_id").(string)
+	if userID == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "Not authenticated"})
+	}
+
+	messageID := c.Params("id")
+	if messageID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Message ID required"})
+	}
+
+	var req struct {
+		Emoji string `json:"emoji"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
+	}
+
+	if req.Emoji == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Emoji required"})
+	}
+
+	// Verify message exists and get conversation_id
+	var msg models.Message
+	err := h.DB.From("messages").Select("id, conversation_id").Eq("id", messageID).Single().Execute(&msg)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Message not found"})
+	}
+
+	// Check if reaction already exists (toggle behavior)
+	var existing []struct {
+		ID string `json:"id"`
+	}
+	h.DB.From("message_reactions").Select("id").Eq("message_id", messageID).Eq("employee_id", userID).Eq("emoji", req.Emoji).Execute(&existing)
+
+	if len(existing) > 0 {
+		// Remove reaction
+		h.DB.Delete("message_reactions", "id", existing[0].ID)
+	} else {
+		// Add reaction
+		h.DB.Insert("message_reactions", map[string]interface{}{
+			"message_id":  messageID,
+			"employee_id": userID,
+			"emoji":       req.Emoji,
+		})
+	}
+
+	// Get updated reactions for this message
+	reactions := h.getReactionsForMessage(messageID)
+
+	// Broadcast to conversation participants
+	var participants []struct {
+		EmployeeID string `json:"employee_id"`
+	}
+	h.DB.From("conversation_participants").Select("employee_id").Eq("conversation_id", msg.ConversationID).Execute(&participants)
+
+	recipients := make([]string, 0, len(participants))
+	for _, p := range participants {
+		recipients = append(recipients, p.EmployeeID)
+	}
+
+	hub.broadcast <- WSMessage{
+		Type:           "reactions_updated",
+		ConversationID: msg.ConversationID,
+		Data: map[string]interface{}{
+			"message_id": messageID,
+			"reactions":  reactions,
+		},
+		Recipients: recipients,
+	}
+
+	return c.JSON(fiber.Map{
+		"success":   true,
+		"reactions": reactions,
+	})
+}
+
+// GetReactions returns reactions for a message
+func (h *Handler) GetReactions(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
+	messageID := c.Params("id")
+	if messageID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Message ID required"})
+	}
+
+	reactions := h.getReactionsForMessage(messageID)
+	return c.JSON(fiber.Map{"reactions": reactions})
+}
+
+// getReactionsForMessage returns grouped reactions for a message
+func (h *Handler) getReactionsForMessage(messageID string) []Reaction {
+	var rawReactions []struct {
+		Emoji      string `json:"emoji"`
+		EmployeeID string `json:"employee_id"`
+	}
+	h.DB.From("message_reactions").Select("emoji, employee_id").Eq("message_id", messageID).Execute(&rawReactions)
+
+	// Group by emoji
+	emojiMap := make(map[string][]string)
+	for _, r := range rawReactions {
+		emojiMap[r.Emoji] = append(emojiMap[r.Emoji], r.EmployeeID)
+	}
+
+	reactions := make([]Reaction, 0, len(emojiMap))
+	for emoji, users := range emojiMap {
+		reactions = append(reactions, Reaction{
+			Emoji: emoji,
+			Users: users,
+		})
+	}
+
+	return reactions
+}
