@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api/client';
 	import { user, subordinates } from '$lib/stores/auth';
+	import type { TaskDependency } from '$lib/api/client';
 
 	// Types
 	interface Task {
@@ -46,6 +47,14 @@
 	let showTaskModal = $state(false);
 	let editingTask: Partial<Task> | null = $state(null);
 	let selectedTask: Task | null = $state(null);
+
+	// Dependencies state
+	let taskDependencies: TaskDependency[] = $state([]);
+	let taskDependents: TaskDependency[] = $state([]);
+	let taskBlockers: Task[] = $state([]);
+	let isTaskBlocked = $state(false);
+	let showDependencyPicker = $state(false);
+	let dependencySearch = $state('');
 
 	// Status columns for Kanban with WIP limits
 	const statusColumns = [
@@ -96,15 +105,24 @@
 			project_id: filterProject || '',
 			due_date: ''
 		};
+		// Reset dependencies for new task
+		taskDependencies = [];
+		taskDependents = [];
+		taskBlockers = [];
+		isTaskBlocked = false;
 		showTaskModal = true;
 	}
 
 	// Story points options (Fibonacci-like)
 	const storyPointsOptions = [1, 2, 3, 5, 8, 13, 21];
 
-	function openEditTask(task: Task) {
+	async function openEditTask(task: Task) {
 		editingTask = { ...task };
 		showTaskModal = true;
+		// Load dependencies for existing task
+		if (task.id) {
+			await loadTaskDependencies(task.id);
+		}
 	}
 
 	async function saveTask() {
@@ -132,6 +150,69 @@
 		} catch (e) {
 			console.error('Error saving task:', e);
 		}
+	}
+
+	// Dependencies functions
+	async function loadTaskDependencies(taskId: string) {
+		try {
+			const result = await api.tasks.getDependencies(taskId);
+			taskDependencies = result.dependencies || [];
+			taskDependents = result.dependents || [];
+
+			// Check if blocked
+			const blockedResult = await api.tasks.isBlocked(taskId);
+			isTaskBlocked = blockedResult.blocked;
+			taskBlockers = blockedResult.blockers || [];
+		} catch (e) {
+			console.error('Error loading dependencies:', e);
+			taskDependencies = [];
+			taskDependents = [];
+		}
+	}
+
+	async function addDependency(dependsOnTaskId: string) {
+		if (!editingTask?.id) return;
+		try {
+			const dep = await api.tasks.addDependency(editingTask.id, dependsOnTaskId);
+			taskDependencies = [...taskDependencies, dep];
+			showDependencyPicker = false;
+			dependencySearch = '';
+			// Reload blocked status
+			const blockedResult = await api.tasks.isBlocked(editingTask.id);
+			isTaskBlocked = blockedResult.blocked;
+			taskBlockers = blockedResult.blockers || [];
+		} catch (e: any) {
+			alert(e.message || 'Не удалось добавить зависимость');
+		}
+	}
+
+	async function removeDependency(depId: string) {
+		if (!editingTask?.id) return;
+		try {
+			await api.tasks.removeDependency(editingTask.id, depId);
+			taskDependencies = taskDependencies.filter(d => d.id !== depId);
+			// Reload blocked status
+			const blockedResult = await api.tasks.isBlocked(editingTask.id);
+			isTaskBlocked = blockedResult.blocked;
+			taskBlockers = blockedResult.blockers || [];
+		} catch (e) {
+			console.error('Error removing dependency:', e);
+		}
+	}
+
+	// Filter tasks for dependency picker (exclude current task and already added)
+	$effect(() => {
+		// This will reactively filter when dependencySearch changes
+	});
+
+	function getAvailableDependencies(): Task[] {
+		const currentId = editingTask?.id;
+		const existingIds = new Set(taskDependencies.map(d => d.depends_on_task_id));
+		return tasks.filter(t =>
+			t.id !== currentId &&
+			!existingIds.has(t.id) &&
+			(dependencySearch === '' || t.title.toLowerCase().includes(dependencySearch.toLowerCase()))
+		);
 	}
 
 	async function updateTaskStatus(task: Task, newStatus: string) {
@@ -691,6 +772,100 @@
 						/>
 					</div>
 				</div>
+
+				<!-- Dependencies Section (only for existing tasks) -->
+				{#if editingTask.id}
+					<div class="border-t pt-3 mt-3">
+						<div class="flex items-center justify-between mb-2">
+							<label class="block text-xs font-medium text-gray-500">Зависимости (блокирующие задачи)</label>
+							<button
+								type="button"
+								onclick={() => showDependencyPicker = !showDependencyPicker}
+								class="text-xs text-ekf-red hover:text-red-700"
+							>
+								+ Добавить
+							</button>
+						</div>
+
+						<!-- Blocked warning -->
+						{#if isTaskBlocked}
+							<div class="mb-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-800">
+								<span class="font-medium">⚠️ Задача заблокирована.</span> Ожидает завершения:
+								<ul class="mt-1 list-disc list-inside">
+									{#each taskBlockers as blocker}
+										<li>{blocker.title}</li>
+									{/each}
+								</ul>
+							</div>
+						{/if}
+
+						<!-- Current dependencies -->
+						{#if taskDependencies.length > 0}
+							<div class="space-y-1 mb-2">
+								{#each taskDependencies as dep}
+									<div class="flex items-center justify-between p-2 bg-gray-50 rounded text-xs">
+										<div class="flex items-center gap-2">
+											<span class={dep.depends_on_task?.status === 'done' ? 'text-green-600' : 'text-orange-600'}>
+												{dep.depends_on_task?.status === 'done' ? '✓' : '○'}
+											</span>
+											<span class="truncate">{dep.depends_on_task?.title || 'Неизвестно'}</span>
+										</div>
+										<button
+											type="button"
+											onclick={() => removeDependency(dep.id)}
+											class="text-gray-400 hover:text-red-500"
+										>
+											×
+										</button>
+									</div>
+								{/each}
+							</div>
+						{:else}
+							<p class="text-xs text-gray-400 mb-2">Нет зависимостей</p>
+						{/if}
+
+						<!-- Dependency picker -->
+						{#if showDependencyPicker}
+							<div class="border rounded-lg p-2 bg-white">
+								<input
+									type="text"
+									bind:value={dependencySearch}
+									placeholder="Поиск задачи..."
+									class="w-full px-2 py-1 border border-gray-200 rounded text-xs mb-2"
+								/>
+								<div class="max-h-32 overflow-y-auto space-y-1">
+									{#each getAvailableDependencies().slice(0, 10) as task}
+										<button
+											type="button"
+											onclick={() => addDependency(task.id)}
+											class="w-full text-left px-2 py-1 hover:bg-gray-100 rounded text-xs truncate"
+										>
+											{task.title}
+										</button>
+									{:else}
+										<p class="text-xs text-gray-400 p-2">Нет доступных задач</p>
+									{/each}
+								</div>
+							</div>
+						{/if}
+
+						<!-- Dependents info -->
+						{#if taskDependents.length > 0}
+							<div class="mt-3 pt-2 border-t">
+								<p class="text-xs text-gray-500 mb-1">Блокирует другие задачи ({taskDependents.length}):</p>
+								<div class="text-xs text-gray-400">
+									{#each taskDependents.slice(0, 3) as dep}
+										<span class="mr-2">• {dep.depends_on_task?.title}</span>
+									{/each}
+									{#if taskDependents.length > 3}
+										<span>и ещё {taskDependents.length - 3}...</span>
+									{/if}
+								</div>
+							</div>
+						{/if}
+					</div>
+				{/if}
+
 				<div class="flex justify-end gap-2 pt-2">
 					<button
 						type="button"

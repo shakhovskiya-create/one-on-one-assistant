@@ -150,6 +150,11 @@ func main() {
 	protectedAPI.Get("/tasks/:id", h.GetTask)
 	protectedAPI.Put("/tasks/:id", h.UpdateTask)
 	protectedAPI.Delete("/tasks/:id", h.DeleteTask)
+	// Task dependencies
+	protectedAPI.Get("/tasks/:id/dependencies", h.GetTaskDependencies)
+	protectedAPI.Post("/tasks/:id/dependencies", h.AddTaskDependency)
+	protectedAPI.Delete("/tasks/:id/dependencies/:dep_id", h.RemoveTaskDependency)
+	protectedAPI.Get("/tasks/:id/blocked", h.IsTaskBlocked)
 
 	// Kanban
 	protectedAPI.Get("/kanban", h.GetKanban)

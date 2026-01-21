@@ -96,6 +96,16 @@ export const meetings = {
 };
 
 // Tasks
+// Task dependency type
+export interface TaskDependency {
+	id: string;
+	task_id: string;
+	depends_on_task_id: string;
+	dependency_type: string;
+	created_at: string;
+	depends_on_task?: Task;
+}
+
 export const tasks = {
 	list: (params?: { assignee_id?: string; project_id?: string; status?: string }) => {
 		const query = new URLSearchParams(params as Record<string, string>).toString();
@@ -113,6 +123,18 @@ export const tasks = {
 	},
 	moveKanban: (taskId: string, newStatus: string) =>
 		request(`/kanban/move?task_id=${taskId}&new_status=${newStatus}`, { method: 'PUT' }),
+	// Dependencies
+	getDependencies: (id: string) =>
+		request<{ dependencies: TaskDependency[]; dependents: TaskDependency[] }>(`/tasks/${id}/dependencies`),
+	addDependency: (id: string, dependsOnTaskId: string, type?: string) =>
+		request<TaskDependency>(`/tasks/${id}/dependencies`, {
+			method: 'POST',
+			body: { depends_on_task_id: dependsOnTaskId, dependency_type: type || 'finish_to_start' }
+		}),
+	removeDependency: (id: string, depId: string) =>
+		request(`/tasks/${id}/dependencies/${depId}`, { method: 'DELETE' }),
+	isBlocked: (id: string) =>
+		request<{ blocked: boolean; blockers: Task[] }>(`/tasks/${id}/blocked`),
 };
 
 // Analytics

@@ -404,3 +404,219 @@ func (h *Handler) notifyNewTask(taskID, assigneeID, title string) {
 		h.Telegram.SendMessage(user.TelegramChatID, "📌 <b>Новая задача:</b>\n\n"+title)
 	}
 }
+
+// TaskDependency represents a dependency between tasks
+type TaskDependency struct {
+	ID              string `json:"id"`
+	TaskID          string `json:"task_id"`
+	DependsOnTaskID string `json:"depends_on_task_id"`
+	DependencyType  string `json:"dependency_type"`
+	CreatedAt       string `json:"created_at"`
+	// Populated fields
+	DependsOnTask *models.Task `json:"depends_on_task,omitempty"`
+}
+
+// AddTaskDependency creates a new dependency
+func (h *Handler) AddTaskDependency(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
+	taskID := c.Params("id")
+	if taskID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Task ID required"})
+	}
+
+	var req struct {
+		DependsOnTaskID string `json:"depends_on_task_id"`
+		DependencyType  string `json:"dependency_type"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
+	}
+
+	if req.DependsOnTaskID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "depends_on_task_id required"})
+	}
+
+	// Prevent self-dependency
+	if taskID == req.DependsOnTaskID {
+		return c.Status(400).JSON(fiber.Map{"error": "Task cannot depend on itself"})
+	}
+
+	// Default dependency type
+	depType := req.DependencyType
+	if depType == "" {
+		depType = "finish_to_start"
+	}
+
+	// Check for circular dependency
+	if h.hasCircularDependency(taskID, req.DependsOnTaskID) {
+		return c.Status(400).JSON(fiber.Map{"error": "Circular dependency detected"})
+	}
+
+	// Check if dependency already exists
+	var existing []struct{ ID string }
+	h.DB.From("task_dependencies").Select("id").
+		Eq("task_id", taskID).
+		Eq("depends_on_task_id", req.DependsOnTaskID).
+		Execute(&existing)
+
+	if len(existing) > 0 {
+		return c.Status(409).JSON(fiber.Map{"error": "Dependency already exists"})
+	}
+
+	// Create dependency
+	result, err := h.DB.Insert("task_dependencies", map[string]interface{}{
+		"task_id":            taskID,
+		"depends_on_task_id": req.DependsOnTaskID,
+		"dependency_type":    depType,
+	})
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	var created []TaskDependency
+	json.Unmarshal(result, &created)
+
+	if len(created) > 0 {
+		// Get the depends_on task info
+		var depTask models.Task
+		h.DB.From("tasks").Select("id, title, status").Eq("id", req.DependsOnTaskID).Single().Execute(&depTask)
+		created[0].DependsOnTask = &depTask
+		return c.Status(201).JSON(created[0])
+	}
+
+	return c.Status(201).JSON(fiber.Map{"success": true})
+}
+
+// RemoveTaskDependency removes a dependency
+func (h *Handler) RemoveTaskDependency(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
+	taskID := c.Params("id")
+	dependencyID := c.Params("dep_id")
+
+	if taskID == "" || dependencyID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Task ID and dependency ID required"})
+	}
+
+	// Verify dependency belongs to task
+	var dep []struct{ ID string }
+	h.DB.From("task_dependencies").Select("id").
+		Eq("id", dependencyID).
+		Eq("task_id", taskID).
+		Execute(&dep)
+
+	if len(dep) == 0 {
+		return c.Status(404).JSON(fiber.Map{"error": "Dependency not found"})
+	}
+
+	err := h.DB.Delete("task_dependencies", "id", dependencyID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"success": true})
+}
+
+// GetTaskDependencies returns all dependencies for a task
+func (h *Handler) GetTaskDependencies(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
+	taskID := c.Params("id")
+	if taskID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Task ID required"})
+	}
+
+	// Get dependencies (tasks this task depends on)
+	var dependencies []TaskDependency
+	h.DB.From("task_dependencies").Select("*").Eq("task_id", taskID).Execute(&dependencies)
+
+	// Populate depends_on task info
+	for i, dep := range dependencies {
+		var depTask models.Task
+		h.DB.From("tasks").Select("id, title, status").Eq("id", dep.DependsOnTaskID).Single().Execute(&depTask)
+		dependencies[i].DependsOnTask = &depTask
+	}
+
+	// Get dependents (tasks that depend on this task)
+	var dependents []TaskDependency
+	h.DB.From("task_dependencies").Select("*").Eq("depends_on_task_id", taskID).Execute(&dependents)
+
+	// Populate dependent task info
+	for i, dep := range dependents {
+		var depTask models.Task
+		h.DB.From("tasks").Select("id, title, status").Eq("id", dep.TaskID).Single().Execute(&depTask)
+		dependents[i].DependsOnTask = &depTask
+	}
+
+	return c.JSON(fiber.Map{
+		"dependencies": dependencies, // Задачи от которых зависит текущая
+		"dependents":   dependents,   // Задачи которые зависят от текущей
+	})
+}
+
+// IsTaskBlocked checks if task is blocked by incomplete dependencies
+func (h *Handler) IsTaskBlocked(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
+	taskID := c.Params("id")
+	blocked, blockers := h.checkTaskBlocked(taskID)
+
+	return c.JSON(fiber.Map{
+		"blocked":  blocked,
+		"blockers": blockers,
+	})
+}
+
+// checkTaskBlocked returns true if task has incomplete dependencies
+func (h *Handler) checkTaskBlocked(taskID string) (bool, []models.Task) {
+	var dependencies []TaskDependency
+	h.DB.From("task_dependencies").Select("depends_on_task_id").Eq("task_id", taskID).Execute(&dependencies)
+
+	var blockers []models.Task
+	for _, dep := range dependencies {
+		var task models.Task
+		h.DB.From("tasks").Select("id, title, status").Eq("id", dep.DependsOnTaskID).Single().Execute(&task)
+		if task.Status != "done" {
+			blockers = append(blockers, task)
+		}
+	}
+
+	return len(blockers) > 0, blockers
+}
+
+// hasCircularDependency checks if adding dependency would create a cycle
+func (h *Handler) hasCircularDependency(taskID, dependsOnID string) bool {
+	visited := make(map[string]bool)
+	return h.dfs(dependsOnID, taskID, visited)
+}
+
+func (h *Handler) dfs(current, target string, visited map[string]bool) bool {
+	if current == target {
+		return true
+	}
+	if visited[current] {
+		return false
+	}
+	visited[current] = true
+
+	var deps []struct {
+		DependsOnTaskID string `json:"depends_on_task_id"`
+	}
+	h.DB.From("task_dependencies").Select("depends_on_task_id").Eq("task_id", current).Execute(&deps)
+
+	for _, dep := range deps {
+		if h.dfs(dep.DependsOnTaskID, target, visited) {
+			return true
+		}
+	}
+	return false
+}
