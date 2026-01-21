@@ -12,6 +12,19 @@
 - ✅ Улучшен .env.example с рекомендациями по безопасности
 - ✅ По умолчанию AD_SKIP_VERIFY и EWS_SKIP_TLS_VERIFY установлены в false
 
+### 1.1 Security Audit Fixes (2026-01-21)
+
+- ✅ **Удалено хранение пароля в sessionStorage** — EWS credentials больше не кэшируются в браузере
+- ✅ **Credentials только из body** — убран fallback на query params (URL logging risk)
+- ✅ **JWT_SECRET required** — приложение не стартует без явно заданного секрета
+- ✅ **Rate limiting** — Auth: 5 req/min, API: 100 req/min per IP
+- ✅ **CSRF protection** — middleware + endpoint /api/v1/csrf-token
+- ✅ **crypto/rand** — криптографически стойкий RNG для токенов
+- ✅ **PostgreSQL sslmode=prefer** — TLS при доступности
+- ✅ **Убрана debug info** — domain/url не возвращаются в auth responses
+- ✅ **Валидация входных данных** — pkg/validation/validator.go
+- ✅ **Структурированное логирование** — internal/utils/logger.go
+
 ### 2. Архитектура
 
 - ✅ Включен nginx reverse proxy
@@ -41,22 +54,23 @@
 
 ### Backend код (требует пересборки)
 
-1. **Валидация входных данных**
-   - Создать pkg/validation/validator.go
-   - Интегрировать валидацию во все handlers
+1. ~~**Валидация входных данных**~~ ✅ DONE
+   - ~~Создать pkg/validation/validator.go~~
+   - ⏳ Интегрировать валидацию во все handlers (частично)
 
-2. **Структурированное логирование**
-   - Создать pkg/logger/logger.go
-   - Заменить стандартный log на структурированный
+2. ~~**Структурированное логирование**~~ ✅ DONE
+   - ~~Создать pkg/logger/logger.go~~ → internal/utils/logger.go
+   - ⏳ Заменить стандартный log на структурированный (частично)
 
 3. **Redis кэширование**
    - Создать pkg/cache/redis.go
    - Добавить зависимость github.com/redis/go-redis/v9 в go.mod
    - Интегрировать кэширование в handlers
 
-4. **Улучшенные health checks**
-   - Расширить /health endpoint
-   - Добавить проверку Redis, проверку БД
+4. ~~**Улучшенные health checks**~~ ✅ DONE
+   - ~~Расширить /health endpoint~~
+   - ~~Добавить проверку БД~~
+   - ⏳ Добавить проверку Redis (после интеграции)
 
 ### Frontend
 
@@ -64,9 +78,13 @@
    - Скопировать favicon.svg в build
    - Обновить app.html для использования favicon
 
-2. **Обработка ошибок**
-   - Улучшить обработку ошибок в API client
-   - Добавить retry логику
+2. ~~**Обработка ошибок**~~ ✅ DONE
+   - ~~Улучшить обработку ошибок в API client~~ → frontend/src/lib/utils/errorHandler.ts
+   - ⏳ Добавить retry логику (опционально)
+
+3. **CSRF интеграция** (новое требование после аудита)
+   - Добавить получение CSRF токена при логине
+   - Добавить X-CSRF-Token header к state-changing запросам
 
 ### SSL/HTTPS
 

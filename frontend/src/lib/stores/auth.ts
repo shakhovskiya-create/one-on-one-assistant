@@ -97,8 +97,8 @@ function createAuthStore() {
 					localStorage.setItem('auth_token', token);
 					localStorage.setItem('auth_user', JSON.stringify(user));
 					localStorage.setItem('currentUserId', user.id);
-					// Save credentials for EWS services (mail, calendar)
-					sessionStorage.setItem('ews_credentials', JSON.stringify({ username, password }));
+					// NOTE: EWS credentials are now stored server-side (encrypted_password in DB)
+					// Do NOT store passwords in browser storage - security risk
 				}
 
 				fetchSubordinates(user.id);

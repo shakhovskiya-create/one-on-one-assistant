@@ -50,14 +50,14 @@ func Load() *Config {
 		ADBaseDN:       getEnv("AD_BASE_DN", "OU=EKF-USERS,DC=ekfgroup,DC=ru"),
 		ADBindUser:     getEnv("AD_BIND_USER", ""),
 		ADBindPassword: getEnv("AD_BIND_PASSWORD", ""),
-		ADSkipVerify:   getEnv("AD_SKIP_VERIFY", "true") == "true",
+		ADSkipVerify:   getEnv("AD_SKIP_VERIFY", "false") == "true", // Default FALSE for security
 		// EWS Configuration
 		EWSURL:           getEnv("EWS_URL", "https://post.ekf.su/EWS/Exchange.asmx"),
 		EWSDomain:        getEnv("EWS_DOMAIN", "ekfgroup"),
 		EWSUsername:      getEnv("EWS_USERNAME", ""),
 		EWSPassword:      getEnv("EWS_PASSWORD", ""),
 		EWSSkipTLSVerify: getEnv("EWS_SKIP_TLS_VERIFY", "false") == "true",
-		JWTSecret:        getEnv("JWT_SECRET", "change-me-in-production"),
+		JWTSecret:        getEnvRequired("JWT_SECRET"), // REQUIRED - no default for security
 		CamundaURL:       getEnv("CAMUNDA_URL", ""),
 		CamundaUser:      getEnv("CAMUNDA_USER", ""),
 		CamundaPassword:  getEnv("CAMUNDA_PASSWORD", ""),
@@ -69,4 +69,13 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// getEnvRequired returns env var value or panics if not set (for critical security configs)
+func getEnvRequired(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		panic("SECURITY ERROR: Required environment variable " + key + " is not set")
+	}
+	return value
 }

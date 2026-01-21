@@ -41,10 +41,13 @@ func main() {
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     corsOrigins,
 		AllowMethods:     "GET,POST,PUT,DELETE,PATCH,OPTIONS",
-		AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
+		AllowHeaders:     "Origin,Content-Type,Accept,Authorization,X-CSRF-Token",
 		AllowCredentials: true,
 		MaxAge:           3600,
 	}))
+
+	// Global API rate limiting (100 req/min per IP)
+	app.Use(middleware.APIRateLimiter())
 
 	// Health endpoints
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -104,11 +107,18 @@ func main() {
 
 	// Public routes (no JWT required)
 	publicAPI := api.Group("")
-	publicAPI.Post("/ad/authenticate", h.AuthenticateAD)
+	// Auth endpoint with stricter rate limiting (5 req/min per IP to prevent brute force)
+	publicAPI.Post("/ad/authenticate", middleware.AuthRateLimiter(), h.AuthenticateAD)
 	publicAPI.Get("/connector/status", h.ConnectorStatus)
 
 	// Protected routes (JWT required)
 	protectedAPI := api.Group("", middleware.JWTAuth(h.JWT))
+
+	// CSRF token endpoint (must be called before state-changing requests)
+	protectedAPI.Get("/csrf-token", middleware.CSRFTokenHandler)
+
+	// Apply CSRF protection to all state-changing routes
+	protectedAPI.Use(middleware.CSRFProtection())
 
 	// Employees
 	protectedAPI.Get("/employees", h.ListEmployees)

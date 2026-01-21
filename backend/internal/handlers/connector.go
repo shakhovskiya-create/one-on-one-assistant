@@ -1,8 +1,8 @@
 package handlers
 
 import (
+	"crypto/rand"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -129,15 +129,13 @@ func (h *Handler) SyncADUsersDirect(c *fiber.Ctx) error {
 		Password string `json:"password"`
 	}
 
-	// Try to parse body, fallback to query params
-	c.BodyParser(&req)
-	if req.Username == "" {
-		req.Username = c.Query("username")
-		req.Password = c.Query("password")
+	// Parse body only - NEVER accept credentials from query params (security risk - logged in URLs)
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
 	if req.Username == "" || req.Password == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "Username and password required for AD sync"})
+		return c.Status(400).JSON(fiber.Map{"error": "Username and password required in request body"})
 	}
 
 	// Always include photos as per user requirement
@@ -426,14 +424,7 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 		req.Password = c.FormValue("password")
 	}
 
-	// Also check query params as fallback
-	if req.Username == "" {
-		req.Username = c.Query("username")
-	}
-	if req.Password == "" {
-		req.Password = c.Query("password")
-	}
-
+	// SECURITY: Never accept credentials from query params - they get logged
 	username := req.Username
 	password := req.Password
 
@@ -506,21 +497,12 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 				})
 			}
 
-			// User authenticated in AD but not in database - return error with debug info
-			response := fiber.Map{
+			// User authenticated in AD but not in database
+			// SECURITY: Do not expose debug info in production responses
+			return c.Status(403).JSON(fiber.Map{
 				"error":         "User not found in system. Please contact administrator.",
 				"authenticated": false,
-			}
-			if adUserInfo := c.Locals("ad_user_info"); adUserInfo != nil {
-				response["ad_user"] = adUserInfo
-			}
-			if dbErr := c.Locals("db_query_error"); dbErr != nil {
-				response["db_error"] = fmt.Sprint(dbErr)
-			}
-			if dbCount := c.Locals("db_result_count"); dbCount != nil {
-				response["db_result_count"] = dbCount
-			}
-			return c.Status(403).JSON(response)
+			})
 		}
 	}
 
@@ -600,18 +582,11 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 		}
 	}
 
-	// AD auth failed - include debug info if available
-	response := fiber.Map{
+	// AD auth failed - SECURITY: Do not expose debug info
+	return c.JSON(fiber.Map{
 		"authenticated": false,
 		"error":         "Неверные учётные данные",
-	}
-
-	// Add debug error in development
-	if adError := c.Locals("ad_error"); adError != nil {
-		response["debug_error"] = adError
-	}
-
-	return c.JSON(response)
+	})
 }
 
 // RefreshToken refreshes a JWT token
@@ -706,8 +681,18 @@ func generateToken() string {
 func randomString(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, n)
+	// SECURITY: Use crypto/rand for secure random generation
+	randBytes := make([]byte, n)
+	if _, err := rand.Read(randBytes); err != nil {
+		// Fallback to less secure but still random
+		for i := range b {
+			b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
+			time.Sleep(time.Nanosecond) // Ensure different values
+		}
+		return string(b)
+	}
 	for i := range b {
-		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
+		b[i] = letters[int(randBytes[i])%len(letters)]
 	}
 	return string(b)
 }
