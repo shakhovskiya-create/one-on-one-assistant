@@ -142,9 +142,9 @@ func (h *Handler) ConfigureTelegramBot(c *fiber.Ctx) error {
 	channelID := c.Params("channel_id")
 
 	var req struct {
-		BotToken  string `json:"bot_token"`
-		ChatID    int64  `json:"chat_id"`
-		Enabled   bool   `json:"enabled"`
+		BotToken string `json:"bot_token"`
+		ChatID   int64  `json:"chat_id"`
+		Enabled  bool   `json:"enabled"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})

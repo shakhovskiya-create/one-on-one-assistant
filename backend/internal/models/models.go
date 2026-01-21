@@ -161,18 +161,18 @@ type TelegramUser struct {
 
 // Conversation represents a chat between users
 type Conversation struct {
-	ID               string     `json:"id"`
-	Type             string     `json:"type"` // "direct", "group", or "channel"
-	Name             *string    `json:"name,omitempty"`
-	Description      *string    `json:"description,omitempty"`    // For channels
-	CreatedBy        *string    `json:"created_by,omitempty"`     // Channel owner
-	TelegramEnabled  bool       `json:"telegram_enabled"`         // Telegram bot linked
-	TelegramChatID   *int64     `json:"telegram_chat_id,omitempty"`
-	CreatedAt        *time.Time `json:"created_at,omitempty"`
-	UpdatedAt        *time.Time `json:"updated_at,omitempty"`
-	Participants     []Employee `json:"participants,omitempty"`
-	LastMessage      *Message   `json:"last_message,omitempty"`
-	UnreadCount      int        `json:"unread_count,omitempty"`
+	ID              string     `json:"id"`
+	Type            string     `json:"type"` // "direct", "group", or "channel"
+	Name            *string    `json:"name,omitempty"`
+	Description     *string    `json:"description,omitempty"` // For channels
+	CreatedBy       *string    `json:"created_by,omitempty"`  // Channel owner
+	TelegramEnabled bool       `json:"telegram_enabled"`      // Telegram bot linked
+	TelegramChatID  *int64     `json:"telegram_chat_id,omitempty"`
+	CreatedAt       *time.Time `json:"created_at,omitempty"`
+	UpdatedAt       *time.Time `json:"updated_at,omitempty"`
+	Participants    []Employee `json:"participants,omitempty"`
+	LastMessage     *Message   `json:"last_message,omitempty"`
+	UnreadCount     int        `json:"unread_count,omitempty"`
 }
 
 // ConversationParticipant links users to conversations
