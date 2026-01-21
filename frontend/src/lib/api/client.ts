@@ -84,7 +84,12 @@ export const meetings = {
 		});
 		if (!response.ok) {
 			const error = await response.json().catch(() => ({ error: response.statusText }));
-			throw new Error(error.error || 'Upload failed');
+			// Include all error details in the thrown error
+			const err = new Error(error.error || 'Upload failed') as any;
+			err.details = error.details;
+			err.hint = error.hint;
+			err.errors = error.errors;
+			throw err;
 		}
 		return response.json();
 	},
@@ -133,6 +138,8 @@ export const calendar = {
 		request('/calendar/free-slots', { method: 'POST', body: data }),
 	sync: (data: CalendarSyncRequest) =>
 		request('/calendar/sync', { method: 'POST', body: data }),
+	getRooms: (employeeId: string) =>
+		request<{ rooms: MeetingRoom[] }>(`/calendar/rooms?employee_id=${employeeId}`),
 };
 
 // Messenger
@@ -145,7 +152,7 @@ export const messenger = {
 		if (offset) params.append('offset', offset.toString());
 		return request<{ conversation: Conversation; participants: Employee[]; messages: Message[] }>(`/conversations/${id}?${params}`);
 	},
-	createConversation: (data: { type?: string; name?: string; participants: string[] }) =>
+	createConversation: (data: { type?: string; name?: string; description?: string; participants: string[] }) =>
 		request<Conversation>('/conversations', { method: 'POST', body: data }),
 	sendMessage: (data: { conversation_id: string; sender_id: string; content: string; reply_to_id?: string }) =>
 		request<Message>('/messages', { method: 'POST', body: data }),
@@ -160,6 +167,11 @@ export const messenger = {
 		}
 		return `${wsProtocol}//${wsHost}/ws/messenger?${params.toString()}`;
 	},
+	// Telegram integration
+	getTelegramConfig: (channelId: string) =>
+		request<{ enabled: boolean; chat_id?: number; webhook_url: string }>(`/channels/${channelId}/telegram`),
+	configureTelegram: (channelId: string, data: { bot_token?: string; chat_id?: number; enabled: boolean }) =>
+		request<{ success: boolean; webhook_url: string; message: string }>(`/channels/${channelId}/telegram`, { method: 'POST', body: data }),
 };
 
 // Connector
@@ -213,6 +225,35 @@ export const files = {
 	delete: (id: string) => request(`/files/${id}`, { method: 'DELETE' }),
 	attach: (fileId: string, entityType: string, entityId: string) =>
 		request('/files/attach', { method: 'POST', body: { file_id: fileId, entity_type: entityType, entity_id: entityId } }),
+};
+
+// Speech-to-Text
+export interface TranscribeResult {
+	transcript: string;
+	whisper?: string;
+	yandex?: string;
+}
+
+export const speech = {
+	transcribe: async (audioBlob: Blob, service: 'auto' | 'whisper' | 'yandex' | 'both' = 'auto'): Promise<TranscribeResult> => {
+		const formData = new FormData();
+		// Determine file extension based on blob type
+		const ext = audioBlob.type.includes('webm') ? '.webm' : audioBlob.type.includes('mp3') ? '.mp3' : '.ogg';
+		formData.append('audio', audioBlob, `voice${ext}`);
+
+		const response = await fetch(`${API_URL}/speech/transcribe?service=${service}`, {
+			method: 'POST',
+			headers: getAuthHeaders(),
+			body: formData
+		});
+
+		if (!response.ok) {
+			const error = await response.json().catch(() => ({ error: response.statusText }));
+			throw new Error(error.error || error.details || 'Transcription failed');
+		}
+
+		return response.json();
+	}
 };
 
 // BPMN / Camunda
@@ -522,11 +563,21 @@ export interface CalendarSyncRequest {
 	days_forward?: number;
 }
 
+export interface MeetingRoom {
+	name: string;
+	email: string;
+	capacity?: number;
+}
+
 // Messenger types
 export interface Conversation {
 	id: string;
 	type: 'direct' | 'group' | 'channel';
 	name?: string;
+	description?: string;
+	created_by?: string;
+	telegram_enabled?: boolean;
+	telegram_chat_id?: number;
 	created_at?: string;
 	updated_at?: string;
 	participants?: Employee[];
@@ -608,6 +659,8 @@ export const mail = {
 		request<{ attachments: EmailAttachment[] }>('/mail/attachments', { method: 'POST', body: data }),
 	getAttachmentContent: (data: { username: string; password: string; attachment_id: string }) =>
 		request<{ name: string; content_type: string; content: string }>('/mail/attachment/content', { method: 'POST', body: data }),
+	respondToMeeting: (data: { username: string; password: string; item_id: string; change_key?: string; response: 'Accept' | 'Decline' | 'Tentative' }) =>
+		request<{ success: boolean; response: string }>('/mail/meeting/respond', { method: 'POST', body: data }),
 };
 
 // Combined API object for convenience

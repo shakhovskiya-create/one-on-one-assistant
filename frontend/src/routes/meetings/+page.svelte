@@ -196,8 +196,15 @@
 			uploadStatus = 'done';
 			uploadProgress = 100;
 			meetings = await meetingsApi.list();
-		} catch (err) {
-			uploadError = err instanceof Error ? err.message : 'Произошла ошибка';
+		} catch (err: any) {
+			// Extract detailed error message if available
+			if (err?.details) {
+				uploadError = err.details;
+			} else if (err?.hint) {
+				uploadError = `${err.message || 'Ошибка'}: ${err.hint}`;
+			} else {
+				uploadError = err instanceof Error ? err.message : 'Произошла ошибка';
+			}
 			uploadStatus = 'error';
 		}
 	}

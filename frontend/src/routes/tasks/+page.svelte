@@ -154,7 +154,7 @@
 	}
 
 	// Filtered tasks
-	let filteredTasks = $derived(() => {
+	let filteredTasks = $derived.by(() => {
 		let result = tasks;
 
 		if (filterProject) {
@@ -184,7 +184,7 @@
 	});
 
 	function getTasksByStatus(status: string) {
-		return filteredTasks().filter(t => t.status === status);
+		return filteredTasks.filter(t => t.status === status);
 	}
 
 	function getStoryPointsByStatus(status: string): number {
@@ -192,7 +192,7 @@
 	}
 
 	function getTotalStoryPoints(): number {
-		return filteredTasks().reduce((sum, t) => sum + (t.story_points || 0), 0);
+		return filteredTasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
 	}
 
 	function isWipLimitExceeded(status: string): boolean {
@@ -202,11 +202,11 @@
 	}
 
 	function getCompletedTasksCount(): number {
-		return filteredTasks().filter(t => t.status === 'done').length;
+		return filteredTasks.filter(t => t.status === 'done').length;
 	}
 
 	function getInProgressTasksCount(): number {
-		return filteredTasks().filter(t => t.status === 'in_progress').length;
+		return filteredTasks.filter(t => t.status === 'in_progress').length;
 	}
 
 	// Quick add task in column
@@ -300,7 +300,7 @@
 		<div>
 			<h1 class="text-xl font-bold text-gray-900">Задачи</h1>
 			<div class="flex items-center gap-3 text-sm text-gray-500">
-				<span>{filteredTasks().length} задач</span>
+				<span>{filteredTasks.length} задач</span>
 				{#if getTotalStoryPoints() > 0}
 					<span class="text-indigo-600 font-medium">{getTotalStoryPoints()} SP</span>
 				{/if}
@@ -387,7 +387,7 @@
 	{:else if viewMode === 'list'}
 		<!-- List View -->
 		<div class="bg-white rounded-lg shadow-sm overflow-hidden">
-			{#if filteredTasks().length === 0}
+			{#if filteredTasks.length === 0}
 				<div class="text-center py-12">
 					<svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -411,7 +411,7 @@
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-gray-100">
-						{#each filteredTasks() as task (task.id)}
+						{#each filteredTasks as task (task.id)}
 							<tr class="hover:bg-gray-50 transition-colors">
 								<td class="px-4 py-2">
 									<button onclick={() => openEditTask(task)} class="text-left group">

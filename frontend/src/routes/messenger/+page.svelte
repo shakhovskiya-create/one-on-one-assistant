@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { messenger, employees as employeesApi } from '$lib/api/client';
+	import { messenger, employees as employeesApi, speech } from '$lib/api/client';
 	import type { Conversation, Message, Employee } from '$lib/api/client';
 	import { user, subordinates as userSubordinates } from '$lib/stores/auth';
 
@@ -57,10 +57,85 @@
 	let mediaRecorder: MediaRecorder | null = null;
 	let audioChunks: Blob[] = [];
 
+	// Voice message storage (local - in production would be uploaded to server)
+	let voiceMessages: Record<string, { url: string; duration: number; blob?: Blob }> = $state({});
+	let playingVoiceId: string | null = $state(null);
+	let audioElement: HTMLAudioElement | null = null;
+
+	// Voice transcription state
+	let voiceTranscriptions: Record<string, { text: string; loading: boolean; error?: string }> = $state({});
+
 	// Call state
 	let showCallModal = $state(false);
 	let callType: 'audio' | 'video' = $state('audio');
 	let callStatus: 'calling' | 'connected' | 'ended' = $state('calling');
+
+	// Video circle recording
+	let isRecordingVideo = $state(false);
+	let videoRecordingTime = $state(0);
+	let videoRecordingInterval: ReturnType<typeof setInterval> | null = null;
+	let videoMediaRecorder: MediaRecorder | null = null;
+	let videoChunks: Blob[] = [];
+	let videoStream: MediaStream | null = null;
+	let videoPreviewElement: HTMLVideoElement | null = $state(null);
+	let showVideoRecorder = $state(false);
+
+	// Video message storage
+	let videoMessages: Record<string, { url: string; duration: number; blob?: Blob }> = $state({});
+	let playingVideoId: string | null = $state(null);
+
+	// Telegram bot configuration
+	let showTelegramConfig = $state(false);
+	let telegramBotToken = $state('');
+	let telegramChatId = $state('');
+	let telegramEnabled = $state(false);
+	let telegramWebhookUrl = $state('');
+	let telegramLoading = $state(false);
+
+	async function openTelegramConfig() {
+		if (!currentConversation || currentConversation.type !== 'channel') return;
+		if (currentConversation.created_by !== $user?.id) return;
+
+		telegramLoading = true;
+		showTelegramConfig = true;
+
+		try {
+			const config = await messenger.getTelegramConfig(currentConversation.id);
+			telegramEnabled = config.enabled;
+			telegramChatId = config.chat_id?.toString() || '';
+			telegramWebhookUrl = config.webhook_url;
+		} catch (e) {
+			console.error('Failed to load Telegram config:', e);
+		} finally {
+			telegramLoading = false;
+		}
+	}
+
+	async function saveTelegramConfig() {
+		if (!currentConversation) return;
+
+		telegramLoading = true;
+		try {
+			const result = await messenger.configureTelegram(currentConversation.id, {
+				bot_token: telegramBotToken || undefined,
+				chat_id: telegramChatId ? parseInt(telegramChatId) : undefined,
+				enabled: telegramEnabled
+			});
+			telegramWebhookUrl = result.webhook_url;
+			alert(result.message);
+			showTelegramConfig = false;
+
+			// Update local conversation state
+			if (currentConversation) {
+				currentConversation = { ...currentConversation, telegram_enabled: telegramEnabled };
+			}
+		} catch (e) {
+			console.error('Failed to save Telegram config:', e);
+			alert('Ошибка сохранения настроек Telegram');
+		} finally {
+			telegramLoading = false;
+		}
+	}
 
 	async function startRecording() {
 		try {
@@ -120,21 +195,211 @@
 	}
 
 	function sendVoiceMessage(audioBlob: Blob) {
-		// Демо: показываем уведомление
-		// В реальном приложении здесь бы загружался файл и отправлялось сообщение
 		const duration = recordingTime;
-		const msg = `🎤 Голосовое сообщение (${formatRecordingTime(duration)})`;
-		// Отправляем как текстовое сообщение для демо
+		const voiceId = `voice_${Date.now()}`;
+
+		// Create object URL for playback
+		const audioUrl = URL.createObjectURL(audioBlob);
+		voiceMessages[voiceId] = { url: audioUrl, duration, blob: audioBlob };
+
+		// Send message with voice marker
+		const msg = `[VOICE:${voiceId}:${duration}]`;
 		if (currentConversation && $user) {
 			newMessage = msg;
 			sendMessage();
 		}
 	}
 
+	async function transcribeVoice(voiceId: string) {
+		const voice = voiceMessages[voiceId];
+		if (!voice?.blob) {
+			console.error('No audio blob available for transcription');
+			return;
+		}
+
+		// Mark as loading
+		voiceTranscriptions[voiceId] = { text: '', loading: true };
+		voiceTranscriptions = { ...voiceTranscriptions };
+
+		try {
+			const result = await speech.transcribe(voice.blob);
+			voiceTranscriptions[voiceId] = {
+				text: result.transcript,
+				loading: false
+			};
+		} catch (err) {
+			console.error('Transcription failed:', err);
+			voiceTranscriptions[voiceId] = {
+				text: '',
+				loading: false,
+				error: err instanceof Error ? err.message : 'Transcription failed'
+			};
+		}
+		voiceTranscriptions = { ...voiceTranscriptions };
+	}
+
+	function isVoiceMessage(content: string): boolean {
+		return content.startsWith('[VOICE:');
+	}
+
+	function getVoiceInfo(content: string): { id: string; duration: number } | null {
+		const match = content.match(/\[VOICE:([^:]+):(\d+)\]/);
+		if (match) {
+			return { id: match[1], duration: parseInt(match[2]) };
+		}
+		return null;
+	}
+
+	function playVoice(voiceId: string) {
+		const voice = voiceMessages[voiceId];
+		if (!voice) return;
+
+		if (playingVoiceId === voiceId && audioElement) {
+			// Toggle pause/play
+			if (audioElement.paused) {
+				audioElement.play();
+			} else {
+				audioElement.pause();
+			}
+			return;
+		}
+
+		// Stop current audio
+		if (audioElement) {
+			audioElement.pause();
+			audioElement = null;
+		}
+
+		// Play new audio
+		audioElement = new Audio(voice.url);
+		playingVoiceId = voiceId;
+
+		audioElement.onended = () => {
+			playingVoiceId = null;
+			audioElement = null;
+		};
+
+		audioElement.play();
+	}
+
 	function formatRecordingTime(seconds: number): string {
 		const mins = Math.floor(seconds / 60);
 		const secs = seconds % 60;
 		return `${mins}:${secs.toString().padStart(2, '0')}`;
+	}
+
+	// Video circle recording functions
+	async function openVideoRecorder() {
+		try {
+			videoStream = await navigator.mediaDevices.getUserMedia({
+				video: { facingMode: 'user', width: 480, height: 480 },
+				audio: true
+			});
+			showVideoRecorder = true;
+
+			// Wait for DOM to update, then set video source
+			setTimeout(() => {
+				if (videoPreviewElement && videoStream) {
+					videoPreviewElement.srcObject = videoStream;
+					videoPreviewElement.play();
+				}
+			}, 100);
+		} catch (err) {
+			console.error('Failed to access camera:', err);
+			alert('Не удалось получить доступ к камере');
+		}
+	}
+
+	function closeVideoRecorder() {
+		if (videoStream) {
+			videoStream.getTracks().forEach(track => track.stop());
+			videoStream = null;
+		}
+		if (videoMediaRecorder && isRecordingVideo) {
+			videoMediaRecorder.stop();
+		}
+		showVideoRecorder = false;
+		isRecordingVideo = false;
+		videoRecordingTime = 0;
+		if (videoRecordingInterval) {
+			clearInterval(videoRecordingInterval);
+			videoRecordingInterval = null;
+		}
+	}
+
+	function startVideoRecording() {
+		if (!videoStream) return;
+
+		videoMediaRecorder = new MediaRecorder(videoStream, { mimeType: 'video/webm' });
+		videoChunks = [];
+
+		videoMediaRecorder.ondataavailable = (e) => {
+			if (e.data.size > 0) {
+				videoChunks.push(e.data);
+			}
+		};
+
+		videoMediaRecorder.onstop = () => {
+			const videoBlob = new Blob(videoChunks, { type: 'video/webm' });
+			sendVideoMessage(videoBlob);
+			closeVideoRecorder();
+		};
+
+		videoMediaRecorder.start();
+		isRecordingVideo = true;
+		videoRecordingTime = 0;
+		videoRecordingInterval = setInterval(() => {
+			videoRecordingTime++;
+			// Auto-stop after 60 seconds
+			if (videoRecordingTime >= 60) {
+				stopVideoRecording();
+			}
+		}, 1000);
+	}
+
+	function stopVideoRecording() {
+		if (videoMediaRecorder && isRecordingVideo) {
+			videoMediaRecorder.stop();
+			isRecordingVideo = false;
+			if (videoRecordingInterval) {
+				clearInterval(videoRecordingInterval);
+				videoRecordingInterval = null;
+			}
+		}
+	}
+
+	function sendVideoMessage(videoBlob: Blob) {
+		const duration = videoRecordingTime;
+		const videoId = `video_${Date.now()}`;
+
+		const videoUrl = URL.createObjectURL(videoBlob);
+		videoMessages[videoId] = { url: videoUrl, duration, blob: videoBlob };
+
+		const msg = `[VIDEO:${videoId}:${duration}]`;
+		if (currentConversation && $user) {
+			newMessage = msg;
+			sendMessage();
+		}
+	}
+
+	function isVideoMessage(content: string): boolean {
+		return content.startsWith('[VIDEO:');
+	}
+
+	function getVideoInfo(content: string): { id: string; duration: number } | null {
+		const match = content.match(/\[VIDEO:([^:]+):(\d+)\]/);
+		if (match) {
+			return { id: match[1], duration: parseInt(match[2]) };
+		}
+		return null;
+	}
+
+	function playVideo(videoId: string) {
+		if (playingVideoId === videoId) {
+			playingVideoId = null;
+		} else {
+			playingVideoId = videoId;
+		}
 	}
 
 	function startCall(type: 'audio' | 'video') {
@@ -384,7 +649,10 @@
 	}
 
 	async function createConversation() {
-		if (selectedParticipants.length === 0 || !$user?.id) return;
+		// For channels, we can create without selecting participants
+		// For chats, we need at least one participant
+		if (newChatType !== 'channel' && selectedParticipants.length === 0) return;
+		if (!$user?.id) return;
 
 		const participants = [...selectedParticipants, $user.id];
 
@@ -392,6 +660,7 @@
 			const conv = await messenger.createConversation({
 				type: newChatType,
 				name: newChatType !== 'direct' ? groupName : undefined,
+				description: newChatType === 'channel' ? channelDescription : undefined,
 				participants
 			});
 			// Add participant info from selected employees
@@ -437,6 +706,28 @@
 			return other?.photo_base64 || null;
 		}
 		return null;
+	}
+
+	// Check if current user can post in conversation (for channels, only creator/admins can post)
+	function canPostInConversation(conv: Conversation): boolean {
+		if (conv.type !== 'channel') return true;
+		// For channels, only the creator can post (in production, check is_admin flag)
+		return conv.created_by === $user?.id;
+	}
+
+	// Get subscriber/participant count text
+	function getParticipantCountText(conv: Conversation): string {
+		const count = conv.participants?.length || 0;
+		if (conv.type === 'channel') {
+			// Russian pluralization for subscribers
+			if (count === 1) return '1 подписчик';
+			if (count >= 2 && count <= 4) return `${count} подписчика`;
+			return `${count} подписчиков`;
+		}
+		// For groups
+		if (count === 1) return '1 участник';
+		if (count >= 2 && count <= 4) return `${count} участника`;
+		return `${count} участников`;
 	}
 
 	function formatTime(dateStr?: string): string {
@@ -501,18 +792,26 @@
 		contextMenuMessage = msg;
 
 		// Calculate position to keep menu on screen
-		const menuWidth = 160; // min-w-40 = 160px
-		const menuHeight = 120; // approximate height for 3 buttons
+		const menuWidth = 200; // actual width
+		const menuHeight = 280; // reactions row + 4-5 buttons
 		let x = event.clientX;
 		let y = event.clientY;
 
 		// Adjust if would go off right edge
 		if (x + menuWidth > window.innerWidth) {
-			x = window.innerWidth - menuWidth - 10;
+			x = window.innerWidth - menuWidth - 16;
+		}
+		// Adjust if would go off left edge
+		if (x < 16) {
+			x = 16;
 		}
 		// Adjust if would go off bottom edge
 		if (y + menuHeight > window.innerHeight) {
-			y = window.innerHeight - menuHeight - 10;
+			y = window.innerHeight - menuHeight - 16;
+		}
+		// Adjust if would go off top edge
+		if (y < 16) {
+			y = 16;
 		}
 
 		contextMenuPosition = { x, y };
@@ -847,7 +1146,7 @@
 							<div class="flex-1 min-w-0 text-left">
 								<div class="font-medium text-gray-900 truncate text-sm">{conv.name || 'Канал'}</div>
 								<p class="text-sm text-gray-500 truncate mt-0.5">
-									{conv.participants?.length || 0} подписчиков
+									{getParticipantCountText(conv)}
 								</p>
 							</div>
 						</button>
@@ -1022,16 +1321,22 @@
 						{/if}
 					</div>
 				{/if}
-				<div class="flex-1">
-					<div class="font-medium text-gray-900">{getConversationName(currentConversation)}</div>
+				<div class="flex-1 min-w-0">
+					<div class="font-medium text-gray-900 truncate">{getConversationName(currentConversation)}</div>
 					{#if typingUsers[currentConversation.id]}
 						<div class="text-sm text-ekf-red">печатает...</div>
-					{:else if currentConversation.participants}
+					{:else if currentConversation.type === 'channel'}
 						<div class="text-sm text-gray-500">
-							{currentConversation.type === 'group' || currentConversation.type === 'channel'
-								? `${currentConversation.participants.length} участников`
-								: 'был(а) недавно'}
+							{getParticipantCountText(currentConversation)}
+							{#if currentConversation.description}
+								<span class="text-gray-400"> · </span>
+								<span class="text-gray-400 truncate">{currentConversation.description}</span>
+							{/if}
 						</div>
+					{:else if currentConversation.type === 'group' && currentConversation.participants}
+						<div class="text-sm text-gray-500">{getParticipantCountText(currentConversation)}</div>
+					{:else if currentConversation.participants}
+						<div class="text-sm text-gray-500">был(а) недавно</div>
 					{/if}
 				</div>
 				<!-- Кнопки звонков -->
@@ -1053,6 +1358,20 @@
 						<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
 						</svg>
+					</button>
+				{:else if currentConversation.type === 'channel' && currentConversation.created_by === $user?.id}
+					<!-- Telegram settings button for channel creator -->
+					<button
+						onclick={openTelegramConfig}
+						class="p-2 hover:bg-gray-100 rounded-full transition-colors relative"
+						title="Настройки Telegram бота"
+					>
+						<svg class="w-5 h-5 {currentConversation.telegram_enabled ? 'text-blue-500' : 'text-gray-500'}" fill="currentColor" viewBox="0 0 24 24">
+							<path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.223-.548.223l.188-2.85 5.18-4.686c.223-.198-.054-.308-.346-.11l-6.4 4.02-2.76-.918c-.6-.187-.612-.6.125-.89l10.782-4.156c.5-.18.94.12.78.89z"/>
+						</svg>
+						{#if currentConversation.telegram_enabled}
+							<span class="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full"></span>
+						{/if}
 					</button>
 				{/if}
 				<button class="p-2 hover:bg-gray-100 rounded-full transition-colors">
@@ -1123,7 +1442,108 @@
 											<div class="text-sm font-medium text-ekf-red mb-0.5">{msg.sender?.name}</div>
 										{/if}
 
-										<div class="break-words leading-relaxed text-sm">{msg.content}</div>
+										{#if isVideoMessage(msg.content)}
+									{@const videoInfo = getVideoInfo(msg.content)}
+									{#if videoInfo && videoMessages[videoInfo.id]}
+										<div class="relative">
+											<button
+												onclick={() => playVideo(videoInfo.id)}
+												class="relative w-48 h-48 rounded-full overflow-hidden bg-black flex items-center justify-center group"
+											>
+												<video
+													src={videoMessages[videoInfo.id].url}
+													class="w-full h-full object-cover"
+													loop
+													muted={playingVideoId !== videoInfo.id}
+													autoplay={playingVideoId === videoInfo.id}
+													playsinline
+												></video>
+												{#if playingVideoId !== videoInfo.id}
+													<div class="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/40 transition-colors">
+														<svg class="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24">
+															<path d="M8 5v14l11-7z"/>
+														</svg>
+													</div>
+												{/if}
+												<div class="absolute bottom-2 right-2 px-1.5 py-0.5 bg-black/60 rounded text-white text-xs">
+													{formatRecordingTime(videoInfo.duration)}
+												</div>
+											</button>
+										</div>
+									{:else}
+										<div class="w-48 h-48 rounded-full bg-gray-200 flex items-center justify-center">
+											<svg class="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+											</svg>
+										</div>
+									{/if}
+								{:else if isVoiceMessage(msg.content)}
+									{@const voiceInfo = getVoiceInfo(msg.content)}
+									{#if voiceInfo}
+										<div class="space-y-2">
+											<button
+												onclick={() => playVoice(voiceInfo.id)}
+												class="flex items-center gap-3 py-1 w-full"
+											>
+												<div class="w-10 h-10 rounded-full {isOwn ? 'bg-white/20' : 'bg-ekf-red/10'} flex items-center justify-center flex-shrink-0">
+													{#if playingVoiceId === voiceInfo.id}
+														<svg class="w-5 h-5 {isOwn ? 'text-white' : 'text-ekf-red'}" fill="currentColor" viewBox="0 0 24 24">
+															<path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+														</svg>
+													{:else}
+														<svg class="w-5 h-5 {isOwn ? 'text-white' : 'text-ekf-red'}" fill="currentColor" viewBox="0 0 24 24">
+															<path d="M8 5v14l11-7z"/>
+														</svg>
+													{/if}
+												</div>
+												<div class="flex-1">
+													<div class="flex items-center gap-1">
+														{#each Array(12) as _, i}
+															<div class="w-1 rounded-full {isOwn ? 'bg-white/50' : 'bg-gray-300'}" style="height: {4 + Math.random() * 12}px"></div>
+														{/each}
+													</div>
+													<div class="text-xs {isOwn ? 'text-white/70' : 'text-gray-500'} mt-1">
+														{formatRecordingTime(voiceInfo.duration)}
+													</div>
+												</div>
+											</button>
+
+											<!-- Transcription section -->
+											{#if voiceTranscriptions[voiceInfo.id]?.text}
+												<div class="text-sm {isOwn ? 'text-white/90' : 'text-gray-700'} px-2 py-1.5 {isOwn ? 'bg-white/10' : 'bg-gray-100'} rounded-lg">
+													<div class="flex items-center gap-1 mb-1">
+														<svg class="w-3 h-3 {isOwn ? 'text-white/60' : 'text-gray-400'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+															<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+														</svg>
+														<span class="text-xs {isOwn ? 'text-white/60' : 'text-gray-400'}">Расшифровка</span>
+													</div>
+													{voiceTranscriptions[voiceInfo.id].text}
+												</div>
+											{:else if voiceTranscriptions[voiceInfo.id]?.loading}
+												<div class="flex items-center gap-2 text-xs {isOwn ? 'text-white/70' : 'text-gray-500'}">
+													<div class="w-3 h-3 border-2 {isOwn ? 'border-white/30 border-t-white' : 'border-gray-300 border-t-gray-600'} rounded-full animate-spin"></div>
+													Расшифровка...
+												</div>
+											{:else if voiceTranscriptions[voiceInfo.id]?.error}
+												<div class="text-xs text-red-500">
+													{voiceTranscriptions[voiceInfo.id].error}
+												</div>
+											{:else if voiceMessages[voiceInfo.id]?.blob}
+												<button
+													onclick={(e) => { e.stopPropagation(); transcribeVoice(voiceInfo.id); }}
+													class="flex items-center gap-1 text-xs {isOwn ? 'text-white/70 hover:text-white' : 'text-gray-500 hover:text-gray-700'} transition-colors"
+												>
+													<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+													</svg>
+													Расшифровать
+												</button>
+											{/if}
+										</div>
+									{/if}
+								{:else}
+									<div class="break-words leading-relaxed text-sm">{msg.content}</div>
+								{/if}
 
 										<div class="flex items-center justify-end gap-1 mt-1">
 											{#if msg.edited_at}
@@ -1190,6 +1610,7 @@
 			{/if}
 
 			<!-- Message Input -->
+			{#if canPostInConversation(currentConversation)}
 			<div class="bg-white px-4 py-3 border-t border-gray-200 relative">
 				<!-- Emoji Picker -->
 				{#if showEmojiPicker}
@@ -1277,6 +1698,16 @@
 					{:else}
 						<button
 							type="button"
+							onclick={openVideoRecorder}
+							class="p-2 hover:bg-gray-100 rounded-full transition-colors"
+							title="Записать видео-кружок"
+						>
+							<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+							</svg>
+						</button>
+						<button
+							type="button"
 							onclick={startRecording}
 							class="p-2 hover:bg-gray-100 rounded-full transition-colors"
 							title="Записать голосовое сообщение"
@@ -1288,6 +1719,17 @@
 					{/if}
 				</form>
 			</div>
+			{:else}
+			<!-- Channel read-only notice for non-admins -->
+			<div class="bg-gray-100 px-4 py-3 border-t border-gray-200 text-center">
+				<div class="flex items-center justify-center gap-2 text-gray-500 text-sm">
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+					</svg>
+					<span>Только администраторы могут публиковать в канале</span>
+				</div>
+			</div>
+			{/if}
 		{:else}
 			<!-- Empty State -->
 			<div class="flex-1 flex items-center justify-center">
@@ -1311,8 +1753,8 @@
 <!-- Context Menu -->
 {#if contextMenuMessage}
 	<div
-		class="fixed bg-white rounded-xl shadow-lg z-50 border border-gray-200 overflow-hidden"
-		style="left: {contextMenuPosition.x}px; top: {contextMenuPosition.y}px;"
+		class="fixed bg-white rounded-xl shadow-lg z-50 border border-gray-200 overflow-hidden min-w-48 max-h-80"
+		style="left: {contextMenuPosition.x}px; top: {contextMenuPosition.y}px; max-width: calc(100vw - 32px);"
 		onclick={(e) => e.stopPropagation()}
 	>
 		<!-- Quick Reactions -->
@@ -1354,6 +1796,100 @@
 				</svg>
 				Переслать
 			</button>
+		</div>
+	</div>
+{/if}
+
+<!-- Video Recorder Modal -->
+{#if showVideoRecorder}
+	<div class="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+		<div class="bg-gray-900 rounded-2xl w-96 p-6 text-center shadow-2xl">
+			<h3 class="text-lg font-semibold text-white mb-4">Видео-кружок</h3>
+
+			<!-- Circular Video Preview -->
+			<div class="relative mx-auto mb-6">
+				<div class="w-64 h-64 rounded-full overflow-hidden mx-auto border-4 {isRecordingVideo ? 'border-red-500' : 'border-gray-700'}">
+					<video
+						bind:this={videoPreviewElement}
+						autoplay
+						playsinline
+						muted
+						class="w-full h-full object-cover scale-x-[-1]"
+					></video>
+				</div>
+
+				{#if isRecordingVideo}
+					<!-- Recording indicator -->
+					<div class="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1 bg-red-500 rounded-full">
+						<div class="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+						<span class="text-white text-sm font-medium">{formatRecordingTime(videoRecordingTime)}</span>
+					</div>
+
+					<!-- Progress ring -->
+					<svg class="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 100 100">
+						<circle
+							cx="50"
+							cy="50"
+							r="48"
+							fill="none"
+							stroke="rgba(239, 68, 68, 0.3)"
+							stroke-width="2"
+						/>
+						<circle
+							cx="50"
+							cy="50"
+							r="48"
+							fill="none"
+							stroke="#ef4444"
+							stroke-width="2"
+							stroke-dasharray="{(videoRecordingTime / 60) * 301.59} 301.59"
+							stroke-linecap="round"
+						/>
+					</svg>
+				{/if}
+			</div>
+
+			<!-- Timer info -->
+			<p class="text-gray-400 text-sm mb-4">
+				{#if isRecordingVideo}
+					Максимум 60 секунд
+				{:else}
+					Нажмите для записи
+				{/if}
+			</p>
+
+			<!-- Controls -->
+			<div class="flex items-center justify-center gap-4">
+				<button
+					onclick={closeVideoRecorder}
+					class="w-12 h-12 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center transition-colors"
+					title="Отмена"
+				>
+					<svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+
+				{#if isRecordingVideo}
+					<button
+						onclick={stopVideoRecording}
+						class="w-16 h-16 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center transition-colors shadow-lg"
+						title="Остановить и отправить"
+					>
+						<svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+							<path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+						</svg>
+					</button>
+				{:else}
+					<button
+						onclick={startVideoRecording}
+						class="w-16 h-16 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center transition-colors shadow-lg"
+						title="Начать запись"
+					>
+						<div class="w-6 h-6 bg-white rounded-full"></div>
+					</button>
+				{/if}
+			</div>
 		</div>
 	</div>
 {/if}
@@ -1439,6 +1975,134 @@
 					</svg>
 				</button>
 			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Telegram Bot Configuration Modal -->
+{#if showTelegramConfig}
+	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+		<div class="bg-white rounded-2xl w-full max-w-md mx-4 shadow-2xl">
+			<!-- Header -->
+			<div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+				<div class="flex items-center gap-3">
+					<div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
+						<svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+							<path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.223-.548.223l.188-2.85 5.18-4.686c.223-.198-.054-.308-.346-.11l-6.4 4.02-2.76-.918c-.6-.187-.612-.6.125-.89l10.782-4.156c.5-.18.94.12.78.89z"/>
+						</svg>
+					</div>
+					<div>
+						<h3 class="text-lg font-semibold text-gray-900">Telegram бот</h3>
+						<p class="text-sm text-gray-500">Настройка интеграции с Telegram</p>
+					</div>
+				</div>
+				<button onclick={() => showTelegramConfig = false} class="p-2 hover:bg-gray-100 rounded-full transition-colors">
+					<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			</div>
+
+			{#if telegramLoading}
+				<div class="p-6 flex items-center justify-center">
+					<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+				</div>
+			{:else}
+				<div class="p-6 space-y-4">
+					<!-- Enable toggle -->
+					<div class="flex items-center justify-between">
+						<div>
+							<div class="font-medium text-gray-900">Включить интеграцию</div>
+							<div class="text-sm text-gray-500">Сообщения из Telegram будут появляться в канале</div>
+						</div>
+						<button
+							onclick={() => telegramEnabled = !telegramEnabled}
+							class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors {telegramEnabled ? 'bg-blue-500' : 'bg-gray-200'}"
+						>
+							<span class="inline-block h-4 w-4 transform rounded-full bg-white transition {telegramEnabled ? 'translate-x-6' : 'translate-x-1'}"></span>
+						</button>
+					</div>
+
+					{#if telegramEnabled}
+						<!-- Bot Token -->
+						<div>
+							<label class="block text-sm font-medium text-gray-700 mb-1">Bot Token</label>
+							<input
+								type="password"
+								bind:value={telegramBotToken}
+								placeholder="1234567890:ABCdef..."
+								class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+							/>
+							<p class="text-xs text-gray-500 mt-1">Получите токен у @BotFather в Telegram</p>
+						</div>
+
+						<!-- Chat ID -->
+						<div>
+							<label class="block text-sm font-medium text-gray-700 mb-1">Chat ID</label>
+							<input
+								type="text"
+								bind:value={telegramChatId}
+								placeholder="-1001234567890"
+								class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+							/>
+							<p class="text-xs text-gray-500 mt-1">ID группы или канала в Telegram (используйте @userinfobot)</p>
+						</div>
+
+						<!-- Webhook URL -->
+						{#if telegramWebhookUrl}
+							<div>
+								<label class="block text-sm font-medium text-gray-700 mb-1">Webhook URL</label>
+								<div class="flex gap-2">
+									<input
+										type="text"
+										value={telegramWebhookUrl}
+										readonly
+										class="flex-1 px-4 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm text-gray-600"
+									/>
+									<button
+										onclick={() => navigator.clipboard.writeText(telegramWebhookUrl)}
+										class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+										title="Копировать"
+									>
+										<svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+										</svg>
+									</button>
+								</div>
+								<p class="text-xs text-gray-500 mt-1">Установите этот URL как webhook в настройках бота</p>
+							</div>
+						{/if}
+
+						<!-- Instructions -->
+						<div class="bg-blue-50 rounded-lg p-4">
+							<h4 class="font-medium text-blue-900 mb-2">Инструкция по настройке</h4>
+							<ol class="text-sm text-blue-800 list-decimal list-inside space-y-1">
+								<li>Создайте бота через @BotFather и получите токен</li>
+								<li>Добавьте бота в вашу Telegram группу/канал как администратора</li>
+								<li>Получите Chat ID группы/канала</li>
+								<li>Введите данные выше и сохраните</li>
+								<li>Установите webhook URL в настройках бота</li>
+							</ol>
+						</div>
+					{/if}
+				</div>
+
+				<!-- Footer -->
+				<div class="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+					<button
+						onclick={() => showTelegramConfig = false}
+						class="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+					>
+						Отмена
+					</button>
+					<button
+						onclick={saveTelegramConfig}
+						class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+					>
+						Сохранить
+					</button>
+				</div>
+			{/if}
 		</div>
 	</div>
 {/if}

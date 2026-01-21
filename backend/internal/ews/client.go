@@ -303,6 +303,11 @@ func (c *Client) parseCalendarResponse(xml string) []CalendarEvent {
 		// Parse attendees
 		event.Attendees = c.parseAttendees(itemXML)
 
+		// Log attendees count for first few events
+		if i < 3 {
+			log.Printf("DEBUG Event '%s' has %d attendees", event.Subject, len(event.Attendees))
+		}
+
 		if event.Start != "" {
 			events = append(events, event)
 		}
@@ -313,6 +318,11 @@ func (c *Client) parseCalendarResponse(xml string) []CalendarEvent {
 
 func (c *Client) parseAttendees(xml string) []Attendee {
 	var attendees []Attendee
+
+	// Debug: check if attendees sections exist
+	hasRequired := strings.Contains(xml, "<t:RequiredAttendees>")
+	hasOptional := strings.Contains(xml, "<t:OptionalAttendees>")
+	log.Printf("DEBUG parseAttendees: hasRequiredAttendees=%v, hasOptionalAttendees=%v", hasRequired, hasOptional)
 
 	for _, sectionTag := range []string{"<t:RequiredAttendees>", "<t:OptionalAttendees>"} {
 		isOptional := strings.Contains(sectionTag, "Optional")
@@ -933,4 +943,179 @@ func extractChangeKey(xml string) string {
 		return ""
 	}
 	return xml[start : start+end]
+}
+
+// MeetingRoom represents a meeting room from Exchange
+type MeetingRoom struct {
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Capacity int    `json:"capacity,omitempty"`
+}
+
+// RoomList represents a room list from Exchange
+type RoomList struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// GetRoomLists fetches room lists from Exchange
+func (c *Client) GetRoomLists(username, password string) ([]RoomList, error) {
+	soap := `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:GetRoomLists/>
+  </soap:Body>
+</soap:Envelope>`
+
+	body, err := c.doRequest(soap, username, password)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.parseRoomListsResponse(string(body)), nil
+}
+
+// GetRooms fetches rooms from a specific room list
+func (c *Client) GetRooms(roomListEmail, username, password string) ([]MeetingRoom, error) {
+	soap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:GetRooms>
+      <m:RoomList>
+        <t:EmailAddress>%s</t:EmailAddress>
+      </m:RoomList>
+    </m:GetRooms>
+  </soap:Body>
+</soap:Envelope>`, roomListEmail)
+
+	body, err := c.doRequest(soap, username, password)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.parseRoomsResponse(string(body)), nil
+}
+
+// GetAllRooms fetches all rooms from all room lists
+func (c *Client) GetAllRooms(username, password string) ([]MeetingRoom, error) {
+	roomLists, err := c.GetRoomLists(username, password)
+	if err != nil {
+		return nil, err
+	}
+
+	var allRooms []MeetingRoom
+	for _, rl := range roomLists {
+		rooms, err := c.GetRooms(rl.Email, username, password)
+		if err != nil {
+			log.Printf("Failed to get rooms from list %s: %v", rl.Email, err)
+			continue
+		}
+		allRooms = append(allRooms, rooms...)
+	}
+
+	return allRooms, nil
+}
+
+func (c *Client) parseRoomListsResponse(xml string) []RoomList {
+	var roomLists []RoomList
+
+	// Find all RoomList elements
+	for _, roomXML := range strings.Split(xml, "<t:RoomList>")[1:] {
+		endIdx := strings.Index(roomXML, "</t:RoomList>")
+		if endIdx == -1 {
+			continue
+		}
+
+		name := extractValue(roomXML[:endIdx], "<t:Name>", "</t:Name>")
+		email := extractValue(roomXML[:endIdx], "<t:EmailAddress>", "</t:EmailAddress>")
+
+		if email != "" {
+			roomLists = append(roomLists, RoomList{
+				Name:  name,
+				Email: email,
+			})
+		}
+	}
+
+	return roomLists
+}
+
+func (c *Client) parseRoomsResponse(xml string) []MeetingRoom {
+	var rooms []MeetingRoom
+
+	// Find all Room elements
+	for _, roomXML := range strings.Split(xml, "<t:Room>")[1:] {
+		endIdx := strings.Index(roomXML, "</t:Room>")
+		if endIdx == -1 {
+			continue
+		}
+
+		// Room info is inside <t:Id>
+		idXML := roomXML[:endIdx]
+		name := extractValue(idXML, "<t:Name>", "</t:Name>")
+		email := extractValue(idXML, "<t:EmailAddress>", "</t:EmailAddress>")
+
+		if email != "" {
+			rooms = append(rooms, MeetingRoom{
+				Name:  name,
+				Email: email,
+			})
+		}
+	}
+
+	return rooms
+}
+
+// RespondToMeetingRequest responds to a meeting invitation (Accept, Decline, Tentative)
+func (c *Client) RespondToMeetingRequest(username, password, itemID, changeKey, response string) error {
+	// Determine the response element based on response type
+	var responseElement string
+	switch response {
+	case "Accept":
+		responseElement = "t:AcceptItem"
+	case "Decline":
+		responseElement = "t:DeclineItem"
+	case "Tentative":
+		responseElement = "t:TentativelyAcceptItem"
+	default:
+		return fmt.Errorf("invalid response type: %s (must be Accept, Decline, or Tentative)", response)
+	}
+
+	var itemIdElement string
+	if changeKey != "" {
+		itemIdElement = fmt.Sprintf(`<t:ReferenceItemId Id="%s" ChangeKey="%s"/>`, itemID, changeKey)
+	} else {
+		itemIdElement = fmt.Sprintf(`<t:ReferenceItemId Id="%s"/>`, itemID)
+	}
+
+	soap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:CreateItem MessageDisposition="SendAndSaveCopy">
+      <m:Items>
+        <%s>
+          %s
+        </%s>
+      </m:Items>
+    </m:CreateItem>
+  </soap:Body>
+</soap:Envelope>`, responseElement, itemIdElement, responseElement)
+
+	_, err := c.doRequest(soap, username, password)
+	return err
 }

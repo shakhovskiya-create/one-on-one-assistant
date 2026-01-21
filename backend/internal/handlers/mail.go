@@ -239,3 +239,40 @@ func (h *Handler) GetAttachmentContent(c *fiber.Ctx) error {
 		"content":      string(content), // Base64 encoded content
 	})
 }
+
+// RespondToMeetingRequest represents the request for responding to meeting invitation
+type RespondToMeetingRequest struct {
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	ItemID    string `json:"item_id"`
+	ChangeKey string `json:"change_key"`
+	Response  string `json:"response"` // Accept, Decline, Tentative
+}
+
+// RespondToMeeting handles Accept/Decline/Tentative for meeting invitations
+func (h *Handler) RespondToMeeting(c *fiber.Ctx) error {
+	if h.EWS == nil {
+		return c.Status(503).JSON(fiber.Map{"error": "EWS not configured"})
+	}
+
+	var req RespondToMeetingRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.Username == "" || req.Password == "" || req.ItemID == "" || req.Response == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "username, password, item_id, and response required"})
+	}
+
+	// Validate response type
+	if req.Response != "Accept" && req.Response != "Decline" && req.Response != "Tentative" {
+		return c.Status(400).JSON(fiber.Map{"error": "response must be Accept, Decline, or Tentative"})
+	}
+
+	err := h.EWS.RespondToMeetingRequest(req.Username, req.Password, req.ItemID, req.ChangeKey, req.Response)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"success": true, "response": req.Response})
+}

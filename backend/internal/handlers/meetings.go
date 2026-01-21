@@ -245,9 +245,28 @@ func (h *Handler) ProcessMeeting(c *fiber.Ctx) error {
 	}
 	tmpFile.Close()
 
+	// Check if AI client is configured
+	if h.AI == nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error":   "AI client not configured",
+			"details": "AI клиент не инициализирован. Проверьте переменные окружения.",
+			"hint":    "Установите OPENAI_API_KEY или YANDEX_API_KEY + YANDEX_FOLDER_ID",
+		})
+	}
+
 	// Transcribe with both services
-	whisperTranscript, _ := h.AI.TranscribeWhisper(tmpFile.Name())
-	yandexTranscript, _ := h.AI.TranscribeYandex(tmpFile.Name())
+	var whisperErr, yandexErr error
+	whisperTranscript, whisperErr := h.AI.TranscribeWhisper(tmpFile.Name())
+	yandexTranscript, yandexErr := h.AI.TranscribeYandex(tmpFile.Name())
+
+	// Log errors for debugging
+	var errorDetails []string
+	if whisperErr != nil {
+		errorDetails = append(errorDetails, "Whisper: "+whisperErr.Error())
+	}
+	if yandexErr != nil {
+		errorDetails = append(errorDetails, "Yandex: "+yandexErr.Error())
+	}
 
 	// Merge transcripts
 	var mergedTranscript string
@@ -260,17 +279,19 @@ func (h *Handler) ProcessMeeting(c *fiber.Ctx) error {
 	}
 
 	if mergedTranscript == "" {
-		// Provide more helpful error message
-		aiStatus := "Сервисы транскрипции недоступны. "
-		if h.AI == nil {
-			aiStatus += "AI клиент не инициализирован. "
-		} else {
-			aiStatus += "Проверьте настройки: OPENAI_API_KEY или YANDEX_API_KEY. "
+		// Provide detailed error message
+		aiStatus := "Транскрипция не удалась. "
+		if h.Config.OpenAIKey == "" && (h.Config.YandexAPIKey == "" || h.Config.YandexFolderID == "") {
+			aiStatus += "API ключи не настроены. "
+		}
+		if len(errorDetails) > 0 {
+			aiStatus += "Ошибки: " + strings.Join(errorDetails, "; ")
 		}
 		return c.Status(500).JSON(fiber.Map{
 			"error":   "Transcription failed",
 			"details": aiStatus,
-			"hint":    "Установите OPENAI_API_KEY в переменных окружения для работы транскрипции",
+			"hint":    "Установите OPENAI_API_KEY или YANDEX_API_KEY + YANDEX_FOLDER_ID в переменных окружения",
+			"errors":  errorDetails,
 		})
 	}
 

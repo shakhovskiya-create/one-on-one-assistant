@@ -374,14 +374,20 @@ func (h *Handler) CreateConversation(c *fiber.Ctx) error {
 	var req struct {
 		Type         string   `json:"type"`
 		Name         string   `json:"name"`
+		Description  string   `json:"description"`
 		Participants []string `json:"participants"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
 	}
 
-	if len(req.Participants) < 2 {
-		return c.Status(400).JSON(fiber.Map{"error": "At least 2 participants required"})
+	// Channels can have just the creator
+	minParticipants := 2
+	if req.Type == "channel" {
+		minParticipants = 1
+	}
+	if len(req.Participants) < minParticipants {
+		return c.Status(400).JSON(fiber.Map{"error": "At least 2 participants required for chat"})
 	}
 	participantMap := make(map[string]bool, len(req.Participants))
 	for _, id := range req.Participants {
@@ -447,6 +453,12 @@ func (h *Handler) CreateConversation(c *fiber.Ctx) error {
 	if req.Name != "" {
 		convData["name"] = req.Name
 	}
+	if req.Description != "" {
+		convData["description"] = req.Description
+	}
+	if convType == "channel" {
+		convData["created_by"] = userID
+	}
 
 	result, err := h.DB.Insert("conversations", convData)
 	if err != nil {
@@ -463,10 +475,15 @@ func (h *Handler) CreateConversation(c *fiber.Ctx) error {
 
 	// Add participants
 	for _, pID := range req.Participants {
-		h.DB.Insert("conversation_participants", map[string]interface{}{
+		participantData := map[string]interface{}{
 			"conversation_id": conv.ID,
 			"employee_id":     pID,
-		})
+		}
+		// Channel creator is admin
+		if convType == "channel" && pID == userID {
+			participantData["is_admin"] = true
+		}
+		h.DB.Insert("conversation_participants", participantData)
 	}
 
 	return c.Status(201).JSON(conv)
