@@ -1,13 +1,13 @@
 package main
 
 import (
-	"log"
 	"os"
 	"time"
 
 	"github.com/ekf/one-on-one-backend/internal/config"
 	"github.com/ekf/one-on-one-backend/internal/handlers"
 	"github.com/ekf/one-on-one-backend/internal/middleware"
+	"github.com/ekf/one-on-one-backend/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -56,12 +56,47 @@ func main() {
 	})
 
 	app.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"status":       "healthy",
-			"database":     h.DB != nil,
-			"ews_calendar": cfg.EWSURL != "",
-			"ews_url":      cfg.EWSURL,
-		})
+		status := "healthy"
+		statusCode := 200
+
+		// Check database connection by attempting a simple query
+		dbStatus := "connected"
+		if h.DB == nil {
+			dbStatus = "not configured"
+			status = "degraded"
+		} else {
+			// Try to execute a simple query to verify DB connectivity
+			var employees []struct{ ID string }
+			err := h.DB.From("employees").Select("id").Limit(1).Execute(&employees)
+			if err != nil {
+				dbStatus = "disconnected"
+				status = "unhealthy"
+				statusCode = 503
+			}
+		}
+
+		// Check EWS configuration
+		ewsStatus := "not configured"
+		if cfg.EWSURL != "" {
+			ewsStatus = "configured"
+		}
+
+		// Check AI services
+		aiStatus := "not configured"
+		if cfg.OpenAIKey != "" || cfg.AnthropicKey != "" {
+			aiStatus = "configured"
+		}
+
+		response := fiber.Map{
+			"status":     status,
+			"timestamp":  time.Now().UTC().Format(time.RFC3339),
+			"database":   dbStatus,
+			"ews":        ewsStatus,
+			"ews_url":    cfg.EWSURL,
+			"ai_service": aiStatus,
+		}
+
+		return c.Status(statusCode).JSON(response)
 	})
 
 	// API routes
@@ -181,44 +216,6 @@ func main() {
 	protectedAPI.Post("/mail/attachment/content", h.GetAttachmentContent)
 	protectedAPI.Post("/mail/meeting/respond", h.RespondToMeeting)
 
-	// Legacy routes (for backward compatibility)
-	app.Get("/employees", h.ListEmployees)
-	app.Post("/employees", h.CreateEmployee)
-	app.Get("/employees/:id", h.GetEmployee)
-	app.Put("/employees/:id", h.UpdateEmployee)
-	app.Delete("/employees/:id", h.DeleteEmployee)
-	app.Get("/employees/:id/dossier", h.GetEmployeeDossier)
-
-	app.Get("/projects", h.ListProjects)
-	app.Post("/projects", h.CreateProject)
-	app.Get("/projects/:id", h.GetProject)
-	app.Put("/projects/:id", h.UpdateProject)
-	app.Delete("/projects/:id", h.DeleteProject)
-
-	app.Get("/meetings", h.ListMeetings)
-	app.Get("/meetings/:id", h.GetMeeting)
-	app.Get("/meeting-categories", h.ListMeetingCategories)
-	app.Post("/process-meeting", h.ProcessMeeting)
-
-	app.Get("/tasks", h.ListTasks)
-	app.Post("/tasks", h.CreateTask)
-	app.Get("/tasks/:id", h.GetTask)
-	app.Put("/tasks/:id", h.UpdateTask)
-	app.Delete("/tasks/:id", h.DeleteTask)
-
-	app.Get("/kanban", h.GetKanban)
-	app.Put("/kanban/move", h.MoveTaskKanban)
-
-	app.Get("/analytics/dashboard", h.GetDashboard)
-	app.Get("/analytics/employee/:id", h.GetEmployeeAnalytics)
-	app.Get("/analytics/employee/:id/by-category", h.GetEmployeeAnalyticsByCategory)
-	app.Get("/analytics/team/:id", h.GetTeamStats)
-
-	app.Get("/connector/status", h.ConnectorStatus)
-	app.Post("/ad/sync", h.SyncADUsers)
-	app.Post("/ad/sync-direct", h.SyncADUsersDirect)
-	app.Post("/ad/authenticate", h.AuthenticateAD)
-
 	// WebSocket for messenger
 	app.Use("/ws/messenger", func(c *fiber.Ctx) error {
 		if websocket.IsWebSocketUpgrade(c) {
@@ -238,6 +235,17 @@ func main() {
 	app.Get("/ws/connector", websocket.New(h.ConnectorWebSocket))
 
 	// Start server
-	log.Printf("Starting server on port %s", cfg.Port)
-	log.Fatal(app.Listen(":" + cfg.Port))
+	log := utils.GetLogger()
+	log.Info("Starting server", map[string]interface{}{
+		"port":           cfg.Port,
+		"ews_configured": cfg.EWSURL != "",
+		"ad_configured":  cfg.ADURL != "",
+	})
+
+	if err := app.Listen(":" + cfg.Port); err != nil {
+		log.Error("Server failed to start", map[string]interface{}{
+			"error": err.Error(),
+		})
+		os.Exit(1)
+	}
 }
