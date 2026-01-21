@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api } from '$lib/api/client';
+	import { api, workflows } from '$lib/api/client';
 	import { user, subordinates } from '$lib/stores/auth';
-	import type { TaskDependency } from '$lib/api/client';
+	import type { TaskDependency, StatusColumn } from '$lib/api/client';
 
 	// Types
 	interface Task {
@@ -56,14 +56,15 @@
 	let showDependencyPicker = $state(false);
 	let dependencySearch = $state('');
 
-	// Status columns for Kanban with WIP limits
-	const statusColumns = [
+	// Status columns for Kanban (dynamically loaded from workflow)
+	let statusColumns: StatusColumn[] = $state([
 		{ id: 'backlog', label: 'Backlog', color: 'bg-gray-100', wipLimit: 0 },
 		{ id: 'todo', label: 'К выполнению', color: 'bg-blue-50', wipLimit: 10 },
 		{ id: 'in_progress', label: 'В работе', color: 'bg-yellow-50', wipLimit: 5 },
-		{ id: 'review', label: 'На проверке', color: 'bg-purple-50', wipLimit: 3 },
 		{ id: 'done', label: 'Готово', color: 'bg-green-50', wipLimit: 0 }
-	];
+	]);
+	let workflowName = $state('simple');
+	let userDepartment = $state('');
 
 	const priorityLabels: Record<number, { label: string; color: string }> = {
 		1: { label: 'Критический', color: 'text-red-600 bg-red-50' },
@@ -80,14 +81,22 @@
 	async function loadData() {
 		loading = true;
 		try {
-			const [tasksRes, projectsRes, employeesRes] = await Promise.all([
+			const [tasksRes, projectsRes, employeesRes, workflowRes] = await Promise.all([
 				api.tasks.list(),
 				api.projects.list().catch(() => []),
-				api.employees.list().catch(() => [])
+				api.employees.list().catch(() => []),
+				workflows.getMyWorkflow().catch(() => null)
 			]);
 			tasks = tasksRes || [];
 			projects = projectsRes || [];
 			employees = employeesRes || [];
+
+			// Apply workflow statuses if loaded
+			if (workflowRes?.workflow?.statuses) {
+				statusColumns = workflowRes.workflow.statuses;
+				workflowName = workflowRes.workflow.name;
+				userDepartment = workflowRes.department || '';
+			}
 		} catch (e) {
 			console.error('Error loading data:', e);
 		}

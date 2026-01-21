@@ -106,6 +106,34 @@ export interface TaskDependency {
 	depends_on_task?: Task;
 }
 
+// Workflow types
+export interface StatusColumn {
+	id: string;
+	label: string;
+	color: string;
+	wipLimit: number;
+}
+
+export interface WorkflowMode {
+	id: string;
+	name: string;
+	description: string;
+	statuses: StatusColumn[];
+	is_default: boolean;
+}
+
+// Workflows API
+export const workflows = {
+	getMyWorkflow: () =>
+		request<{ workflow: WorkflowMode; department: string }>('/workflows/me'),
+	list: () =>
+		request<WorkflowMode[]>('/workflows'),
+	listDepartments: () =>
+		request<{ id: string; department: string; workflow_mode_id: string; workflow_mode: WorkflowMode }[]>('/workflows/departments'),
+	setDepartmentWorkflow: (department: string, workflowModeId: string) =>
+		request('/workflows/departments', { method: 'POST', body: { department, workflow_mode_id: workflowModeId } }),
+};
+
 export const tasks = {
 	list: (params?: { assignee_id?: string; project_id?: string; status?: string }) => {
 		const query = new URLSearchParams(params as Record<string, string>).toString();

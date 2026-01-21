@@ -160,6 +160,12 @@ func main() {
 	protectedAPI.Get("/kanban", h.GetKanban)
 	protectedAPI.Put("/kanban/move", h.MoveTaskKanban)
 
+	// Workflows
+	protectedAPI.Get("/workflows/me", h.GetWorkflowForUser)
+	protectedAPI.Get("/workflows", h.ListWorkflowModes)
+	protectedAPI.Get("/workflows/departments", h.ListDepartmentWorkflows)
+	protectedAPI.Post("/workflows/departments", h.SetDepartmentWorkflow)
+
 	// Calendar (EWS) - specific routes MUST come before parametric routes
 	protectedAPI.Post("/calendar/sync", h.SyncCalendar)
 	protectedAPI.Post("/calendar/free-slots", h.FindFreeSlots)
