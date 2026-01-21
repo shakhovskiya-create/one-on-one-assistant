@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { mail } from '$lib/api/client';
-	import type { MailFolder, EmailMessage, EmailPerson, EmailAttachment } from '$lib/api/client';
+	import { mail, employees } from '$lib/api/client';
+	import type { MailFolder, EmailMessage, EmailPerson, EmailAttachment, Employee } from '$lib/api/client';
 	import { user } from '$lib/stores/auth';
 	import { browser } from '$app/environment';
 
@@ -35,6 +35,10 @@
 	let loadingAttachments = $state(false);
 	let downloadingAttachment = $state<string | null>(null);
 
+	// Meeting response
+	let respondingToMeeting = $state<'Accept' | 'Decline' | 'Tentative' | null>(null);
+	let meetingResponseSuccess = $state<string | null>(null);
+
 	// Search & Filter
 	let searchQuery = $state('');
 	let showOnlyUnread = $state(false);
@@ -46,8 +50,37 @@
 	// Sidebar collapsed state
 	let sidebarCollapsed = $state(false);
 
+	// Employees for photo lookup
+	let employeeList: Employee[] = $state([]);
+	let employeesByEmail = $state<Map<string, Employee>>(new Map());
+
 	// Auto-refresh interval (60 seconds)
 	let refreshInterval: ReturnType<typeof setInterval> | null = null;
+
+	// Load employees for photo lookup
+	async function loadEmployees() {
+		try {
+			const list = await employees.list();
+			employeeList = list;
+			// Build email -> employee map
+			const map = new Map<string, Employee>();
+			for (const emp of list) {
+				if (emp.email) {
+					map.set(emp.email.toLowerCase(), emp);
+				}
+			}
+			employeesByEmail = map;
+		} catch (err) {
+			console.error('Failed to load employees for photos:', err);
+		}
+	}
+
+	// Get employee photo by email
+	function getEmployeePhoto(email: string | undefined): string | null {
+		if (!email) return null;
+		const emp = employeesByEmail.get(email.toLowerCase());
+		return emp?.photo_base64 || null;
+	}
 
 	function startAutoRefresh() {
 		if (refreshInterval) clearInterval(refreshInterval);
@@ -75,6 +108,9 @@
 
 	// Check for saved credentials from main login
 	onMount(() => {
+		// Load employees for photo lookup (async, don't block)
+		loadEmployees();
+
 		if (browser) {
 			// First try ews_credentials from main login
 			const ewsCreds = sessionStorage.getItem('ews_credentials');
@@ -174,10 +210,84 @@
 	let loadingBody = $state(false);
 	let bodyError = $state('');
 
+	// Replace cid: references with data URIs for inline images
+	async function replaceInlineImages(body: string, inlineAttachments: EmailAttachment[]): Promise<string> {
+		if (!body || inlineAttachments.length === 0) return body;
+
+		let updatedBody = body;
+		const cidMap = new Map<string, EmailAttachment>();
+
+		// Build map of content_id -> attachment
+		for (const att of inlineAttachments) {
+			if (att.content_id) {
+				// Content-ID can have angle brackets: <image001.png@01DB0A5C.90F4D140>
+				const cleanCid = att.content_id.replace(/^<|>$/g, '');
+				cidMap.set(cleanCid, att);
+			}
+		}
+
+		// Find all cid: references in the body
+		const cidRegex = /src=["']cid:([^"']+)["']/gi;
+		const matches = [...body.matchAll(cidRegex)];
+
+		for (const match of matches) {
+			const cidRef = match[1]; // The content ID from the cid: reference
+			const attachment = cidMap.get(cidRef);
+
+			if (attachment) {
+				try {
+					const result = await mail.getAttachmentContent({
+						username: credentials.username,
+						password: credentials.password,
+						attachment_id: attachment.id
+					});
+
+					if (result.content) {
+						// Create data URI
+						const dataUri = `data:${result.content_type};base64,${result.content}`;
+						updatedBody = updatedBody.replace(
+							new RegExp(`src=["']cid:${escapeRegExp(cidRef)}["']`, 'gi'),
+							`src="${dataUri}"`
+						);
+					}
+				} catch (err) {
+					console.error('Failed to load inline image:', err);
+				}
+			}
+		}
+
+		return updatedBody;
+	}
+
+	// Helper to escape regex special characters
+	function escapeRegExp(string: string): string {
+		return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	}
+
 	async function selectEmail(email: EmailMessage) {
 		selectedEmail = email;
 		bodyError = '';
 		attachments = [];
+
+		// Load attachments first if email has them (needed for inline images)
+		let inlineAttachments: EmailAttachment[] = [];
+		if (email.has_attachments) {
+			loadingAttachments = true;
+			try {
+				const result = await mail.getAttachments({
+					username: credentials.username,
+					password: credentials.password,
+					item_id: email.id,
+					change_key: email.change_key
+				});
+				attachments = result.attachments || [];
+				inlineAttachments = attachments.filter(a => a.is_inline && a.content_id);
+			} catch (err) {
+				console.error('Failed to load attachments:', err);
+			} finally {
+				loadingAttachments = false;
+			}
+		}
 
 		// Load email body if not already loaded
 		if (!email.body || email.body === '') {
@@ -189,7 +299,13 @@
 					item_id: email.id
 				});
 				// Update the email with body
-				const bodyContent = result.body || '';
+				let bodyContent = result.body || '';
+
+				// Replace cid: references with actual image data
+				if (bodyContent && inlineAttachments.length > 0) {
+					bodyContent = await replaceInlineImages(bodyContent, inlineAttachments);
+				}
+
 				const updatedEmail = { ...email, body: bodyContent };
 				selectedEmail = updatedEmail;
 				emails = emails.map(e => e.id === email.id ? updatedEmail : e);
@@ -203,23 +319,16 @@
 			} finally {
 				loadingBody = false;
 			}
-		}
-
-		// Load attachments if email has attachments
-		if (email.has_attachments) {
-			loadingAttachments = true;
+		} else if (email.body && inlineAttachments.length > 0) {
+			// Body is already loaded but we need to update inline images
+			loadingBody = true;
 			try {
-				const result = await mail.getAttachments({
-					username: credentials.username,
-					password: credentials.password,
-					item_id: email.id,
-					change_key: email.change_key
-				});
-				attachments = result.attachments || [];
-			} catch (err) {
-				console.error('Failed to load attachments:', err);
+				const updatedBody = await replaceInlineImages(email.body, inlineAttachments);
+				const updatedEmail = { ...email, body: updatedBody };
+				selectedEmail = updatedEmail;
+				emails = emails.map(e => e.id === email.id ? updatedEmail : e);
 			} finally {
-				loadingAttachments = false;
+				loadingBody = false;
 			}
 		}
 
@@ -466,6 +575,126 @@
 		return null;
 	}
 
+	// Try to extract meeting date from email content
+	function extractMeetingDate(email: EmailMessage): string | null {
+		const content = email.body || email.body_preview || email.subject || '';
+
+		// Try common date patterns
+		const patterns = [
+			// ISO format: 2024-01-20
+			/(\d{4}-\d{2}-\d{2})/,
+			// Russian format: 20.01.2024 or 20/01/2024
+			/(\d{1,2})[./](\d{1,2})[./](\d{4})/,
+			// English format: Jan 20, 2024 or January 20, 2024
+			/((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*)\s+(\d{1,2}),?\s+(\d{4})/i,
+			// Russian month names: 20 января 2024
+			/(\d{1,2})\s+(январ[яь]|феврал[яь]|март[а]?|апрел[яь]|ма[яй]|июн[яь]|июл[яь]|август[а]?|сентябр[яь]|октябр[яь]|ноябр[яь]|декабр[яь])\s+(\d{4})/i
+		];
+
+		for (const pattern of patterns) {
+			const match = content.match(pattern);
+			if (match) {
+				try {
+					// ISO format
+					if (pattern === patterns[0]) {
+						const date = new Date(match[1]);
+						if (!isNaN(date.getTime())) {
+							return match[1];
+						}
+					}
+					// Russian/European format: DD.MM.YYYY
+					else if (pattern === patterns[1]) {
+						const day = parseInt(match[1]);
+						const month = parseInt(match[2]) - 1;
+						const year = parseInt(match[3]);
+						const date = new Date(year, month, day);
+						if (!isNaN(date.getTime())) {
+							return date.toISOString().split('T')[0];
+						}
+					}
+					// English month format
+					else if (pattern === patterns[2]) {
+						const date = new Date(`${match[1]} ${match[2]}, ${match[3]}`);
+						if (!isNaN(date.getTime())) {
+							return date.toISOString().split('T')[0];
+						}
+					}
+					// Russian month names
+					else if (pattern === patterns[3]) {
+						const monthMap: Record<string, number> = {
+							'январ': 0, 'феврал': 1, 'март': 2, 'апрел': 3,
+							'ма': 4, 'июн': 5, 'июл': 6, 'август': 7,
+							'сентябр': 8, 'октябр': 9, 'ноябр': 10, 'декабр': 11
+						};
+						const monthKey = Object.keys(monthMap).find(k => match[2].toLowerCase().startsWith(k));
+						if (monthKey !== undefined) {
+							const day = parseInt(match[1]);
+							const month = monthMap[monthKey];
+							const year = parseInt(match[3]);
+							const date = new Date(year, month, day);
+							if (!isNaN(date.getTime())) {
+								return date.toISOString().split('T')[0];
+							}
+						}
+					}
+				} catch {
+					continue;
+				}
+			}
+		}
+
+		// Fallback: use email received date
+		const receivedDate = new Date(email.received_at);
+		if (!isNaN(receivedDate.getTime())) {
+			return receivedDate.toISOString().split('T')[0];
+		}
+
+		return null;
+	}
+
+	function getCalendarLink(email: EmailMessage): string {
+		const date = extractMeetingDate(email);
+		if (date) {
+			return `/calendar?date=${date}`;
+		}
+		return '/calendar';
+	}
+
+	async function respondToMeeting(response: 'Accept' | 'Decline' | 'Tentative') {
+		if (!selectedEmail) return;
+
+		respondingToMeeting = response;
+		meetingResponseSuccess = null;
+
+		try {
+			await mail.respondToMeeting({
+				username: credentials.username,
+				password: credentials.password,
+				item_id: selectedEmail.id,
+				change_key: selectedEmail.change_key,
+				response
+			});
+
+			const responseText = response === 'Accept' ? 'принято' : response === 'Decline' ? 'отклонено' : 'под вопросом';
+			meetingResponseSuccess = `Приглашение ${responseText}`;
+
+			// Remove the meeting request from the list after successful response
+			setTimeout(() => {
+				if (selectedEmail) {
+					emails = emails.filter(e => e.id !== selectedEmail?.id);
+					selectedEmail = null;
+					showEmailModal = false;
+					meetingResponseSuccess = null;
+				}
+			}, 2000);
+		} catch (err) {
+			console.error('Failed to respond to meeting:', err);
+			error = err instanceof Error ? err.message : 'Не удалось ответить на приглашение';
+		} finally {
+			respondingToMeeting = null;
+		}
+	}
+
 	// Thread type for grouping emails
 	interface EmailThread {
 		conversationId: string;
@@ -473,6 +702,15 @@
 		latestDate: string;
 		hasUnread: boolean;
 		subject: string;
+	}
+
+	// Normalize subject for grouping (remove Re:, Fwd:, FW:, etc.)
+	function normalizeSubject(subject: string): string {
+		return subject
+			.replace(/^(Re|Fwd|FW|RE|AW|Ответ|Пересылка):\s*/gi, '')
+			.replace(/^(Re|Fwd|FW|RE|AW|Ответ|Пересылка)\[\d+\]:\s*/gi, '')
+			.trim()
+			.toLowerCase();
 	}
 
 	function toggleThread(conversationId: string) {
@@ -483,6 +721,33 @@
 			newSet.add(conversationId);
 		}
 		expandedThreads = newSet;
+	}
+
+	// Handle thread header click - expand/collapse and select latest email
+	function handleThreadClick(thread: EmailThread) {
+		const latestEmail = thread.emails[thread.emails.length - 1];
+
+		if (thread.emails.length === 1) {
+			// Single email - just select it
+			selectEmail(latestEmail);
+		} else {
+			// Multi-email thread
+			const isExpanded = expandedThreads.has(thread.conversationId);
+			if (!isExpanded) {
+				// Expand the thread and select latest email
+				const newSet = new Set(expandedThreads);
+				newSet.add(thread.conversationId);
+				expandedThreads = newSet;
+			}
+			// Always select the latest email when clicking thread header
+			selectEmail(latestEmail);
+		}
+	}
+
+	// Check if selected email belongs to this thread
+	function isThreadSelected(thread: EmailThread): boolean {
+		if (!selectedEmail) return false;
+		return thread.emails.some(e => e.id === selectedEmail?.id);
 	}
 
 	let filteredEmails = $derived(() => {
@@ -511,9 +776,32 @@
 
 		const filtered = filteredEmails();
 		const threads = new Map<string, EmailThread>();
+		// Secondary map for subject-based grouping when no conversation_id
+		const subjectToConvId = new Map<string, string>();
 
 		for (const email of filtered) {
-			const convId = email.conversation_id || email.id; // Use email id if no conversation_id
+			let convId: string;
+
+			if (email.conversation_id) {
+				// Use EWS conversation_id when available
+				convId = email.conversation_id;
+				// Store normalized subject -> convId mapping for emails without conv_id
+				const normalizedSubj = normalizeSubject(email.subject);
+				if (!subjectToConvId.has(normalizedSubj)) {
+					subjectToConvId.set(normalizedSubj, convId);
+				}
+			} else {
+				// Fallback: try to find matching thread by normalized subject
+				const normalizedSubj = normalizeSubject(email.subject);
+				if (subjectToConvId.has(normalizedSubj)) {
+					convId = subjectToConvId.get(normalizedSubj)!;
+				} else {
+					// Create new thread based on normalized subject
+					convId = `subj_${normalizedSubj}`;
+					subjectToConvId.set(normalizedSubj, convId);
+				}
+			}
+
 			if (!threads.has(convId)) {
 				threads.set(convId, {
 					conversationId: convId,
@@ -528,6 +816,8 @@
 			if (!email.is_read) thread.hasUnread = true;
 			if (email.received_at > thread.latestDate) {
 				thread.latestDate = email.received_at;
+				// Update thread subject to latest email's subject
+				thread.subject = email.subject;
 			}
 		}
 
@@ -548,6 +838,12 @@
 		if (selectedEmail) {
 			showEmailModal = true;
 		}
+	}
+
+	// Open email directly in modal (used for double-click)
+	async function openEmailInModal(email: EmailMessage) {
+		await selectEmail(email);
+		showEmailModal = true;
 	}
 
 	function replyToEmail(mode: 'reply' | 'replyAll' = 'reply') {
@@ -802,18 +1098,24 @@
 						{@const isExpanded = expandedThreads.has(thread.conversationId)}
 						{@const latestEmail = thread.emails[thread.emails.length - 1]}
 						{@const senderName = getPersonDisplay(latestEmail.from)}
-						<div class="border-b border-gray-100">
+						{@const senderPhoto = getEmployeePhoto(latestEmail.from?.email)}
+						<div class="border-b border-gray-100 relative">
 							<!-- Thread header -->
 							<button
-								onclick={() => thread.emails.length > 1 ? toggleThread(thread.conversationId) : selectEmail(latestEmail)}
-								class="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors
-									{selectedEmail?.conversation_id === thread.conversationId ? 'bg-ekf-red/5' : ''}
+								onclick={() => handleThreadClick(thread)}
+								ondblclick={() => openEmailInModal(latestEmail)}
+								class="w-full px-4 py-3 {thread.emails.length > 1 ? 'pr-10' : ''} text-left hover:bg-gray-50 transition-colors
+									{isThreadSelected(thread) ? 'bg-ekf-red/5' : ''}
 									{thread.hasUnread ? 'bg-blue-50/50' : ''}"
 							>
 								<div class="flex items-start gap-3">
 									<!-- Avatar -->
-									<div class="w-10 h-10 rounded-full {getAvatarColor(senderName)} flex items-center justify-center flex-shrink-0 relative">
-										<span class="text-white text-sm font-medium">{getInitials(senderName)}</span>
+									<div class="w-10 h-10 rounded-full {senderPhoto ? '' : getAvatarColor(senderName)} flex items-center justify-center flex-shrink-0 relative overflow-hidden">
+										{#if senderPhoto}
+											<img src="data:image/jpeg;base64,{senderPhoto}" alt="" class="w-full h-full object-cover" />
+										{:else}
+											<span class="text-white text-sm font-medium">{getInitials(senderName)}</span>
+										{/if}
 										{#if thread.hasUnread}
 											<div class="absolute -top-0.5 -right-0.5 w-3 h-3 bg-ekf-red rounded-full border-2 border-white"></div>
 										{/if}
@@ -842,13 +1144,20 @@
 											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
 										</svg>
 									{/if}
-									{#if thread.emails.length > 1}
-										<svg class="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform {isExpanded ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-										</svg>
-									{/if}
 								</div>
 							</button>
+							{#if thread.emails.length > 1}
+								<!-- Separate toggle button for expand/collapse -->
+								<button
+									onclick={(e) => { e.stopPropagation(); toggleThread(thread.conversationId); }}
+									class="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 rounded transition-colors"
+									title={isExpanded ? 'Свернуть' : 'Развернуть'}
+								>
+									<svg class="w-4 h-4 text-gray-400 transition-transform {isExpanded ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+									</svg>
+								</button>
+							{/if}
 							<!-- Expanded thread emails -->
 							{#if isExpanded && thread.emails.length > 1}
 								<div class="bg-gray-50 border-t border-gray-200">
@@ -856,6 +1165,7 @@
 										{@const emailSender = getPersonDisplay(email.from)}
 										<button
 											onclick={() => selectEmail(email)}
+											ondblclick={() => openEmailInModal(email)}
 											class="w-full pl-12 pr-4 py-2 text-left hover:bg-gray-100 transition-colors border-b border-gray-100 last:border-b-0
 												{selectedEmail?.id === email.id ? 'bg-ekf-red/10' : ''}
 												{!email.is_read ? 'bg-blue-50/30' : ''}"
@@ -886,16 +1196,22 @@
 					<!-- Flat list view -->
 					{#each filteredEmails() as email}
 						{@const senderName = getPersonDisplay(email.from)}
+						{@const senderPhoto = getEmployeePhoto(email.from?.email)}
 						<button
 							onclick={() => selectEmail(email)}
+							ondblclick={() => openEmailInModal(email)}
 							class="w-full px-4 py-3 text-left border-b border-gray-100 hover:bg-gray-50 transition-colors
 								{selectedEmail?.id === email.id ? 'bg-ekf-red/5' : ''}
 								{!email.is_read ? 'bg-blue-50/50' : ''}"
 						>
 							<div class="flex items-start gap-3">
 								<!-- Avatar -->
-								<div class="w-10 h-10 rounded-full {getAvatarColor(senderName)} flex items-center justify-center flex-shrink-0 relative">
-									<span class="text-white text-sm font-medium">{getInitials(senderName)}</span>
+								<div class="w-10 h-10 rounded-full {senderPhoto ? '' : getAvatarColor(senderName)} flex items-center justify-center flex-shrink-0 relative overflow-hidden">
+									{#if senderPhoto}
+										<img src="data:image/jpeg;base64,{senderPhoto}" alt="" class="w-full h-full object-cover" />
+									{:else}
+										<span class="text-white text-sm font-medium">{getInitials(senderName)}</span>
+									{/if}
 									{#if !email.is_read}
 										<div class="absolute -top-0.5 -right-0.5 w-3 h-3 bg-ekf-red rounded-full border-2 border-white"></div>
 									{/if}
@@ -936,6 +1252,7 @@
 		<!-- Email content -->
 		<div class="flex-1 flex flex-col bg-gray-50">
 			{#if selectedEmail}
+				{@const selectedPhoto = getEmployeePhoto(selectedEmail.from?.email)}
 				<div class="bg-white border-b border-gray-200 px-6 py-4">
 					<div class="flex items-start justify-between mb-3">
 						<button onclick={openEmailModal} class="text-lg font-medium text-gray-900 hover:text-ekf-red transition-colors text-left flex items-center gap-2">
@@ -969,10 +1286,14 @@
 						</div>
 					</div>
 					<div class="flex items-center gap-3">
-						<div class="w-10 h-10 rounded-full bg-ekf-red/10 flex items-center justify-center">
-							<span class="text-ekf-red font-medium">
-								{(selectedEmail.from?.name || selectedEmail.from?.email || '?').charAt(0).toUpperCase()}
-							</span>
+						<div class="w-10 h-10 rounded-full {selectedPhoto ? '' : 'bg-ekf-red/10'} flex items-center justify-center overflow-hidden">
+							{#if selectedPhoto}
+								<img src="data:image/jpeg;base64,{selectedPhoto}" alt="" class="w-full h-full object-cover" />
+							{:else}
+								<span class="text-ekf-red font-medium">
+									{(selectedEmail.from?.name || selectedEmail.from?.email || '?').charAt(0).toUpperCase()}
+								</span>
+							{/if}
 						</div>
 						<div>
 							<div class="text-sm font-medium text-gray-900">{getPersonDisplay(selectedEmail.from)}</div>
@@ -1008,20 +1329,47 @@
 								{/if}
 							</div>
 							{#if getMeetingInviteType(selectedEmail) === 'request'}
-								<div class="flex items-center gap-2">
-									<button class="px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-lg hover:bg-green-600 transition-colors">
-										Принять
-									</button>
-									<button class="px-3 py-1.5 bg-yellow-500 text-white text-xs font-medium rounded-lg hover:bg-yellow-600 transition-colors">
-										Под вопросом
-									</button>
-									<button class="px-3 py-1.5 bg-red-500 text-white text-xs font-medium rounded-lg hover:bg-red-600 transition-colors">
-										Отклонить
-									</button>
-								</div>
+								{#if meetingResponseSuccess}
+									<div class="px-3 py-1.5 bg-green-100 text-green-700 text-xs font-medium rounded-lg">
+										{meetingResponseSuccess}
+									</div>
+								{:else}
+									<div class="flex items-center gap-2">
+										<button
+											onclick={() => respondToMeeting('Accept')}
+											disabled={respondingToMeeting !== null}
+											class="px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+										>
+											{#if respondingToMeeting === 'Accept'}
+												<div class="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+											{/if}
+											Принять
+										</button>
+										<button
+											onclick={() => respondToMeeting('Tentative')}
+											disabled={respondingToMeeting !== null}
+											class="px-3 py-1.5 bg-yellow-500 text-white text-xs font-medium rounded-lg hover:bg-yellow-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+										>
+											{#if respondingToMeeting === 'Tentative'}
+												<div class="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+											{/if}
+											Под вопросом
+										</button>
+										<button
+											onclick={() => respondToMeeting('Decline')}
+											disabled={respondingToMeeting !== null}
+											class="px-3 py-1.5 bg-red-500 text-white text-xs font-medium rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+										>
+											{#if respondingToMeeting === 'Decline'}
+												<div class="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+											{/if}
+											Отклонить
+										</button>
+									</div>
+								{/if}
 							{/if}
 							<a
-								href="/calendar"
+								href={getCalendarLink(selectedEmail)}
 								class="flex items-center gap-1 px-3 py-1.5 bg-blue-500 text-white text-xs font-medium rounded-lg hover:bg-blue-600 transition-colors"
 							>
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1114,6 +1462,7 @@
 
 	<!-- Full Email Modal -->
 	{#if showEmailModal && selectedEmail}
+		{@const modalPhoto = getEmployeePhoto(selectedEmail.from?.email)}
 		<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
 			<div class="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col m-4">
 				<div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
@@ -1148,8 +1497,12 @@
 				</div>
 				<div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
 					<div class="flex items-center gap-4">
-						<div class="w-12 h-12 rounded-full {getAvatarColor(selectedEmail.from?.name || selectedEmail.from?.email || '')} flex items-center justify-center flex-shrink-0">
-							<span class="text-white text-lg font-medium">{getInitials(selectedEmail.from?.name || selectedEmail.from?.email || '?')}</span>
+						<div class="w-12 h-12 rounded-full {modalPhoto ? '' : getAvatarColor(selectedEmail.from?.name || selectedEmail.from?.email || '')} flex items-center justify-center flex-shrink-0 overflow-hidden">
+							{#if modalPhoto}
+								<img src="data:image/jpeg;base64,{modalPhoto}" alt="" class="w-full h-full object-cover" />
+							{:else}
+								<span class="text-white text-lg font-medium">{getInitials(selectedEmail.from?.name || selectedEmail.from?.email || '?')}</span>
+							{/if}
 						</div>
 						<div class="flex-1 min-w-0">
 							<div class="font-medium text-gray-900">{getPersonDisplay(selectedEmail.from)}</div>
@@ -1198,20 +1551,47 @@
 								{/if}
 							</div>
 							{#if getMeetingInviteType(selectedEmail) === 'request'}
-								<div class="flex items-center gap-2">
-									<button class="px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-lg hover:bg-green-600 transition-colors">
-										Принять
-									</button>
-									<button class="px-3 py-1.5 bg-yellow-500 text-white text-xs font-medium rounded-lg hover:bg-yellow-600 transition-colors">
-										Под вопросом
-									</button>
-									<button class="px-3 py-1.5 bg-red-500 text-white text-xs font-medium rounded-lg hover:bg-red-600 transition-colors">
-										Отклонить
-									</button>
-								</div>
+								{#if meetingResponseSuccess}
+									<div class="px-3 py-1.5 bg-green-100 text-green-700 text-xs font-medium rounded-lg">
+										{meetingResponseSuccess}
+									</div>
+								{:else}
+									<div class="flex items-center gap-2">
+										<button
+											onclick={() => respondToMeeting('Accept')}
+											disabled={respondingToMeeting !== null}
+											class="px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+										>
+											{#if respondingToMeeting === 'Accept'}
+												<div class="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+											{/if}
+											Принять
+										</button>
+										<button
+											onclick={() => respondToMeeting('Tentative')}
+											disabled={respondingToMeeting !== null}
+											class="px-3 py-1.5 bg-yellow-500 text-white text-xs font-medium rounded-lg hover:bg-yellow-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+										>
+											{#if respondingToMeeting === 'Tentative'}
+												<div class="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+											{/if}
+											Под вопросом
+										</button>
+										<button
+											onclick={() => respondToMeeting('Decline')}
+											disabled={respondingToMeeting !== null}
+											class="px-3 py-1.5 bg-red-500 text-white text-xs font-medium rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+										>
+											{#if respondingToMeeting === 'Decline'}
+												<div class="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+											{/if}
+											Отклонить
+										</button>
+									</div>
+								{/if}
 							{/if}
 							<a
-								href="/calendar"
+								href={getCalendarLink(selectedEmail)}
 								class="flex items-center gap-1 px-3 py-1.5 bg-blue-500 text-white text-xs font-medium rounded-lg hover:bg-blue-600 transition-colors flex-shrink-0"
 							>
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -47,7 +47,7 @@ type AnalysisContext struct {
 // TranscribeWhisper transcribes audio using OpenAI Whisper
 func (c *Client) TranscribeWhisper(filePath string) (string, error) {
 	if c.openaiKey == "" {
-		return "", nil
+		return "", fmt.Errorf("OpenAI API key not configured")
 	}
 
 	file, err := os.Open(filePath)
@@ -103,7 +103,7 @@ func (c *Client) TranscribeWhisper(filePath string) (string, error) {
 // TranscribeYandex transcribes audio using Yandex SpeechKit
 func (c *Client) TranscribeYandex(filePath string) (string, error) {
 	if c.yandexAPIKey == "" || c.yandexFolderID == "" {
-		return "", nil
+		return "", fmt.Errorf("Yandex API credentials not configured")
 	}
 
 	audioData, err := os.ReadFile(filePath)
@@ -113,14 +113,25 @@ func (c *Client) TranscribeYandex(filePath string) (string, error) {
 
 	ext := strings.ToLower(filepath.Ext(filePath))
 	audioFormat := "oggopus"
-	if ext == ".mp3" {
+	sampleRate := "48000"
+
+	switch ext {
+	case ".mp3":
 		audioFormat = "mp3"
-	} else if ext == ".wav" {
+	case ".wav":
 		audioFormat = "lpcm"
+		sampleRate = "16000" // More common for WAV
+	case ".webm":
+		audioFormat = "oggopus" // WebM typically uses Opus codec
+	case ".ogg":
+		audioFormat = "oggopus"
+	case ".m4a", ".aac":
+		// Yandex doesn't directly support these, try as is
+		audioFormat = "mp3"
 	}
 
-	url := fmt.Sprintf("https://stt.api.cloud.yandex.net/speech/v1/stt:recognize?folderId=%s&lang=ru-RU&format=%s&sampleRateHertz=48000",
-		c.yandexFolderID, audioFormat)
+	url := fmt.Sprintf("https://stt.api.cloud.yandex.net/speech/v1/stt:recognize?folderId=%s&lang=ru-RU&format=%s&sampleRateHertz=%s",
+		c.yandexFolderID, audioFormat, sampleRate)
 
 	req, err := http.NewRequest("POST", url, bytes.NewReader(audioData))
 	if err != nil {

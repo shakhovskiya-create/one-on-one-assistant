@@ -17,6 +17,52 @@ type CalendarAuthRequest struct {
 	Password string `json:"password"`
 }
 
+// GetMeetingRooms returns available meeting rooms from Exchange
+func (h *Handler) GetMeetingRooms(c *fiber.Ctx) error {
+	if h.EWS == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "EWS not configured"})
+	}
+
+	employeeID := c.Query("employee_id")
+	if employeeID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "employee_id required"})
+	}
+
+	// Get employee credentials
+	var employees []struct {
+		ADLogin           string  `json:"ad_login"`
+		EncryptedPassword *string `json:"encrypted_password"`
+	}
+	err := h.DB.From("employees").Select("ad_login, encrypted_password").Eq("id", employeeID).Limit(1).Execute(&employees)
+	if err != nil || len(employees) == 0 {
+		return c.Status(404).JSON(fiber.Map{"error": "Employee not found"})
+	}
+	employee := employees[0]
+
+	var username, password string
+	if employee.EncryptedPassword != nil && *employee.EncryptedPassword != "" {
+		decrypted, err := utils.DecryptPassword(*employee.EncryptedPassword, h.Config.JWTSecret)
+		if err == nil {
+			username = "ekfgroup\\" + employee.ADLogin
+			password = decrypted
+		}
+	}
+
+	if username == "" || password == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "Credentials not available"})
+	}
+
+	rooms, err := h.EWS.GetAllRooms(username, password)
+	if err != nil {
+		log.Printf("Failed to get rooms: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to get meeting rooms: " + err.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"rooms": rooms,
+	})
+}
+
 // GetCalendar returns calendar events from Exchange
 func (h *Handler) GetCalendar(c *fiber.Ctx) error {
 	if h.DB == nil {

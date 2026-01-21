@@ -114,6 +114,7 @@ func main() {
 	protectedAPI.Post("/calendar/sync", h.SyncCalendar)
 	protectedAPI.Post("/calendar/free-slots", h.FindFreeSlots)
 	protectedAPI.Get("/calendar/free-slots/simple", h.FreeSlotsSimple)
+	protectedAPI.Get("/calendar/rooms", h.GetMeetingRooms)
 	protectedAPI.Get("/calendar/:id", h.GetCalendar)
 	protectedAPI.Get("/calendar/:id/simple", h.GetCalendarSimple)
 
@@ -130,6 +131,9 @@ func main() {
 	// JWT Token Management
 	protectedAPI.Post("/auth/refresh", h.RefreshToken)
 	protectedAPI.Get("/auth/me", h.GetMe)
+
+	// Speech-to-Text
+	protectedAPI.Post("/speech/transcribe", h.TranscribeAudio)
 
 	// File Storage
 	protectedAPI.Post("/files", h.UploadFile)
@@ -159,6 +163,13 @@ func main() {
 	protectedAPI.Get("/conversations/:id", h.GetConversation)
 	protectedAPI.Post("/messages", h.SendMessage)
 
+	// Telegram integration for channels (protected)
+	protectedAPI.Get("/channels/:channel_id/telegram", h.GetTelegramConfig)
+	protectedAPI.Post("/channels/:channel_id/telegram", h.ConfigureTelegramBot)
+
+	// Telegram webhook (public - called by Telegram)
+	api.Post("/telegram/webhook/:channel_id", h.TelegramWebhook)
+
 	// Mail (EWS)
 	protectedAPI.Get("/mail/folders", h.GetMailFolders)
 	protectedAPI.Get("/mail/emails", h.GetEmails)
@@ -168,6 +179,7 @@ func main() {
 	protectedAPI.Delete("/mail/email", h.DeleteEmail)
 	protectedAPI.Post("/mail/attachments", h.GetAttachments)
 	protectedAPI.Post("/mail/attachment/content", h.GetAttachmentContent)
+	protectedAPI.Post("/mail/meeting/respond", h.RespondToMeeting)
 
 	// Legacy routes (for backward compatibility)
 	app.Get("/employees", h.ListEmployees)

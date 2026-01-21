@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
 	import { calendar as calendarApi, meetings as meetingsApi } from '$lib/api/client';
-	import type { CalendarEvent } from '$lib/api/client';
+	import type { CalendarEvent, MeetingRoom } from '$lib/api/client';
 	import { user, subordinates } from '$lib/stores/auth';
 
 	let events: CalendarEvent[] = $state([]);
@@ -10,9 +11,23 @@
 	let showSyncDialog = $state(false);
 	let showEventDialog = $state(false);
 	let selectedEvent: CalendarEvent | null = $state(null);
+	let showEventModal = $state(false);
+	let modalEvent: CalendarEvent | null = $state(null);
+
+	function openEventModal(event: CalendarEvent) {
+		modalEvent = event;
+		showEventModal = true;
+	}
 
 	let currentDate = $state(new Date());
 	let viewMode = $state<'day' | 'week' | 'month'>('week');
+
+	// Drag-to-create state
+	let isDragging = $state(false);
+	let dragStartDate: Date | null = $state(null);
+	let dragStartMinute = $state(0);
+	let dragEndMinute = $state(0);
+	let dragCurrentDate: Date | null = $state(null);
 
 	// New event form
 	let newEvent = $state({
@@ -28,25 +43,78 @@
 		participants: [] as string[],
 		recurrence: 'none' as 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly',
 		recurrence_end: '' as string,
-		recurrence_count: 10
+		recurrence_count: 10,
+		// Extended recurrence options
+		recurrence_interval: 1, // every N days/weeks/months/years
+		recurrence_weekdays: [] as number[], // 0=Mon, 1=Tue, ..., 6=Sun for weekly
+		recurrence_monthly_type: 'day' as 'day' | 'weekday', // day=on day X, weekday=on Nth weekday
 	});
 
 	// Recurrence options
 	const recurrenceOptions = [
 		{ id: 'none', name: 'Не повторять' },
-		{ id: 'daily', name: 'Каждый день' },
-		{ id: 'weekly', name: 'Каждую неделю' },
-		{ id: 'monthly', name: 'Каждый месяц' },
-		{ id: 'yearly', name: 'Каждый год' }
+		{ id: 'daily', name: 'Ежедневно' },
+		{ id: 'weekly', name: 'Еженедельно' },
+		{ id: 'monthly', name: 'Ежемесячно' },
+		{ id: 'yearly', name: 'Ежегодно' }
 	];
 
-	// Meeting rooms (could be loaded from backend)
-	const meetingRooms = [
-		{ id: 'conf-1', name: 'Переговорная 1', floor: '2 этаж', capacity: 6 },
-		{ id: 'conf-2', name: 'Переговорная 2', floor: '2 этаж', capacity: 10 },
-		{ id: 'conf-3', name: 'Большой зал', floor: '3 этаж', capacity: 20 },
-		{ id: 'conf-4', name: 'Малая переговорная', floor: '1 этаж', capacity: 4 }
+	// Weekday buttons for weekly recurrence
+	const weekdayButtons = [
+		{ id: 0, short: 'Пн', full: 'Понедельник' },
+		{ id: 1, short: 'Вт', full: 'Вторник' },
+		{ id: 2, short: 'Ср', full: 'Среда' },
+		{ id: 3, short: 'Чт', full: 'Четверг' },
+		{ id: 4, short: 'Пт', full: 'Пятница' },
+		{ id: 5, short: 'Сб', full: 'Суббота' },
+		{ id: 6, short: 'Вс', full: 'Воскресенье' }
 	];
+
+	function toggleWeekday(dayId: number) {
+		if (newEvent.recurrence_weekdays.includes(dayId)) {
+			// Don't allow removing the last weekday
+			if (newEvent.recurrence_weekdays.length > 1) {
+				newEvent.recurrence_weekdays = newEvent.recurrence_weekdays.filter(d => d !== dayId);
+			}
+		} else {
+			newEvent.recurrence_weekdays = [...newEvent.recurrence_weekdays, dayId].sort((a, b) => a - b);
+		}
+	}
+
+	function getWeekdayOrdinal(date: Date): { ordinal: number; weekday: number; weekdayName: string } {
+		const day = date.getDate();
+		const ordinal = Math.ceil(day / 7); // 1st, 2nd, 3rd, 4th, 5th
+		const weekday = date.getDay();
+		const weekdayIndex = weekday === 0 ? 6 : weekday - 1;
+		const weekdayName = weekdayButtons[weekdayIndex].full;
+		return { ordinal, weekday: weekdayIndex, weekdayName };
+	}
+
+	function getOrdinalText(n: number): string {
+		switch (n) {
+			case 1: return 'первый';
+			case 2: return 'второй';
+			case 3: return 'третий';
+			case 4: return 'четвёртый';
+			case 5: return 'пятый';
+			default: return `${n}-й`;
+		}
+	}
+
+	function getSelectedWeekdaysText(): string {
+		if (newEvent.recurrence_weekdays.length === 0) return '';
+		if (newEvent.recurrence_weekdays.length === 7) return 'каждый день';
+		if (newEvent.recurrence_weekdays.length === 5 &&
+			!newEvent.recurrence_weekdays.includes(5) &&
+			!newEvent.recurrence_weekdays.includes(6)) {
+			return 'по будням';
+		}
+		return newEvent.recurrence_weekdays.map(d => weekdayButtons[d].short).join(', ');
+	}
+
+	// Meeting rooms loaded from Exchange
+	let meetingRooms: MeetingRoom[] = $state([]);
+	let loadingRooms = $state(false);
 
 	// Online services
 	const onlineServices = [
@@ -74,10 +142,37 @@
 	const hours = Array.from({ length: 15 }, (_, i) => i + 7);
 
 	onMount(async () => {
+		// Handle URL parameters for navigation
+		const dateParam = $page.url.searchParams.get('date');
+		if (dateParam) {
+			const parsedDate = new Date(dateParam);
+			if (!isNaN(parsedDate.getTime())) {
+				currentDate = parsedDate;
+			}
+		}
+
 		if ($user?.id) {
-			await loadCalendar();
+			await Promise.all([
+				loadCalendar(),
+				loadMeetingRooms()
+			]);
 		}
 	});
+
+	async function loadMeetingRooms() {
+		if (!$user?.id) return;
+		loadingRooms = true;
+		try {
+			const response = await calendarApi.getRooms($user.id);
+			meetingRooms = response.rooms || [];
+		} catch (e) {
+			console.error('Failed to load meeting rooms:', e);
+			// Fallback to empty - user can enter location manually
+			meetingRooms = [];
+		} finally {
+			loadingRooms = false;
+		}
+	}
 
 	async function loadCalendar() {
 		if (!$user?.id) return;
@@ -118,14 +213,56 @@
 		}
 	}
 
-	function openNewEventDialog(date?: Date, hour?: number) {
+	function openNewEventDialog(date?: Date, hour?: number, startMinute?: number, endMinute?: number) {
 		const d = date || new Date();
-		const startHour = hour ?? 9;
+
+		// Calculate start and end times
+		let startHour: number;
+		let startMin: number;
+		let endHour: number;
+		let endMin: number;
+
+		if (startMinute !== undefined && endMinute !== undefined) {
+			// Use provided minute range (from drag selection)
+			const minStart = Math.min(startMinute, endMinute);
+			const maxEnd = Math.max(startMinute, endMinute);
+			startHour = Math.floor(minStart / 60) + 7; // 7 is the first hour in the grid
+			startMin = minStart % 60;
+			endHour = Math.floor(maxEnd / 60) + 7;
+			endMin = maxEnd % 60;
+			// Round to nearest 15 minutes
+			startMin = Math.round(startMin / 15) * 15;
+			endMin = Math.round(endMin / 15) * 15;
+			if (startMin === 60) { startHour++; startMin = 0; }
+			if (endMin === 60) { endHour++; endMin = 0; }
+			// Ensure at least 30 min duration
+			if (startHour === endHour && startMin === endMin) {
+				endMin += 30;
+				if (endMin >= 60) { endHour++; endMin -= 60; }
+			}
+		} else if (hour !== undefined) {
+			// Single click on hour
+			startHour = hour;
+			startMin = 0;
+			endHour = hour + 1;
+			endMin = 0;
+		} else {
+			// Default
+			startHour = 9;
+			startMin = 0;
+			endHour = 10;
+			endMin = 0;
+		}
+
+		// Get day of week for weekly recurrence default
+		const dayOfWeek = d.getDay();
+		const weekdayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Convert Sun=0 to Mon=0 format
+
 		newEvent = {
 			title: '',
 			date: d.toISOString().split('T')[0],
-			start_time: `${startHour.toString().padStart(2, '0')}:00`,
-			end_time: `${(startHour + 1).toString().padStart(2, '0')}:00`,
+			start_time: `${startHour.toString().padStart(2, '0')}:${startMin.toString().padStart(2, '0')}`,
+			end_time: `${endHour.toString().padStart(2, '0')}:${endMin.toString().padStart(2, '0')}`,
 			location: '',
 			employee_id: $user?.id || '',
 			room: '',
@@ -134,10 +271,73 @@
 			participants: [],
 			recurrence: 'none',
 			recurrence_end: '',
-			recurrence_count: 10
+			recurrence_count: 10,
+			recurrence_interval: 1,
+			recurrence_weekdays: [weekdayIndex],
+			recurrence_monthly_type: 'day'
 		};
 		participantSearch = '';
 		showEventDialog = true;
+	}
+
+	// Drag-to-create handlers
+	function getMinuteFromMouseY(e: MouseEvent, containerTop: number): number {
+		const relY = e.clientY - containerTop;
+		// Each hour is 48px, so minute = (relY / 48) * 60
+		const minute = (relY / 48) * 60;
+		return Math.max(0, Math.min(minute, hours.length * 60));
+	}
+
+	function handleDragStart(e: MouseEvent, date: Date, containerTop: number) {
+		// Prevent text selection
+		e.preventDefault();
+		isDragging = true;
+		dragStartDate = date;
+		dragCurrentDate = date;
+		const minute = getMinuteFromMouseY(e, containerTop);
+		dragStartMinute = minute;
+		dragEndMinute = minute;
+	}
+
+	function handleDragMove(e: MouseEvent, date: Date, containerTop: number) {
+		if (!isDragging) return;
+		dragCurrentDate = date;
+		dragEndMinute = getMinuteFromMouseY(e, containerTop);
+	}
+
+	function handleDragEnd() {
+		if (!isDragging || !dragStartDate) {
+			isDragging = false;
+			return;
+		}
+
+		// Check if we actually dragged (not just clicked)
+		const timeDiff = Math.abs(dragEndMinute - dragStartMinute);
+		if (timeDiff > 10) {
+			// Open dialog with dragged time range
+			openNewEventDialog(dragCurrentDate || dragStartDate, undefined, dragStartMinute, dragEndMinute);
+		}
+
+		isDragging = false;
+		dragStartDate = null;
+		dragCurrentDate = null;
+	}
+
+	function getDragSelectionStyle(date: Date): { top: number; height: number } | null {
+		if (!isDragging || !dragStartDate) return null;
+
+		// Check if this date matches the drag date
+		const dateStr = date.toISOString().split('T')[0];
+		const dragDateStr = (dragCurrentDate || dragStartDate).toISOString().split('T')[0];
+		if (dateStr !== dragDateStr) return null;
+
+		const minMinute = Math.min(dragStartMinute, dragEndMinute);
+		const maxMinute = Math.max(dragStartMinute, dragEndMinute);
+
+		return {
+			top: (minMinute / 60) * 48,
+			height: Math.max(((maxMinute - minMinute) / 60) * 48, 12)
+		};
 	}
 
 	function addParticipant(employeeId: string) {
@@ -177,8 +377,8 @@
 				const service = onlineServices.find(s => s.id === newEvent.online_service);
 				location = service?.name || 'Онлайн';
 			} else if (newEvent.room) {
-				const room = meetingRooms.find(r => r.id === newEvent.room);
-				location = room ? `${room.name} (${room.floor})` : newEvent.location;
+				const room = meetingRooms.find(r => r.email === newEvent.room);
+				location = room?.name || newEvent.location;
 			} else {
 				location = newEvent.location;
 			}
@@ -499,6 +699,7 @@
 				{#each getUpcomingEvents() as event}
 					<button
 						onclick={() => selectedEvent = event}
+						ondblclick={() => openEventModal(event)}
 						class="w-full text-left p-2 rounded-lg hover:bg-gray-50 transition-colors border-l-2 {getEventColor(event)}"
 					>
 						<div class="text-sm font-medium truncate">{event.subject || event.title}</div>
@@ -592,7 +793,13 @@
 		{:else if viewMode === 'day'}
 			<!-- Day View -->
 			<div class="flex-1 overflow-auto">
-				<div class="relative" style="min-height: {hours.length * 48}px;">
+				<div
+					class="relative select-none"
+					style="min-height: {hours.length * 48}px;"
+					role="grid"
+					onmouseup={handleDragEnd}
+					onmouseleave={handleDragEnd}
+				>
 					<!-- Current time indicator -->
 					{#if isToday(currentDate) && getCurrentTimePosition() > 0}
 						<div
@@ -603,27 +810,67 @@
 						</div>
 					{/if}
 
+					<!-- Time grid rows -->
 					{#each hours as hour}
 						<div class="flex border-b border-gray-100" style="height: 48px;">
 							<div class="w-16 flex-shrink-0 text-xs text-gray-400 text-right pr-2 pt-0.5">
 								{hour.toString().padStart(2, '0')}:00
 							</div>
-							<button
-								onclick={() => openNewEventDialog(currentDate, hour)}
-								class="flex-1 border-l border-gray-200 hover:bg-blue-50 transition-colors relative"
-							>
-							</button>
+							<div class="flex-1 border-l border-gray-200"></div>
 						</div>
 					{/each}
 
-					<!-- Events overlay -->
-					<div class="absolute left-16 right-0 top-0" style="height: {hours.length * 48}px;">
+					<!-- Draggable overlay for day view -->
+					<div
+						class="absolute left-16 right-0 top-0 cursor-crosshair"
+						style="height: {hours.length * 48}px;"
+						role="button"
+						tabindex="0"
+						onmousedown={(e) => {
+							const rect = e.currentTarget.getBoundingClientRect();
+							handleDragStart(e, currentDate, rect.top);
+						}}
+						onmousemove={(e) => {
+							if (isDragging) {
+								const rect = e.currentTarget.getBoundingClientRect();
+								handleDragMove(e, currentDate, rect.top);
+							}
+						}}
+						onclick={(e) => {
+							// Single click to create event at that hour
+							if (!isDragging || Math.abs(dragEndMinute - dragStartMinute) <= 10) {
+								const rect = e.currentTarget.getBoundingClientRect();
+								const minute = getMinuteFromMouseY(e, rect.top);
+								const hour = Math.floor(minute / 60) + 7;
+								openNewEventDialog(currentDate, hour);
+							}
+						}}
+					>
+						<!-- Drag selection indicator -->
+						{#if isDragging}
+							{@const sel = getDragSelectionStyle(currentDate)}
+							{@const minMin = Math.min(dragStartMinute, dragEndMinute)}
+							{@const maxMin = Math.max(dragStartMinute, dragEndMinute)}
+							{#if sel}
+								<div
+									class="absolute left-1 right-1 bg-blue-200/70 border-2 border-blue-400 rounded pointer-events-none z-10"
+									style="top: {sel.top}px; height: {sel.height}px;"
+								>
+									<div class="px-2 py-1 text-xs text-blue-700 font-medium">
+										{Math.floor(minMin / 60) + 7}:{(minMin % 60).toString().padStart(2, '0')} - {Math.floor(maxMin / 60) + 7}:{(maxMin % 60).toString().padStart(2, '0')}
+									</div>
+								</div>
+							{/if}
+						{/if}
+
+						<!-- Events -->
 						{#each getEventsForDate(currentDate) as event}
 							{@const pos = getEventPosition(event)}
 							<button
-								onclick={() => selectedEvent = event}
-								class="absolute left-1 right-1 px-2 py-1 rounded border-l-4 text-left overflow-hidden {getEventColor(event)}"
-								style="top: {pos.top}px; height: {pos.height}px;"
+								onclick={(e) => { e.stopPropagation(); selectedEvent = event; }}
+								ondblclick={(e) => { e.stopPropagation(); openEventModal(event); }}
+								class="absolute left-1 right-1 px-2 py-1 rounded border-l-4 text-left overflow-hidden cursor-pointer {getEventColor(event)}"
+								style="top: {pos.top}px; height: {pos.height}px; z-index: 5;"
 							>
 								<div class="text-xs font-medium truncate">{event.subject || event.title}</div>
 								{#if pos.height > 30}
@@ -658,8 +905,12 @@
 				</div>
 
 				<!-- Time grid -->
-				<div class="flex-1 overflow-auto">
-					<div class="relative" style="min-height: {hours.length * 48}px;">
+				<div
+					class="flex-1 overflow-auto"
+					onmouseup={handleDragEnd}
+					onmouseleave={handleDragEnd}
+				>
+					<div class="relative select-none" style="min-height: {hours.length * 48}px;">
 						<!-- Current time indicator -->
 						{#each [getWeekDates()] as weekDatesArr}
 							{@const todayIndex = weekDatesArr.findIndex(d => isToday(d))}
@@ -673,33 +924,70 @@
 							{/if}
 						{/each}
 
+						<!-- Time labels and grid lines -->
 						{#each hours as hour}
 							<div class="flex border-b border-gray-100" style="height: 48px;">
 								<div class="w-16 flex-shrink-0 text-xs text-gray-400 text-right pr-2 pt-0.5">
 									{hour.toString().padStart(2, '0')}:00
 								</div>
-								{#each getWeekDates() as date, i}
-									<button
-										onclick={() => openNewEventDialog(date, hour)}
-										class="flex-1 border-l border-gray-200 hover:bg-blue-50 transition-colors {isToday(date) ? 'bg-blue-50/30' : ''}"
-									>
-									</button>
+								{#each getWeekDates() as date}
+									<div class="flex-1 border-l border-gray-200 {isToday(date) ? 'bg-blue-50/30' : ''}"></div>
 								{/each}
 							</div>
 						{/each}
 
-						<!-- Events overlay -->
+						<!-- Draggable day columns overlay -->
 						{#each getWeekDates() as date, dayIndex}
 							<div
-								class="absolute top-0"
+								class="absolute top-0 cursor-crosshair"
 								style="left: calc(64px + {dayIndex} * (100% - 64px) / 7); width: calc((100% - 64px) / 7); height: {hours.length * 48}px;"
+								role="button"
+								tabindex="0"
+								onmousedown={(e) => {
+									const rect = e.currentTarget.getBoundingClientRect();
+									handleDragStart(e, date, rect.top);
+								}}
+								onmousemove={(e) => {
+									if (isDragging) {
+										const rect = e.currentTarget.getBoundingClientRect();
+										handleDragMove(e, date, rect.top);
+									}
+								}}
+								onclick={(e) => {
+									// Single click to create event at that hour
+									if (!isDragging || Math.abs(dragEndMinute - dragStartMinute) <= 10) {
+										const rect = e.currentTarget.getBoundingClientRect();
+										const minute = getMinuteFromMouseY(e, rect.top);
+										const hour = Math.floor(minute / 60) + 7;
+										openNewEventDialog(date, hour);
+									}
+								}}
 							>
+								<!-- Drag selection indicator -->
+								{#if isDragging}
+									{@const sel = getDragSelectionStyle(date)}
+									{@const minMin = Math.min(dragStartMinute, dragEndMinute)}
+									{@const maxMin = Math.max(dragStartMinute, dragEndMinute)}
+									{#if sel}
+										<div
+											class="absolute left-0.5 right-0.5 bg-blue-200/70 border-2 border-blue-400 rounded pointer-events-none z-10"
+											style="top: {sel.top}px; height: {sel.height}px;"
+										>
+											<div class="px-1 py-0.5 text-xs text-blue-700 font-medium truncate">
+												{Math.floor(minMin / 60) + 7}:{(minMin % 60).toString().padStart(2, '0')}-{Math.floor(maxMin / 60) + 7}:{(maxMin % 60).toString().padStart(2, '0')}
+											</div>
+										</div>
+									{/if}
+								{/if}
+
+								<!-- Events -->
 								{#each getEventsForDate(date) as event}
 									{@const pos = getEventPosition(event)}
 									<button
-										onclick={() => selectedEvent = event}
-										class="absolute left-0.5 right-0.5 px-1 py-0.5 rounded border-l-2 text-left overflow-hidden text-xs {getEventColor(event)}"
-										style="top: {pos.top}px; height: {pos.height}px;"
+										onclick={(e) => { e.stopPropagation(); selectedEvent = event; }}
+										ondblclick={(e) => { e.stopPropagation(); openEventModal(event); }}
+										class="absolute left-0.5 right-0.5 px-1 py-0.5 rounded border-l-2 text-left overflow-hidden text-xs cursor-pointer {getEventColor(event)}"
+										style="top: {pos.top}px; height: {pos.height}px; z-index: 5;"
 									>
 										<div class="font-medium truncate">{event.subject || event.title}</div>
 										{#if pos.height > 24}
@@ -1075,10 +1363,11 @@
 							<select
 								bind:value={newEvent.room}
 								class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-ekf-red"
+								disabled={loadingRooms}
 							>
-								<option value="">Выберите переговорную</option>
+								<option value="">{loadingRooms ? 'Загрузка переговорных...' : 'Выберите переговорную'}</option>
 								{#each meetingRooms as room}
-									<option value={room.id}>{room.name} — {room.floor} (до {room.capacity} чел.)</option>
+									<option value={room.email}>{room.name}{room.capacity ? ` (до ${room.capacity} чел.)` : ''}</option>
 								{/each}
 							</select>
 						{/if}
@@ -1137,68 +1426,180 @@
 							{/each}
 						</div>
 
-						<!-- Recurrence end options (only if recurrence is set) -->
+						<!-- Extended recurrence options (only if recurrence is set) -->
 						{#if newEvent.recurrence !== 'none'}
-							<div class="bg-gray-50 rounded-lg p-3 space-y-3">
-								<div class="text-xs text-gray-500 font-medium">Завершить повторение:</div>
-								<div class="flex items-center gap-4">
-									<label class="flex items-center gap-2 text-sm cursor-pointer">
-										<input
-											type="radio"
-											name="recurrence_end_type"
-											checked={!newEvent.recurrence_end && newEvent.recurrence_count > 0}
-											onchange={() => { newEvent.recurrence_end = ''; newEvent.recurrence_count = 10; }}
-											class="text-ekf-red focus:ring-ekf-red"
-										/>
-										<span class="text-gray-700">После</span>
-										<input
-											type="number"
-											bind:value={newEvent.recurrence_count}
-											min="1"
-											max="365"
-											class="w-16 px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-ekf-red"
-										/>
-										<span class="text-gray-600">повторений</span>
-									</label>
+							<div class="bg-gray-50 rounded-lg p-3 space-y-4">
+								<!-- Interval setting -->
+								<div class="flex items-center gap-2 text-sm">
+									<span class="text-gray-700">Повторять каждые</span>
+									<input
+										type="number"
+										bind:value={newEvent.recurrence_interval}
+										min="1"
+										max="99"
+										class="w-14 px-2 py-1 border border-gray-200 rounded text-sm text-center focus:outline-none focus:border-ekf-red"
+									/>
+									<span class="text-gray-600">
+										{#if newEvent.recurrence === 'daily'}
+											{newEvent.recurrence_interval === 1 ? 'день' : newEvent.recurrence_interval < 5 ? 'дня' : 'дней'}
+										{:else if newEvent.recurrence === 'weekly'}
+											{newEvent.recurrence_interval === 1 ? 'неделю' : newEvent.recurrence_interval < 5 ? 'недели' : 'недель'}
+										{:else if newEvent.recurrence === 'monthly'}
+											{newEvent.recurrence_interval === 1 ? 'месяц' : newEvent.recurrence_interval < 5 ? 'месяца' : 'месяцев'}
+										{:else if newEvent.recurrence === 'yearly'}
+											{newEvent.recurrence_interval === 1 ? 'год' : newEvent.recurrence_interval < 5 ? 'года' : 'лет'}
+										{/if}
+									</span>
 								</div>
-								<div class="flex items-center gap-4">
-									<label class="flex items-center gap-2 text-sm cursor-pointer">
-										<input
-											type="radio"
-											name="recurrence_end_type"
-											checked={!!newEvent.recurrence_end}
-											onchange={() => {
-												const d = new Date();
-												d.setMonth(d.getMonth() + 1);
-												newEvent.recurrence_end = d.toISOString().split('T')[0];
-												newEvent.recurrence_count = 0;
-											}}
-											class="text-ekf-red focus:ring-ekf-red"
-										/>
-										<span class="text-gray-700">До даты</span>
-										<input
-											type="date"
-											bind:value={newEvent.recurrence_end}
-											min={newEvent.date}
-											class="px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-ekf-red"
-										/>
-									</label>
+
+								<!-- Weekly: day of week selection -->
+								{#if newEvent.recurrence === 'weekly'}
+									<div class="space-y-2">
+										<div class="text-xs text-gray-500 font-medium">Дни недели:</div>
+										<div class="flex gap-1">
+											{#each weekdayButtons as day}
+												<button
+													onclick={() => toggleWeekday(day.id)}
+													class="w-8 h-8 text-xs rounded-lg border transition-colors
+														{newEvent.recurrence_weekdays.includes(day.id)
+															? 'border-ekf-red bg-red-50 text-ekf-red font-medium'
+															: 'border-gray-200 hover:bg-gray-100 text-gray-600'}"
+													title={day.full}
+												>
+													{day.short}
+												</button>
+											{/each}
+										</div>
+										<!-- Quick select buttons -->
+										<div class="flex gap-2 mt-1">
+											<button
+												onclick={() => newEvent.recurrence_weekdays = [0, 1, 2, 3, 4]}
+												class="text-xs text-blue-600 hover:text-blue-800"
+											>
+												Будни
+											</button>
+											<button
+												onclick={() => newEvent.recurrence_weekdays = [5, 6]}
+												class="text-xs text-blue-600 hover:text-blue-800"
+											>
+												Выходные
+											</button>
+											<button
+												onclick={() => newEvent.recurrence_weekdays = [0, 1, 2, 3, 4, 5, 6]}
+												class="text-xs text-blue-600 hover:text-blue-800"
+											>
+												Все дни
+											</button>
+										</div>
+									</div>
+								{/if}
+
+								<!-- Monthly: type selection -->
+								{#if newEvent.recurrence === 'monthly' && newEvent.date}
+									{@const selectedDate = new Date(newEvent.date + 'T00:00:00')}
+									{@const ordinalInfo = getWeekdayOrdinal(selectedDate)}
+									<div class="space-y-2">
+										<div class="text-xs text-gray-500 font-medium">Тип повторения:</div>
+										<div class="space-y-2">
+											<label class="flex items-center gap-2 text-sm cursor-pointer">
+												<input
+													type="radio"
+													name="monthly_type"
+													checked={newEvent.recurrence_monthly_type === 'day'}
+													onchange={() => newEvent.recurrence_monthly_type = 'day'}
+													class="text-ekf-red focus:ring-ekf-red"
+												/>
+												<span class="text-gray-700">
+													Каждое {selectedDate.getDate()}-е число месяца
+												</span>
+											</label>
+											<label class="flex items-center gap-2 text-sm cursor-pointer">
+												<input
+													type="radio"
+													name="monthly_type"
+													checked={newEvent.recurrence_monthly_type === 'weekday'}
+													onchange={() => newEvent.recurrence_monthly_type = 'weekday'}
+													class="text-ekf-red focus:ring-ekf-red"
+												/>
+												<span class="text-gray-700">
+													Каждый {getOrdinalText(ordinalInfo.ordinal)} {ordinalInfo.weekdayName.toLowerCase()} месяца
+												</span>
+											</label>
+										</div>
+									</div>
+								{/if}
+
+								<div class="border-t border-gray-200 pt-3">
+									<div class="text-xs text-gray-500 font-medium mb-2">Завершить повторение:</div>
+									<div class="space-y-2">
+										<label class="flex items-center gap-2 text-sm cursor-pointer">
+											<input
+												type="radio"
+												name="recurrence_end_type"
+												checked={!newEvent.recurrence_end && newEvent.recurrence_count > 0}
+												onchange={() => { newEvent.recurrence_end = ''; newEvent.recurrence_count = 10; }}
+												class="text-ekf-red focus:ring-ekf-red"
+											/>
+											<span class="text-gray-700">После</span>
+											<input
+												type="number"
+												bind:value={newEvent.recurrence_count}
+												min="1"
+												max="365"
+												class="w-16 px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-ekf-red"
+											/>
+											<span class="text-gray-600">повторений</span>
+										</label>
+										<label class="flex items-center gap-2 text-sm cursor-pointer">
+											<input
+												type="radio"
+												name="recurrence_end_type"
+												checked={!!newEvent.recurrence_end}
+												onchange={() => {
+													const d = new Date();
+													d.setMonth(d.getMonth() + 1);
+													newEvent.recurrence_end = d.toISOString().split('T')[0];
+													newEvent.recurrence_count = 0;
+												}}
+												class="text-ekf-red focus:ring-ekf-red"
+											/>
+											<span class="text-gray-700">До даты</span>
+											<input
+												type="date"
+												bind:value={newEvent.recurrence_end}
+												min={newEvent.date}
+												class="px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-ekf-red"
+											/>
+										</label>
+									</div>
 								</div>
+
 								<!-- Recurrence summary -->
 								<div class="text-xs text-gray-500 mt-2 p-2 bg-white rounded border border-gray-200">
 									{#if newEvent.recurrence === 'daily'}
-										Событие будет повторяться каждый день
+										Событие будет повторяться {newEvent.recurrence_interval === 1 ? 'каждый день' : `каждые ${newEvent.recurrence_interval} ${newEvent.recurrence_interval < 5 ? 'дня' : 'дней'}`}
 									{:else if newEvent.recurrence === 'weekly'}
-										Событие будет повторяться каждую {new Date(newEvent.date + 'T00:00:00').toLocaleDateString('ru-RU', { weekday: 'long' })}
-									{:else if newEvent.recurrence === 'monthly'}
-										Событие будет повторяться каждое {new Date(newEvent.date + 'T00:00:00').getDate()}-е число месяца
-									{:else if newEvent.recurrence === 'yearly'}
-										Событие будет повторяться каждый год {new Date(newEvent.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
+										Событие будет повторяться {newEvent.recurrence_interval === 1 ? 'каждую неделю' : `каждые ${newEvent.recurrence_interval} ${newEvent.recurrence_interval < 5 ? 'недели' : 'недель'}`}
+										{#if newEvent.recurrence_weekdays.length > 0}
+											<span class="font-medium"> ({getSelectedWeekdaysText()})</span>
+										{/if}
+									{:else if newEvent.recurrence === 'monthly' && newEvent.date}
+										{@const selectedDate = new Date(newEvent.date + 'T00:00:00')}
+										{@const ordinalInfo = getWeekdayOrdinal(selectedDate)}
+										Событие будет повторяться {newEvent.recurrence_interval === 1 ? 'каждый месяц' : `каждые ${newEvent.recurrence_interval} ${newEvent.recurrence_interval < 5 ? 'месяца' : 'месяцев'}`}
+										{#if newEvent.recurrence_monthly_type === 'day'}
+											<span class="font-medium">{selectedDate.getDate()}-го числа</span>
+										{:else}
+											<span class="font-medium">в {getOrdinalText(ordinalInfo.ordinal)} {ordinalInfo.weekdayName.toLowerCase()}</span>
+										{/if}
+									{:else if newEvent.recurrence === 'yearly' && newEvent.date}
+										Событие будет повторяться {newEvent.recurrence_interval === 1 ? 'каждый год' : `каждые ${newEvent.recurrence_interval} ${newEvent.recurrence_interval < 5 ? 'года' : 'лет'}`}
+										<span class="font-medium">{new Date(newEvent.date + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</span>
 									{/if}
 									{#if newEvent.recurrence_end}
 										до {new Date(newEvent.recurrence_end + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
 									{:else if newEvent.recurrence_count > 0}
-										({newEvent.recurrence_count} повторений)
+										({newEvent.recurrence_count} {newEvent.recurrence_count === 1 ? 'повторение' : newEvent.recurrence_count < 5 ? 'повторения' : 'повторений'})
 									{/if}
 								</div>
 							</div>
@@ -1220,6 +1621,162 @@
 				>
 					Создать событие
 				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Event Details Modal (opens on double-click) -->
+{#if showEventModal && modalEvent}
+	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+		<div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-auto">
+			<div class="p-6">
+				<div class="flex items-start justify-between mb-4">
+					<h2 class="text-xl font-semibold text-gray-900">{modalEvent.subject || modalEvent.title}</h2>
+					<button
+						onclick={() => { showEventModal = false; modalEvent = null; }}
+						class="p-1 hover:bg-gray-100 rounded"
+					>
+						<svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+
+				<div class="space-y-4">
+					<!-- Time -->
+					<div class="flex items-center gap-3 text-gray-600">
+						<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+						<div>
+							<div class="text-sm font-medium text-gray-900">
+								{new Date(modalEvent.start || modalEvent.start_time || '').toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+							</div>
+							<div class="text-sm">{formatEventTime(modalEvent)}</div>
+						</div>
+					</div>
+
+					<!-- Location -->
+					{#if modalEvent.location}
+						<div class="flex items-center gap-3 text-gray-600">
+							<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+							</svg>
+							<span class="text-sm">{modalEvent.location}</span>
+						</div>
+					{/if}
+
+					<!-- Organizer -->
+					{#if modalEvent.organizer}
+						<div class="flex items-center gap-3 text-gray-600">
+							<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+							</svg>
+							<div class="text-sm">
+								<span class="text-gray-500">Организатор:</span>
+								<span class="text-gray-900 font-medium">{modalEvent.organizer.name || modalEvent.organizer.email}</span>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Attendees -->
+					{#if modalEvent.attendees && modalEvent.attendees.length > 0}
+						<div>
+							<div class="flex items-center gap-3 text-gray-600 mb-3">
+								<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+								</svg>
+								<span class="text-sm font-medium">Участники ({modalEvent.attendees.length})</span>
+							</div>
+							<div class="ml-8 max-h-60 overflow-y-auto space-y-2">
+								{#each modalEvent.attendees as attendee}
+									<div class="flex items-center gap-2 text-sm">
+										{#if attendee.response === 'Accept'}
+											<span class="w-5 h-5 flex-shrink-0 rounded-full bg-green-100 text-green-600 flex items-center justify-center" title="Принял">
+												<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+												</svg>
+											</span>
+										{:else if attendee.response === 'Decline'}
+											<span class="w-5 h-5 flex-shrink-0 rounded-full bg-red-100 text-red-600 flex items-center justify-center" title="Отклонил">
+												<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12" />
+												</svg>
+											</span>
+										{:else if attendee.response === 'Tentative'}
+											<span class="w-5 h-5 flex-shrink-0 rounded-full bg-yellow-100 text-yellow-600 flex items-center justify-center" title="Возможно">
+												<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 4h.01" />
+												</svg>
+											</span>
+										{:else}
+											<span class="w-5 h-5 flex-shrink-0 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center" title="Ожидает ответа">
+												<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01" />
+												</svg>
+											</span>
+										{/if}
+										<span class="text-gray-700" title={attendee.email}>
+											{attendee.name || attendee.email}
+										</span>
+									</div>
+								{/each}
+							</div>
+							<!-- Summary -->
+							{#if modalEvent.attendees.length > 0}
+								{@const accepted = modalEvent.attendees.filter(a => a.response === 'Accept').length}
+								{@const declined = modalEvent.attendees.filter(a => a.response === 'Decline').length}
+								{@const tentative = modalEvent.attendees.filter(a => a.response === 'Tentative').length}
+								{@const pending = modalEvent.attendees.length - accepted - declined - tentative}
+								<div class="ml-8 mt-3 flex flex-wrap gap-2 text-xs">
+									{#if accepted > 0}
+										<span class="px-2 py-1 bg-green-100 text-green-700 rounded-full">Принято: {accepted}</span>
+									{/if}
+									{#if declined > 0}
+										<span class="px-2 py-1 bg-red-100 text-red-700 rounded-full">Отклонено: {declined}</span>
+									{/if}
+									{#if tentative > 0}
+										<span class="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full">Возможно: {tentative}</span>
+									{/if}
+									{#if pending > 0}
+										<span class="px-2 py-1 bg-gray-100 text-gray-600 rounded-full">Ожидает: {pending}</span>
+									{/if}
+								</div>
+							{/if}
+						</div>
+					{/if}
+
+					<!-- Recurring indicator -->
+					{#if modalEvent.is_recurring}
+						<div class="flex items-center gap-3 text-gray-600">
+							<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+							</svg>
+							<span class="text-sm">Повторяющееся событие</span>
+						</div>
+					{/if}
+
+					<!-- Cancelled indicator -->
+					{#if modalEvent.is_cancelled}
+						<div class="flex items-center gap-3 text-red-600 bg-red-50 rounded-lg p-3">
+							<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+							</svg>
+							<span class="text-sm font-medium">Событие отменено</span>
+						</div>
+					{/if}
+				</div>
+
+				<div class="mt-6 flex justify-end">
+					<button
+						onclick={() => { showEventModal = false; modalEvent = null; }}
+						class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium"
+					>
+						Закрыть
+					</button>
+				</div>
 			</div>
 		</div>
 	</div>
