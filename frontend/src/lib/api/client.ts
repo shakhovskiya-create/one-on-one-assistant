@@ -163,6 +163,25 @@ export const tasks = {
 		request(`/tasks/${id}/dependencies/${depId}`, { method: 'DELETE' }),
 	isBlocked: (id: string) =>
 		request<{ blocked: boolean; blockers: Task[] }>(`/tasks/${id}/blocked`),
+	// Time entries
+	getTimeEntries: (id: string) =>
+		request<TimeEntry[]>(`/tasks/${id}/time-entries`),
+	addTimeEntry: (id: string, data: { hours: number; description?: string; date?: string }) =>
+		request<TimeEntry>(`/tasks/${id}/time-entries`, { method: 'POST', body: data }),
+	updateTimeEntry: (taskId: string, entryId: string, data: { hours?: number; description?: string; date?: string }) =>
+		request(`/tasks/${taskId}/time-entries/${entryId}`, { method: 'PUT', body: data }),
+	deleteTimeEntry: (taskId: string, entryId: string) =>
+		request(`/tasks/${taskId}/time-entries/${entryId}`, { method: 'DELETE' }),
+	getResourceSummary: (id: string) =>
+		request<ResourceSummary>(`/tasks/${id}/resources`),
+};
+
+// Time entries for current user
+export const timeEntries = {
+	getMy: (params?: { start_date?: string; end_date?: string }) => {
+		const query = params ? '?' + new URLSearchParams(params).toString() : '';
+		return request<{ entries: TimeEntry[]; total_hours: number }>(`/time-entries/me${query}`);
+	},
 };
 
 // Analytics
@@ -447,6 +466,7 @@ export interface Employee {
 	photo_base64?: string;
 	phone?: string;
 	telegram_username?: string;
+	hourly_rate?: number;
 	created_at?: string;
 }
 
@@ -526,6 +546,12 @@ export interface Task {
 	due_date?: string;
 	progress?: number;
 	is_epic?: boolean;
+	// Resource planning fields
+	estimated_hours?: number;
+	actual_hours?: number;
+	estimated_cost?: number;
+	actual_cost?: number;
+	// Relations
 	assignee?: Employee;
 	project?: Project;
 	tags?: { name: string; color: string }[];
@@ -537,6 +563,27 @@ export interface TaskDependency {
 	task_id: string;
 	depends_on_task_id: string;
 	dependency_type: string;
+}
+
+export interface TimeEntry {
+	id: string;
+	task_id: string;
+	employee_id: string;
+	hours: number;
+	description?: string;
+	date: string;
+	created_at?: string;
+	employee?: Employee;
+}
+
+export interface ResourceSummary {
+	estimated_hours?: number;
+	actual_hours?: number;
+	estimated_cost?: number;
+	actual_cost?: number;
+	logged_hours: number;
+	hourly_rate: number;
+	calculated_cost: number;
 }
 
 export interface KanbanBoard {
@@ -885,6 +932,7 @@ export const api = {
 	projects,
 	meetings,
 	tasks,
+	timeEntries,
 	analytics,
 	calendar,
 	messenger,

@@ -20,6 +20,7 @@ type Employee struct {
 	Mobile                *string    `json:"mobile,omitempty"`
 	TelegramUsername      *string    `json:"telegram_username,omitempty"`
 	TelegramChatID        *int64     `json:"telegram_chat_id,omitempty"`
+	HourlyRate            *float64   `json:"hourly_rate,omitempty"`
 	EncryptedPassword     *string    `json:"-"` // Never expose in JSON - for EWS access only
 	CreatedAt             *time.Time `json:"created_at,omitempty"`
 }
@@ -112,15 +113,21 @@ type Task struct {
 	OriginalDueDate *string       `json:"original_due_date,omitempty"`
 	CompletedAt     *time.Time    `json:"completed_at,omitempty"`
 	CreatedAt       *time.Time    `json:"created_at,omitempty"`
-	Tags            []Tag         `json:"tags,omitempty"`
-	Assignee        *Employee     `json:"assignee,omitempty"`
-	CoAssignee      *Employee     `json:"co_assignee,omitempty"`
-	Creator         *Employee     `json:"creator,omitempty"`
-	Project         *Project      `json:"project,omitempty"`
-	Subtasks        []Task        `json:"subtasks,omitempty"`
-	Comments        []TaskComment `json:"comments,omitempty"`
-	History         []TaskHistory `json:"history,omitempty"`
-	Progress        int           `json:"progress,omitempty"`
+	// Resource planning fields
+	EstimatedHours *float64 `json:"estimated_hours,omitempty"`
+	ActualHours    *float64 `json:"actual_hours,omitempty"`
+	EstimatedCost  *float64 `json:"estimated_cost,omitempty"`
+	ActualCost     *float64 `json:"actual_cost,omitempty"`
+	// Relations
+	Tags       []Tag         `json:"tags,omitempty"`
+	Assignee   *Employee     `json:"assignee,omitempty"`
+	CoAssignee *Employee     `json:"co_assignee,omitempty"`
+	Creator    *Employee     `json:"creator,omitempty"`
+	Project    *Project      `json:"project,omitempty"`
+	Subtasks   []Task        `json:"subtasks,omitempty"`
+	Comments   []TaskComment `json:"comments,omitempty"`
+	History    []TaskHistory `json:"history,omitempty"`
+	Progress   int           `json:"progress,omitempty"`
 }
 
 // Tag represents a label for tasks
@@ -148,6 +155,18 @@ type TaskHistory struct {
 	OldValue  *string    `json:"old_value,omitempty"`
 	NewValue  *string    `json:"new_value,omitempty"`
 	CreatedAt *time.Time `json:"created_at,omitempty"`
+}
+
+// TimeEntry represents time logged on a task
+type TimeEntry struct {
+	ID          string     `json:"id"`
+	TaskID      string     `json:"task_id"`
+	EmployeeID  string     `json:"employee_id"`
+	Hours       float64    `json:"hours"`
+	Description *string    `json:"description,omitempty"`
+	Date        string     `json:"date"`
+	CreatedAt   *time.Time `json:"created_at,omitempty"`
+	Employee    *Employee  `json:"employee,omitempty"`
 }
 
 // TelegramUser links employees to Telegram

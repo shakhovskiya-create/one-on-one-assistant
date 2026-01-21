@@ -155,6 +155,14 @@ func main() {
 	protectedAPI.Post("/tasks/:id/dependencies", h.AddTaskDependency)
 	protectedAPI.Delete("/tasks/:id/dependencies/:dep_id", h.RemoveTaskDependency)
 	protectedAPI.Get("/tasks/:id/blocked", h.IsTaskBlocked)
+	// Time entries
+	protectedAPI.Get("/tasks/:id/time-entries", h.ListTimeEntries)
+	protectedAPI.Post("/tasks/:id/time-entries", h.CreateTimeEntry)
+	protectedAPI.Put("/tasks/:id/time-entries/:entry_id", h.UpdateTimeEntry)
+	protectedAPI.Delete("/tasks/:id/time-entries/:entry_id", h.DeleteTimeEntry)
+	protectedAPI.Get("/tasks/:id/resources", h.GetTaskResourceSummary)
+	// My time entries
+	protectedAPI.Get("/time-entries/me", h.GetMyTimeEntries)
 
 	// Kanban
 	protectedAPI.Get("/kanban", h.GetKanban)

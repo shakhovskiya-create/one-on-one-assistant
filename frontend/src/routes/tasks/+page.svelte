@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, workflows } from '$lib/api/client';
+	import { api, workflows, tasks as tasksApi } from '$lib/api/client';
 	import { user, subordinates } from '$lib/stores/auth';
-	import type { TaskDependency, StatusColumn } from '$lib/api/client';
+	import type { TaskDependency, StatusColumn, TimeEntry, ResourceSummary } from '$lib/api/client';
 
 	// Types
 	interface Task {
@@ -21,6 +21,11 @@
 		parent_id?: string;
 		sprint?: string;
 		created_at: string;
+		// Resource planning
+		estimated_hours?: number;
+		actual_hours?: number;
+		estimated_cost?: number;
+		actual_cost?: number;
 	}
 
 	interface Project {
@@ -55,6 +60,12 @@
 	let isTaskBlocked = $state(false);
 	let showDependencyPicker = $state(false);
 	let dependencySearch = $state('');
+
+	// Time tracking state
+	let timeEntries: TimeEntry[] = $state([]);
+	let resourceSummary: ResourceSummary | null = $state(null);
+	let showTimeEntryForm = $state(false);
+	let newTimeEntry = $state({ hours: 0, description: '', date: new Date().toISOString().split('T')[0] });
 
 	// Status columns for Kanban (dynamically loaded from workflow)
 	let statusColumns: StatusColumn[] = $state([
@@ -112,13 +123,20 @@
 			story_points: undefined,
 			assignee_id: $user?.id || '',
 			project_id: filterProject || '',
-			due_date: ''
+			due_date: '',
+			estimated_hours: undefined,
+			estimated_cost: undefined
 		};
 		// Reset dependencies for new task
 		taskDependencies = [];
 		taskDependents = [];
 		taskBlockers = [];
 		isTaskBlocked = false;
+		// Reset time entries for new task
+		timeEntries = [];
+		resourceSummary = null;
+		showTimeEntryForm = false;
+		newTimeEntry = { hours: 0, description: '', date: new Date().toISOString().split('T')[0] };
 		showTaskModal = true;
 	}
 
@@ -128,9 +146,13 @@
 	async function openEditTask(task: Task) {
 		editingTask = { ...task };
 		showTaskModal = true;
-		// Load dependencies for existing task
+		// Load dependencies and time entries for existing task
 		if (task.id) {
-			await loadTaskDependencies(task.id);
+			await Promise.all([
+				loadTaskDependencies(task.id),
+				loadTimeEntries(task.id),
+				loadResourceSummary(task.id)
+			]);
 		}
 	}
 
@@ -144,7 +166,10 @@
 				project_id: editingTask.project_id || undefined,
 				due_date: editingTask.due_date || undefined,
 				priority: Number(editingTask.priority) || 3,
-				story_points: editingTask.story_points ? Number(editingTask.story_points) : undefined
+				story_points: editingTask.story_points ? Number(editingTask.story_points) : undefined,
+				// Resource planning fields
+				estimated_hours: editingTask.estimated_hours ? Number(editingTask.estimated_hours) : undefined,
+				estimated_cost: editingTask.estimated_cost ? Number(editingTask.estimated_cost) : undefined
 			};
 
 			if (editingTask.id) {
@@ -207,6 +232,61 @@
 		} catch (e) {
 			console.error('Error removing dependency:', e);
 		}
+	}
+
+	// Time tracking functions
+	async function loadTimeEntries(taskId: string) {
+		try {
+			timeEntries = await tasksApi.getTimeEntries(taskId);
+		} catch (e) {
+			console.error('Error loading time entries:', e);
+			timeEntries = [];
+		}
+	}
+
+	async function loadResourceSummary(taskId: string) {
+		try {
+			resourceSummary = await tasksApi.getResourceSummary(taskId);
+		} catch (e) {
+			console.error('Error loading resource summary:', e);
+			resourceSummary = null;
+		}
+	}
+
+	async function addTimeEntry() {
+		if (!editingTask?.id || newTimeEntry.hours <= 0) return;
+		try {
+			const entry = await tasksApi.addTimeEntry(editingTask.id, newTimeEntry);
+			timeEntries = [entry, ...timeEntries];
+			newTimeEntry = { hours: 0, description: '', date: new Date().toISOString().split('T')[0] };
+			showTimeEntryForm = false;
+			// Reload resource summary
+			await loadResourceSummary(editingTask.id);
+		} catch (e: any) {
+			alert(e.message || 'Не удалось добавить запись времени');
+		}
+	}
+
+	async function deleteTimeEntry(entryId: string) {
+		if (!editingTask?.id) return;
+		try {
+			await tasksApi.deleteTimeEntry(editingTask.id, entryId);
+			timeEntries = timeEntries.filter(e => e.id !== entryId);
+			// Reload resource summary
+			await loadResourceSummary(editingTask.id);
+		} catch (e) {
+			console.error('Error deleting time entry:', e);
+		}
+	}
+
+	function formatHours(hours: number | undefined): string {
+		if (!hours) return '-';
+		return `${hours.toFixed(1)} ч`;
+	}
+
+	function formatCost(cost: number | undefined): string {
+		if (!cost) return '-';
+		return `${cost.toLocaleString('ru-RU')} ₽`;
 	}
 
 	// Filter tasks for dependency picker (exclude current task and already added)
@@ -871,6 +951,160 @@
 									{/if}
 								</div>
 							</div>
+						{/if}
+					</div>
+
+					<!-- Resource Planning Section -->
+					<div class="border-t pt-3 mt-3">
+						<label class="block text-xs font-medium text-gray-500 mb-2">Планирование ресурсов</label>
+
+						<div class="grid grid-cols-2 gap-2 mb-3">
+							<div>
+								<label class="block text-xs text-gray-400 mb-1">Оценка (часы)</label>
+								<input
+									type="number"
+									min="0"
+									step="0.5"
+									bind:value={editingTask.estimated_hours}
+									class="w-full px-2 py-1 border border-gray-200 rounded text-sm"
+									placeholder="0"
+								/>
+							</div>
+							<div>
+								<label class="block text-xs text-gray-400 mb-1">Оценка (руб.)</label>
+								<input
+									type="number"
+									min="0"
+									bind:value={editingTask.estimated_cost}
+									class="w-full px-2 py-1 border border-gray-200 rounded text-sm"
+									placeholder="0"
+								/>
+							</div>
+						</div>
+
+						{#if resourceSummary}
+							<div class="p-2 bg-gray-50 rounded-lg text-xs space-y-1">
+								<div class="flex justify-between">
+									<span class="text-gray-500">Залогировано:</span>
+									<span class="font-medium">{formatHours(resourceSummary.logged_hours)}</span>
+								</div>
+								<div class="flex justify-between">
+									<span class="text-gray-500">Фактические часы:</span>
+									<span class="font-medium">{formatHours(resourceSummary.actual_hours)}</span>
+								</div>
+								{#if resourceSummary.hourly_rate > 0}
+									<div class="flex justify-between">
+										<span class="text-gray-500">Расчётная стоимость:</span>
+										<span class="font-medium">{formatCost(resourceSummary.calculated_cost)}</span>
+									</div>
+								{/if}
+								{#if editingTask.estimated_hours && resourceSummary.logged_hours}
+									<div class="mt-2 pt-2 border-t">
+										<div class="flex justify-between items-center">
+											<span class="text-gray-500">Прогресс:</span>
+											<span class="font-medium {resourceSummary.logged_hours > (editingTask.estimated_hours || 0) ? 'text-red-600' : 'text-green-600'}">
+												{Math.round((resourceSummary.logged_hours / (editingTask.estimated_hours || 1)) * 100)}%
+											</span>
+										</div>
+										<div class="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+											<div
+												class="h-1.5 rounded-full transition-all {resourceSummary.logged_hours > (editingTask.estimated_hours || 0) ? 'bg-red-500' : 'bg-green-500'}"
+												style="width: {Math.min(100, (resourceSummary.logged_hours / (editingTask.estimated_hours || 1)) * 100)}%"
+											></div>
+										</div>
+									</div>
+								{/if}
+							</div>
+						{/if}
+					</div>
+
+					<!-- Time Tracking Section -->
+					<div class="border-t pt-3 mt-3">
+						<div class="flex items-center justify-between mb-2">
+							<label class="block text-xs font-medium text-gray-500">Учёт времени</label>
+							<button
+								type="button"
+								onclick={() => showTimeEntryForm = !showTimeEntryForm}
+								class="text-xs text-ekf-red hover:text-red-700"
+							>
+								+ Добавить время
+							</button>
+						</div>
+
+						{#if showTimeEntryForm}
+							<div class="border rounded-lg p-2 bg-white mb-2">
+								<div class="grid grid-cols-3 gap-2 mb-2">
+									<div>
+										<label class="block text-xs text-gray-400 mb-1">Часы</label>
+										<input
+											type="number"
+											min="0.25"
+											step="0.25"
+											bind:value={newTimeEntry.hours}
+											class="w-full px-2 py-1 border border-gray-200 rounded text-xs"
+											placeholder="0"
+										/>
+									</div>
+									<div class="col-span-2">
+										<label class="block text-xs text-gray-400 mb-1">Дата</label>
+										<input
+											type="date"
+											bind:value={newTimeEntry.date}
+											class="w-full px-2 py-1 border border-gray-200 rounded text-xs"
+										/>
+									</div>
+								</div>
+								<input
+									type="text"
+									bind:value={newTimeEntry.description}
+									placeholder="Описание работы..."
+									class="w-full px-2 py-1 border border-gray-200 rounded text-xs mb-2"
+								/>
+								<div class="flex justify-end gap-2">
+									<button
+										type="button"
+										onclick={() => showTimeEntryForm = false}
+										class="px-2 py-1 text-gray-500 text-xs"
+									>
+										Отмена
+									</button>
+									<button
+										type="button"
+										onclick={addTimeEntry}
+										disabled={newTimeEntry.hours <= 0}
+										class="px-2 py-1 bg-ekf-red text-white rounded text-xs disabled:opacity-50"
+									>
+										Добавить
+									</button>
+								</div>
+							</div>
+						{/if}
+
+						{#if timeEntries.length > 0}
+							<div class="space-y-1 max-h-32 overflow-y-auto">
+								{#each timeEntries as entry}
+									<div class="flex items-center justify-between p-2 bg-gray-50 rounded text-xs">
+										<div class="flex-1">
+											<div class="flex items-center gap-2">
+												<span class="font-medium">{entry.hours} ч</span>
+												<span class="text-gray-400">{new Date(entry.date).toLocaleDateString('ru-RU')}</span>
+											</div>
+											{#if entry.description}
+												<p class="text-gray-500 truncate">{entry.description}</p>
+											{/if}
+										</div>
+										<button
+											type="button"
+											onclick={() => deleteTimeEntry(entry.id)}
+											class="text-gray-400 hover:text-red-500 ml-2"
+										>
+											×
+										</button>
+									</div>
+								{/each}
+							</div>
+						{:else}
+							<p class="text-xs text-gray-400">Нет записей времени</p>
 						{/if}
 					</div>
 				{/if}

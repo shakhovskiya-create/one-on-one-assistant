@@ -38,12 +38,12 @@ type AuditLog struct {
 
 // SystemSetting represents a system setting
 type SystemSetting struct {
-	ID          string                 `json:"id"`
-	Key         string                 `json:"key"`
-	Value       interface{}            `json:"value"`
-	Description *string                `json:"description"`
-	UpdatedBy   *string                `json:"updated_by"`
-	UpdatedAt   time.Time              `json:"updated_at"`
+	ID          string      `json:"id"`
+	Key         string      `json:"key"`
+	Value       interface{} `json:"value"`
+	Description *string     `json:"description"`
+	UpdatedBy   *string     `json:"updated_by"`
+	UpdatedAt   time.Time   `json:"updated_at"`
 }
 
 // GetAdminStats returns dashboard statistics for admins
