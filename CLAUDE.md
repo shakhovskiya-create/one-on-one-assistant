@@ -19,11 +19,7 @@ Cursor → Settings → Rules and Commands → Project Rules → Add Rule
    ```bash
    ssh root@10.100.0.131 "echo 'SSH OK'"
    ```
-   Если доступа нет — запросить добавление ключей у пользователя:
-   ```
-   ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILqxzW0qJ7yKGmP8fV8kD9mXwZ2hN4pQ6xR5tY3vU8wK claude-code-assistant
-   ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM1WXy2yqF8Om4ZWp1MucIS/UQw2Tn7+ajbxDZ4utJYp a.shakhovskiy@ekf.su
-   ```
+   Если доступа нет — запросить ключи у пользователя.
 
 3. **Git workflow (ОБЯЗАТЕЛЬНО после каждой задачи):**
    - Коммитить изменения: `git add . && git commit -m "type: description"`
