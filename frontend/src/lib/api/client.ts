@@ -666,6 +666,17 @@ export interface EmailAttachment {
 	content_id?: string;
 }
 
+
+// GIF types
+export interface GifResult {
+	id: string;
+	title: string;
+	url: string;
+	preview_url: string;
+	width: string;
+	height: string;
+}
+
 // Mail API
 export const mail = {
 	getFolders: (username: string, password: string) =>
@@ -692,6 +703,22 @@ export const mail = {
 		request<{ success: boolean; response: string }>('/mail/meeting/respond', { method: 'POST', body: data }),
 };
 
+// GIF API (GIPHY)
+export const giphy = {
+	search: async (query: string, limit: number = 20, offset: number = 0): Promise<GifResult[]> => {
+		const params = new URLSearchParams({ q: query, limit: limit.toString(), offset: offset.toString() });
+		const response = await fetch(`${API_URL}/gifs/search?${params}`);
+		const data = await response.json();
+		return data.gifs || [];
+	},
+	trending: async (limit: number = 20, offset: number = 0): Promise<GifResult[]> => {
+		const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() });
+		const response = await fetch(`${API_URL}/gifs/trending?${params}`);
+		const data = await response.json();
+		return data.gifs || [];
+	}
+};
+
 // Combined API object for convenience
 export const api = {
 	employees,
@@ -704,5 +731,6 @@ export const api = {
 	connector,
 	files,
 	bpmn,
-	mail
+	mail,
+	giphy
 };

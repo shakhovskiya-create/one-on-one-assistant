@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { messenger, employees as employeesApi, speech, files } from '$lib/api/client';
-	import type { Conversation, Message, Employee } from '$lib/api/client';
+	import { messenger, employees as employeesApi, speech, files, giphy } from '$lib/api/client';
+	import type { Conversation, Message, Employee, GifResult } from '$lib/api/client';
 	import { user, subordinates as userSubordinates } from '$lib/stores/auth';
 
 	// State
@@ -42,6 +42,14 @@
 
 	// Emoji picker
 	let showEmojiPicker = $state(false);
+	
+	// GIF picker
+	let showGifPicker = $state(false);
+	let gifSearchQuery = $state('');
+	let gifs: Array<{id: string; title: string; url: string; preview_url: string; width: string; height: string}> = $state([]);
+	let gifsLoading = $state(false);
+	let gifSearchTimeout: ReturnType<typeof setTimeout> | null = null;
+	
 	const emojiCategories = {
 		'Смайлики': ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷'],
 		'Жесты': ['👍', '👎', '👌', '🤌', '✌️', '🤞', '🤟', '🤘', '👊', '✊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏', '💪', '🦾'],
@@ -468,6 +476,10 @@
 			return { id: match[1], duration: parseInt(match[2]) };
 		}
 		return null;
+	}
+
+	function isGifMessage(msg: Message): boolean {
+		return msg.message_type === 'gif' || (msg.content.startsWith('http') && msg.content.includes('giphy'));
 	}
 
 	function playVideo(videoId: string, serverUrl?: string) {
@@ -958,6 +970,67 @@
 	function insertEmoji(emoji: string) {
 		newMessage += emoji;
 		showEmojiPicker = false;
+	}
+
+	// GIF functions
+	async function loadTrendingGifs() {
+		if (gifsLoading) return;
+		gifsLoading = true;
+		try {
+			gifs = await giphy.trending(24);
+		} catch (e) {
+			console.error('Failed to load trending GIFs:', e);
+		} finally {
+			gifsLoading = false;
+		}
+	}
+
+	async function searchGifs(query: string) {
+		if (!query.trim()) {
+			loadTrendingGifs();
+			return;
+		}
+		gifsLoading = true;
+		try {
+			gifs = await giphy.search(query, 24);
+		} catch (e) {
+			console.error('Failed to search GIFs:', e);
+		} finally {
+			gifsLoading = false;
+		}
+	}
+
+	function handleGifSearch(query: string) {
+		gifSearchQuery = query;
+		if (gifSearchTimeout) clearTimeout(gifSearchTimeout);
+		gifSearchTimeout = setTimeout(() => searchGifs(query), 300);
+	}
+
+	function openGifPicker() {
+		showGifPicker = true;
+		showEmojiPicker = false;
+		if (gifs.length === 0) {
+			loadTrendingGifs();
+		}
+	}
+
+	async function sendGif(gif: {url: string; title: string}) {
+		if (!currentConversation || !$user) return;
+		try {
+			const msg = await messenger.sendMessage({
+				conversation_id: currentConversation.id,
+				sender_id: $user.id,
+				content: gif.url,
+				message_type: 'gif'
+			});
+			messages = [...messages, msg];
+			updateConversationLastMessage(currentConversation.id, msg);
+			scrollToBottom();
+			showGifPicker = false;
+			gifSearchQuery = '';
+		} catch (e) {
+			console.error('Failed to send GIF:', e);
+		}
 	}
 
 	// Store reactions locally (in a real app this would be synced with backend)
@@ -1635,6 +1708,15 @@
 											{/if}
 										</div>
 									{/if}
+								{:else if isGifMessage(msg)}
+									<div class="rounded-lg overflow-hidden max-w-xs">
+										<img 
+											src={msg.content} 
+											alt="GIF" 
+											class="w-full h-auto rounded-lg"
+											loading="lazy"
+										/>
+									</div>
 								{:else}
 									<div class="break-words leading-relaxed text-sm">{msg.content}</div>
 								{/if}
@@ -1730,6 +1812,39 @@
 					</div>
 				{/if}
 
+				<!-- GIF Picker -->
+				{#if showGifPicker}
+					<div class="absolute bottom-full left-0 right-0 mb-2 mx-4 bg-white rounded-xl shadow-lg border border-gray-200 z-10">
+						<div class="p-3">
+							<input
+								type="text"
+								bind:value={gifSearchQuery}
+								oninput={(e) => handleGifSearch(e.currentTarget.value)}
+								placeholder="Поиск GIF..."
+								class="w-full px-3 py-2 bg-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ekf-red/20 mb-3"
+							/>
+							<div class="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+								{#if gifsLoading}
+									<div class="col-span-3 text-center py-4 text-gray-500">Загрузка...</div>
+								{:else if gifs.length === 0}
+									<div class="col-span-3 text-center py-4 text-gray-500">Нет результатов</div>
+								{:else}
+									{#each gifs as gif}
+										<button
+											type="button"
+											onclick={() => sendGif(gif)}
+											class="aspect-square rounded-lg overflow-hidden hover:opacity-80 transition-opacity bg-gray-100"
+										>
+											<img src={gif.preview_url || gif.url} alt={gif.title} class="w-full h-full object-cover" loading="lazy" />
+										</button>
+									{/each}
+								{/if}
+							</div>
+							<div class="mt-2 text-xs text-gray-400 text-center">Powered by GIPHY</div>
+						</div>
+					</div>
+				{/if}
+
 				<form onsubmit={(e) => { e.preventDefault(); editingMessage ? saveEdit() : sendMessage(); }} class="flex items-center gap-2">
 					<button type="button" class="p-2 hover:bg-gray-100 rounded-full transition-colors">
 						<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1744,6 +1859,14 @@
 						<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 						</svg>
+					</button>
+					<button
+						type="button"
+						onclick={openGifPicker}
+						class="p-2 hover:bg-gray-100 rounded-full transition-colors {showGifPicker ? 'bg-gray-100' : ''}"
+						title="GIF"
+					>
+						<span class="text-xs font-bold text-gray-500">GIF</span>
 					</button>
 					<div class="flex-1">
 						<input

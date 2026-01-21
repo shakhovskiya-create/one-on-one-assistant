@@ -215,6 +215,10 @@ func main() {
 	// Telegram webhook (public - called by Telegram)
 	api.Post("/telegram/webhook/:channel_id", h.TelegramWebhook)
 
+	// GIPHY - GIF search (public API, no auth needed)
+	api.Get("/gifs/search", h.SearchGifs)
+	api.Get("/gifs/trending", h.TrendingGifs)
+
 	// Mail (EWS)
 	protectedAPI.Get("/mail/folders", h.GetMailFolders)
 	protectedAPI.Get("/mail/emails", h.GetEmails)

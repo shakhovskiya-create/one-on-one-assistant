@@ -36,6 +36,8 @@ type Config struct {
 	MinioBucket    string
 	MinIOUseSSL    bool
 	MinIOPublicURL string // Public URL for media access (e.g., http://localhost/media)
+	// External APIs
+	GiphyAPIKey string // GIPHY API key for GIF search
 }
 
 func Load() *Config {
@@ -71,6 +73,7 @@ func Load() *Config {
 		MinioBucket:    getEnv("MINIO_BUCKET", "media"),
 		MinIOUseSSL:    getEnv("MINIO_USE_SSL", "false") == "true",
 		MinIOPublicURL: getEnv("MINIO_PUBLIC_URL", "/media"),
+		GiphyAPIKey:    getEnv("GIPHY_API_KEY", ""),
 	}
 }
 
