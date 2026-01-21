@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ekf/one-on-one-backend/internal/storage"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
@@ -61,7 +63,7 @@ func (h *Handler) UploadFile(c *fiber.Ctx) error {
 	// Generate unique filename
 	ext := filepath.Ext(file.Filename)
 	fileID := uuid.New().String()
-	storagePath := generateStoragePath(entityType, entityID, fileID, ext)
+	storagePath := storage.GeneratePath(entityType, entityID, fileID, ext)
 
 	// Detect content type
 	contentType := file.Header.Get("Content-Type")
@@ -69,10 +71,16 @@ func (h *Handler) UploadFile(c *fiber.Ctx) error {
 		contentType = detectContentType(ext)
 	}
 
-	// Upload to Supabase Storage
-	publicURL, err := h.DB.StorageUpload(bucket, storagePath, bytes.NewReader(data), contentType)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Storage upload failed: %v", err)})
+	// Upload to MinIO Storage
+	var publicURL string
+	if h.Storage != nil {
+		ctx := context.Background()
+		publicURL, err = h.Storage.Upload(ctx, storagePath, bytes.NewReader(data), int64(len(data)), contentType)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Storage upload failed: %v", err)})
+		}
+	} else {
+		return c.Status(500).JSON(fiber.Map{"error": "Storage not configured"})
 	}
 
 	// Save metadata to database
@@ -99,7 +107,9 @@ func (h *Handler) UploadFile(c *fiber.Ctx) error {
 	_, err = h.DB.Insert("files", metadata)
 	if err != nil {
 		// Try to clean up uploaded file
-		_ = h.DB.StorageDelete(bucket, storagePath)
+		if h.Storage != nil {
+			_ = h.Storage.Delete(context.Background(), storagePath)
+		}
 		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to save file metadata: %v", err)})
 	}
 
@@ -126,8 +136,13 @@ func (h *Handler) GetFile(c *fiber.Ctx) error {
 
 	file := files[0]
 
-	// Download from storage
-	data, contentType, err := h.DB.StorageDownload(file.Bucket, file.StoragePath)
+	// Download from MinIO storage
+	if h.Storage == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Storage not configured"})
+	}
+
+	ctx := context.Background()
+	data, contentType, err := h.Storage.Download(ctx, file.StoragePath)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to download file: %v", err)})
 	}
@@ -150,10 +165,13 @@ func (h *Handler) DeleteFile(c *fiber.Ctx) error {
 
 	file := files[0]
 
-	// Delete from storage
-	err = h.DB.StorageDelete(file.Bucket, file.StoragePath)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to delete file from storage: %v", err)})
+	// Delete from MinIO storage
+	if h.Storage != nil {
+		ctx := context.Background()
+		err = h.Storage.Delete(ctx, file.StoragePath)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to delete file from storage: %v", err)})
+		}
 	}
 
 	// Delete metadata
@@ -191,9 +209,11 @@ func (h *Handler) ListFiles(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	// Add URLs
-	for i := range files {
-		files[i].URL = h.DB.StorageGetPublicURL(files[i].Bucket, files[i].StoragePath)
+	// Add URLs from MinIO
+	if h.Storage != nil {
+		for i := range files {
+			files[i].URL = h.Storage.GetPublicURL(files[i].StoragePath)
+		}
 	}
 
 	return c.JSON(files)
@@ -210,7 +230,10 @@ func (h *Handler) GetFileURL(c *fiber.Ctx) error {
 	}
 
 	file := files[0]
-	url := h.DB.StorageGetPublicURL(file.Bucket, file.StoragePath)
+	var url string
+	if h.Storage != nil {
+		url = h.Storage.GetPublicURL(file.StoragePath)
+	}
 
 	return c.JSON(fiber.Map{
 		"id":           file.ID,
@@ -268,17 +291,10 @@ func (h *Handler) AttachFileToEntity(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"success": true})
 }
 
-// generateStoragePath creates a structured path for file storage
+// generateStoragePath is deprecated - use storage.GeneratePath instead
+// Kept for backwards compatibility
 func generateStoragePath(entityType, entityID, fileID, ext string) string {
-	now := time.Now()
-	year := now.Format("2006")
-	month := now.Format("01")
-
-	if entityType != "" && entityID != "" {
-		return fmt.Sprintf("%s/%s/%s/%s%s", entityType, entityID, year+month, fileID, ext)
-	}
-
-	return fmt.Sprintf("uploads/%s/%s/%s%s", year, month, fileID, ext)
+	return storage.GeneratePath(entityType, entityID, fileID, ext)
 }
 
 // detectContentType detects content type from file extension

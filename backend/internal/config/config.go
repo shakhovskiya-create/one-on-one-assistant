@@ -31,6 +31,13 @@ type Config struct {
 	CamundaURL       string // Camunda BPMN engine URL
 	CamundaUser      string // Camunda username
 	CamundaPassword  string // Camunda password
+	// MinIO Storage Configuration
+	MinIOEndpoint  string
+	MinIOAccessKey string
+	MinIOSecretKey string
+	MinioBucket    string
+	MinIOUseSSL    bool
+	MinIOPublicURL string // Public URL for media access (e.g., http://localhost/media)
 }
 
 func Load() *Config {
@@ -61,6 +68,13 @@ func Load() *Config {
 		CamundaURL:       getEnv("CAMUNDA_URL", ""),
 		CamundaUser:      getEnv("CAMUNDA_USER", ""),
 		CamundaPassword:  getEnv("CAMUNDA_PASSWORD", ""),
+		// MinIO Storage
+		MinIOEndpoint:  getEnv("MINIO_ENDPOINT", "minio:9000"),
+		MinIOAccessKey: getEnv("MINIO_ACCESS_KEY", "minioadmin"),
+		MinIOSecretKey: getEnv("MINIO_SECRET_KEY", "minioadmin123"),
+		MinioBucket:    getEnv("MINIO_BUCKET", "media"),
+		MinIOUseSSL:    getEnv("MINIO_USE_SSL", "false") == "true",
+		MinIOPublicURL: getEnv("MINIO_PUBLIC_URL", "/media"),
 	}
 }
 

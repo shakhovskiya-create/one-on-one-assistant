@@ -6,6 +6,7 @@ import (
 	"github.com/ekf/one-on-one-backend/internal/database"
 	"github.com/ekf/one-on-one-backend/internal/ews"
 	"github.com/ekf/one-on-one-backend/internal/services"
+	"github.com/ekf/one-on-one-backend/internal/storage"
 	"github.com/ekf/one-on-one-backend/pkg/ai"
 	"github.com/ekf/one-on-one-backend/pkg/auth"
 	"github.com/ekf/one-on-one-backend/pkg/camunda"
@@ -16,6 +17,7 @@ import (
 type Handler struct {
 	Config    *config.Config
 	DB        database.DBClient
+	Storage   *storage.MinIOClient
 	AI        *ai.Client
 	AD        *ad.Client
 	EWS       *ews.Client
@@ -56,9 +58,28 @@ func NewHandler(cfg *config.Config) *Handler {
 	jwtManager := auth.NewJWTManager(cfg.JWTSecret, 24) // 24 hours expiration
 	camundaClient := camunda.NewClient(cfg.CamundaURL, cfg.CamundaUser, cfg.CamundaPassword)
 
+	// Initialize MinIO storage client
+	var storageClient *storage.MinIOClient
+	if cfg.MinIOEndpoint != "" {
+		minioClient, err := storage.NewMinIOClient(storage.MinIOConfig{
+			Endpoint:  cfg.MinIOEndpoint,
+			AccessKey: cfg.MinIOAccessKey,
+			SecretKey: cfg.MinIOSecretKey,
+			Bucket:    cfg.MinioBucket,
+			UseSSL:    cfg.MinIOUseSSL,
+			PublicURL: cfg.MinIOPublicURL,
+		})
+		if err != nil {
+			println("Warning: Failed to connect to MinIO storage:", err.Error())
+		} else {
+			storageClient = minioClient
+		}
+	}
+
 	return &Handler{
 		Config:    cfg,
 		DB:        db,
+		Storage:   storageClient,
 		AI:        aiClient,
 		AD:        adClient,
 		EWS:       ewsClient,
