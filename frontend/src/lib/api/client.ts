@@ -154,8 +154,15 @@ export const messenger = {
 	},
 	createConversation: (data: { type?: string; name?: string; description?: string; participants: string[] }) =>
 		request<Conversation>('/conversations', { method: 'POST', body: data }),
-	sendMessage: (data: { conversation_id: string; sender_id: string; content: string; reply_to_id?: string }) =>
-		request<Message>('/messages', { method: 'POST', body: data }),
+	sendMessage: (data: {
+		conversation_id: string;
+		sender_id: string;
+		content: string;
+		message_type?: 'text' | 'voice' | 'video' | 'file' | 'sticker' | 'gif';
+		file_id?: string;
+		duration_seconds?: number;
+		reply_to_id?: string
+	}) => request<Message>('/messages', { method: 'POST', body: data }),
 	getWebSocketUrl: (userId: string) => {
 		// WebSocket connects directly to the backend, not through the API proxy
 		const wsProtocol = browser && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -195,6 +202,24 @@ export const connector = {
 
 // Files
 export const files = {
+	uploadBlob: async (blob: Blob, filename: string, options?: { entityType?: string; entityId?: string; uploadedBy?: string }) => {
+		const formData = new FormData();
+		formData.append('file', blob, filename);
+		if (options?.entityType) formData.append('entity_type', options.entityType);
+		if (options?.entityId) formData.append('entity_id', options.entityId);
+		if (options?.uploadedBy) formData.append('uploaded_by', options.uploadedBy);
+
+		const response = await fetch(`${API_URL}/files`, {
+			method: 'POST',
+			headers: getAuthHeaders(),
+			body: formData
+		});
+		if (!response.ok) {
+			const error = await response.json().catch(() => ({ error: response.statusText }));
+			throw new Error(error.error || 'Upload failed');
+		}
+		return response.json() as Promise<FileUploadResult>;
+	},
 	upload: async (file: File, options?: { entityType?: string; entityId?: string; uploadedBy?: string }) => {
 		const formData = new FormData();
 		formData.append('file', file);
@@ -590,7 +615,11 @@ export interface Message {
 	conversation_id: string;
 	sender_id: string;
 	content: string;
-	message_type: 'text' | 'file' | 'system';
+	message_type: 'text' | 'file' | 'voice' | 'video' | 'sticker' | 'gif' | 'system';
+	file_id?: string;
+	file_url?: string;
+	duration_seconds?: number;
+	thumbnail_url?: string;
 	reply_to_id?: string;
 	edited_at?: string;
 	created_at?: string;

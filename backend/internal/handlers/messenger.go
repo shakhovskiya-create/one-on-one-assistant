@@ -285,6 +285,14 @@ func (h *Handler) ListConversations(c *fiber.Ctx) error {
 			Order("created_at", true).
 			Limit(1).Execute(&messages)
 		if len(messages) > 0 {
+			// Populate file URL for media message
+			if messages[0].FileID != nil && *messages[0].FileID != "" && h.Storage != nil {
+				var files []FileMetadata
+				h.DB.From("files").Select("storage_path").Eq("id", *messages[0].FileID).Execute(&files)
+				if len(files) > 0 {
+					messages[0].FileURL = h.Storage.GetPublicURL(files[0].StoragePath)
+				}
+			}
 			conversations[i].LastMessage = &messages[0]
 		}
 	}
@@ -351,6 +359,19 @@ func (h *Handler) GetConversation(c *fiber.Ctx) error {
 	// Reverse for chronological order
 	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
 		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	// Populate file URLs for media messages
+	if h.Storage != nil {
+		for i := range messages {
+			if messages[i].FileID != nil && *messages[i].FileID != "" {
+				var files []FileMetadata
+				h.DB.From("files").Select("storage_path").Eq("id", *messages[i].FileID).Execute(&files)
+				if len(files) > 0 {
+					messages[i].FileURL = h.Storage.GetPublicURL(files[0].StoragePath)
+				}
+			}
+		}
 	}
 
 	return c.JSON(fiber.Map{
@@ -501,17 +522,28 @@ func (h *Handler) SendMessage(c *fiber.Ctx) error {
 	}
 
 	var req struct {
-		ConversationID string `json:"conversation_id"`
-		SenderID       string `json:"sender_id"`
-		Content        string `json:"content"`
-		ReplyToID      string `json:"reply_to_id"`
+		ConversationID  string `json:"conversation_id"`
+		SenderID        string `json:"sender_id"`
+		Content         string `json:"content"`
+		MessageType     string `json:"message_type"`
+		FileID          string `json:"file_id"`
+		DurationSeconds int    `json:"duration_seconds"`
+		ReplyToID       string `json:"reply_to_id"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
 	}
 
-	if req.Content == "" || req.ConversationID == "" || req.SenderID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "content, conversation_id, and sender_id required"})
+	// Voice and video messages don't require content (the file IS the content)
+	isMediaMessage := req.MessageType == "voice" || req.MessageType == "video"
+	if req.ConversationID == "" || req.SenderID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "conversation_id and sender_id required"})
+	}
+	if !isMediaMessage && req.Content == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "content required for text messages"})
+	}
+	if isMediaMessage && req.FileID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "file_id required for media messages"})
 	}
 	if req.SenderID != userID {
 		return c.Status(403).JSON(fiber.Map{"error": "Sender mismatch"})
@@ -531,12 +563,24 @@ func (h *Handler) SendMessage(c *fiber.Ctx) error {
 		return c.Status(403).JSON(fiber.Map{"error": "Access denied: not a participant"})
 	}
 
+	// Determine message type
+	msgType := req.MessageType
+	if msgType == "" {
+		msgType = "text"
+	}
+
 	// Create message
 	msgData := map[string]interface{}{
 		"conversation_id": req.ConversationID,
 		"sender_id":       req.SenderID,
 		"content":         req.Content,
-		"message_type":    "text",
+		"message_type":    msgType,
+	}
+	if req.FileID != "" {
+		msgData["file_id"] = req.FileID
+	}
+	if req.DurationSeconds > 0 {
+		msgData["duration_seconds"] = req.DurationSeconds
 	}
 	if req.ReplyToID != "" {
 		msgData["reply_to_id"] = req.ReplyToID
@@ -559,6 +603,15 @@ func (h *Handler) SendMessage(c *fiber.Ctx) error {
 	var sender models.Employee
 	h.DB.From("employees").Select("id, name, photo_base64").Eq("id", req.SenderID).Single().Execute(&sender)
 	newMsg.Sender = &sender
+
+	// Populate file URL for media messages
+	if newMsg.FileID != nil && *newMsg.FileID != "" && h.Storage != nil {
+		var files []FileMetadata
+		h.DB.From("files").Select("storage_path").Eq("id", *newMsg.FileID).Execute(&files)
+		if len(files) > 0 {
+			newMsg.FileURL = h.Storage.GetPublicURL(files[0].StoragePath)
+		}
+	}
 
 	// Update conversation
 	h.DB.Update("conversations", "id", req.ConversationID, map[string]interface{}{

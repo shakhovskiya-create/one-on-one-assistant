@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { messenger, employees as employeesApi, speech } from '$lib/api/client';
+	import { messenger, employees as employeesApi, speech, files } from '$lib/api/client';
 	import type { Conversation, Message, Employee } from '$lib/api/client';
 	import { user, subordinates as userSubordinates } from '$lib/stores/auth';
 
@@ -194,19 +194,43 @@
 		}
 	}
 
-	function sendVoiceMessage(audioBlob: Blob) {
+	async function sendVoiceMessage(audioBlob: Blob) {
+		if (!currentConversation || !$user) return;
+
 		const duration = recordingTime;
-		const voiceId = `voice_${Date.now()}`;
 
-		// Create object URL for playback
-		const audioUrl = URL.createObjectURL(audioBlob);
-		voiceMessages[voiceId] = { url: audioUrl, duration, blob: audioBlob };
+		try {
+			// Upload to MinIO via /files API
+			const ext = audioBlob.type.includes('webm') ? 'webm' : audioBlob.type.includes('mp3') ? 'mp3' : 'ogg';
+			const filename = `voice_${Date.now()}.${ext}`;
+			const uploadResult = await files.uploadBlob(audioBlob, filename, {
+				entityType: 'message',
+				uploadedBy: $user.id
+			});
 
-		// Send message with voice marker
-		const msg = `[VOICE:${voiceId}:${duration}]`;
-		if (currentConversation && $user) {
-			newMessage = msg;
-			sendMessage();
+			// Store locally for immediate playback
+			const localUrl = URL.createObjectURL(audioBlob);
+			voiceMessages[uploadResult.id] = { url: localUrl, duration, blob: audioBlob };
+
+			// Send message with voice type
+			const msg = await messenger.sendMessage({
+				conversation_id: currentConversation.id,
+				sender_id: $user.id,
+				content: '', // Empty content for voice messages
+				message_type: 'voice',
+				file_id: uploadResult.id,
+				duration_seconds: duration
+			});
+
+			// Update the local voice messages map with server URL
+			voiceMessages[uploadResult.id] = { url: uploadResult.url, duration };
+
+			messages = [...messages, msg];
+			updateConversationLastMessage(currentConversation.id, msg);
+			scrollToBottom();
+		} catch (e) {
+			console.error('Failed to upload voice message:', e);
+			alert('Не удалось отправить голосовое сообщение');
 		}
 	}
 
@@ -238,20 +262,37 @@
 		voiceTranscriptions = { ...voiceTranscriptions };
 	}
 
-	function isVoiceMessage(content: string): boolean {
-		return content.startsWith('[VOICE:');
+	function isVoiceMessage(msg: Message): boolean {
+		// Check new format (message_type) or legacy format ([VOICE:...])
+		return msg.message_type === 'voice' || msg.content.startsWith('[VOICE:');
 	}
 
-	function getVoiceInfo(content: string): { id: string; duration: number } | null {
-		const match = content.match(/\[VOICE:([^:]+):(\d+)\]/);
+	function getVoiceInfo(msg: Message): { id: string; duration: number; url?: string } | null {
+		// New format with message_type
+		if (msg.message_type === 'voice' && msg.file_id) {
+			return {
+				id: msg.file_id,
+				duration: msg.duration_seconds || 0,
+				url: msg.file_url
+			};
+		}
+		// Legacy format [VOICE:id:duration]
+		const match = msg.content.match(/\[VOICE:([^:]+):(\d+)\]/);
 		if (match) {
 			return { id: match[1], duration: parseInt(match[2]) };
 		}
 		return null;
 	}
 
-	function playVoice(voiceId: string) {
-		const voice = voiceMessages[voiceId];
+	function playVoice(voiceId: string, serverUrl?: string) {
+		let voice = voiceMessages[voiceId];
+
+		// If not in local cache but we have server URL, use that
+		if (!voice && serverUrl) {
+			voice = { url: serverUrl, duration: 0 };
+			voiceMessages[voiceId] = voice;
+		}
+
 		if (!voice) return;
 
 		if (playingVoiceId === voiceId && audioElement) {
@@ -368,26 +409,61 @@
 		}
 	}
 
-	function sendVideoMessage(videoBlob: Blob) {
+	async function sendVideoMessage(videoBlob: Blob) {
+		if (!currentConversation || !$user) return;
+
 		const duration = videoRecordingTime;
-		const videoId = `video_${Date.now()}`;
 
-		const videoUrl = URL.createObjectURL(videoBlob);
-		videoMessages[videoId] = { url: videoUrl, duration, blob: videoBlob };
+		try {
+			// Upload to MinIO via /files API
+			const filename = `video_${Date.now()}.webm`;
+			const uploadResult = await files.uploadBlob(videoBlob, filename, {
+				entityType: 'message',
+				uploadedBy: $user.id
+			});
 
-		const msg = `[VIDEO:${videoId}:${duration}]`;
-		if (currentConversation && $user) {
-			newMessage = msg;
-			sendMessage();
+			// Store locally for immediate playback
+			const localUrl = URL.createObjectURL(videoBlob);
+			videoMessages[uploadResult.id] = { url: localUrl, duration, blob: videoBlob };
+
+			// Send message with video type
+			const msg = await messenger.sendMessage({
+				conversation_id: currentConversation.id,
+				sender_id: $user.id,
+				content: '', // Empty content for video messages
+				message_type: 'video',
+				file_id: uploadResult.id,
+				duration_seconds: duration
+			});
+
+			// Update the local video messages map with server URL
+			videoMessages[uploadResult.id] = { url: uploadResult.url, duration };
+
+			messages = [...messages, msg];
+			updateConversationLastMessage(currentConversation.id, msg);
+			scrollToBottom();
+		} catch (e) {
+			console.error('Failed to upload video message:', e);
+			alert('Не удалось отправить видеосообщение');
 		}
 	}
 
-	function isVideoMessage(content: string): boolean {
-		return content.startsWith('[VIDEO:');
+	function isVideoMessage(msg: Message): boolean {
+		// Check new format (message_type) or legacy format ([VIDEO:...])
+		return msg.message_type === 'video' || msg.content.startsWith('[VIDEO:');
 	}
 
-	function getVideoInfo(content: string): { id: string; duration: number } | null {
-		const match = content.match(/\[VIDEO:([^:]+):(\d+)\]/);
+	function getVideoInfo(msg: Message): { id: string; duration: number; url?: string } | null {
+		// New format with message_type
+		if (msg.message_type === 'video' && msg.file_id) {
+			return {
+				id: msg.file_id,
+				duration: msg.duration_seconds || 0,
+				url: msg.file_url
+			};
+		}
+		// Legacy format [VIDEO:id:duration]
+		const match = msg.content.match(/\[VIDEO:([^:]+):(\d+)\]/);
 		if (match) {
 			return { id: match[1], duration: parseInt(match[2]) };
 		}
@@ -1442,16 +1518,16 @@
 											<div class="text-sm font-medium text-ekf-red mb-0.5">{msg.sender?.name}</div>
 										{/if}
 
-										{#if isVideoMessage(msg.content)}
-									{@const videoInfo = getVideoInfo(msg.content)}
-									{#if videoInfo && videoMessages[videoInfo.id]}
+										{#if isVideoMessage(msg)}
+									{@const videoInfo = getVideoInfo(msg)}
+									{#if videoInfo && (videoMessages[videoInfo.id] || videoInfo.url)}
 										<div class="relative">
 											<button
 												onclick={() => playVideo(videoInfo.id)}
 												class="relative w-48 h-48 rounded-full overflow-hidden bg-black flex items-center justify-center group"
 											>
 												<video
-													src={videoMessages[videoInfo.id].url}
+													src={videoMessages[videoInfo.id]?.url || videoInfo.url}
 													class="w-full h-full object-cover"
 													loop
 													muted={playingVideoId !== videoInfo.id}
@@ -1477,12 +1553,12 @@
 											</svg>
 										</div>
 									{/if}
-								{:else if isVoiceMessage(msg.content)}
-									{@const voiceInfo = getVoiceInfo(msg.content)}
+								{:else if isVoiceMessage(msg)}
+									{@const voiceInfo = getVoiceInfo(msg)}
 									{#if voiceInfo}
 										<div class="space-y-2">
 											<button
-												onclick={() => playVoice(voiceInfo.id)}
+												onclick={() => playVoice(voiceInfo.id, voiceInfo.url)}
 												class="flex items-center gap-3 py-1 w-full"
 											>
 												<div class="w-10 h-10 rounded-full {isOwn ? 'bg-white/20' : 'bg-ekf-red/10'} flex items-center justify-center flex-shrink-0">

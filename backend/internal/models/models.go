@@ -66,7 +66,7 @@ type Meeting struct {
 	Analysis          map[string]interface{} `json:"analysis,omitempty"`
 	CreatedAt         *time.Time             `json:"created_at,omitempty"`
 
-	// Joined fields - tags must match Supabase relation names
+	// Joined fields - tags must match PostgreSQL relation names
 	Employee *Employee        `json:"employees,omitempty"`
 	Project  *Project         `json:"projects,omitempty"`
 	Category *MeetingCategory `json:"meeting_categories,omitempty"`
@@ -187,14 +187,18 @@ type ConversationParticipant struct {
 
 // Message represents a chat message
 type Message struct {
-	ID             string     `json:"id"`
-	ConversationID string     `json:"conversation_id"`
-	SenderID       string     `json:"sender_id"`
-	Content        string     `json:"content"`
-	MessageType    string     `json:"message_type"` // "text", "file", "system"
-	ReplyToID      *string    `json:"reply_to_id,omitempty"`
-	EditedAt       *time.Time `json:"edited_at,omitempty"`
-	CreatedAt      *time.Time `json:"created_at,omitempty"`
-	Sender         *Employee  `json:"sender,omitempty"`
-	ReplyTo        *Message   `json:"reply_to,omitempty"`
+	ID              string     `json:"id"`
+	ConversationID  string     `json:"conversation_id"`
+	SenderID        string     `json:"sender_id"`
+	Content         string     `json:"content"`
+	MessageType     string     `json:"message_type"` // "text", "file", "voice", "video", "sticker", "gif", "system"
+	FileID          *string    `json:"file_id,omitempty"`
+	FileURL         string     `json:"file_url,omitempty"`         // Populated at runtime from Storage
+	DurationSeconds *int       `json:"duration_seconds,omitempty"` // For voice/video messages
+	ThumbnailURL    *string    `json:"thumbnail_url,omitempty"`    // For video messages
+	ReplyToID       *string    `json:"reply_to_id,omitempty"`
+	EditedAt        *time.Time `json:"edited_at,omitempty"`
+	CreatedAt       *time.Time `json:"created_at,omitempty"`
+	Sender          *Employee  `json:"sender,omitempty"`
+	ReplyTo         *Message   `json:"reply_to,omitempty"`
 }

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
 	"regexp"
 	"strings"
 	"time"
@@ -13,7 +12,7 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// PostgresClient wraps database/sql for PostgreSQL with Supabase-compatible API
+// PostgresClient wraps database/sql for PostgreSQL
 type PostgresClient struct {
 	db *sql.DB
 }
@@ -38,7 +37,7 @@ func NewPostgresClient(connectionString string) (*PostgresClient, error) {
 	return &PostgresClient{db: db}, nil
 }
 
-// relationInfo stores information about a Supabase-style relationship
+// relationInfo stores information about a PostgREST-style relationship
 type relationInfo struct {
 	alias      string   // e.g., "assignee"
 	table      string   // e.g., "employees"
@@ -69,10 +68,10 @@ func (c *PostgresClient) From(table string) QueryBuilder {
 	}
 }
 
-// parseSupabaseColumns parses Supabase-style column syntax and extracts relations
+// parsePostgRESTColumns parses PostgREST-style column syntax and extracts relations
 // Example: "*, assignee:employees!tasks_assignee_id_fkey(id, name), project:projects(id, name)"
 // Also supports short form: "*, employees(name, position)" where table name is used as alias
-func parseSupabaseColumns(columns string) (string, []relationInfo) {
+func parsePostgRESTColumns(columns string) (string, []relationInfo) {
 	var relations []relationInfo
 	var cleanColumns []string
 
@@ -150,7 +149,7 @@ func parseSupabaseColumns(columns string) (string, []relationInfo) {
 
 // Select specifies which columns to select
 func (qb *PostgresQueryBuilder) Select(columns string) QueryBuilder {
-	cleanCols, relations := parseSupabaseColumns(columns)
+	cleanCols, relations := parsePostgRESTColumns(columns)
 	qb.columns = cleanCols
 	qb.relations = relations
 	return qb
@@ -635,26 +634,6 @@ func (c *PostgresClient) Delete(table, column, value string) error {
 	query := fmt.Sprintf("DELETE FROM %s WHERE %s = $1", table, column)
 	_, err := c.db.Exec(query, value)
 	return err
-}
-
-// StorageUpload - not implemented for PostgreSQL (файлы хранятся в файловой системе или S3)
-func (c *PostgresClient) StorageUpload(bucket, path string, data io.Reader, contentType string) (string, error) {
-	return "", fmt.Errorf("storage operations not supported with direct PostgreSQL connection")
-}
-
-// StorageDownload - not implemented for PostgreSQL
-func (c *PostgresClient) StorageDownload(bucket, path string) ([]byte, string, error) {
-	return nil, "", fmt.Errorf("storage operations not supported with direct PostgreSQL connection")
-}
-
-// StorageDelete - not implemented for PostgreSQL
-func (c *PostgresClient) StorageDelete(bucket, path string) error {
-	return fmt.Errorf("storage operations not supported with direct PostgreSQL connection")
-}
-
-// StorageGetPublicURL - not implemented for PostgreSQL
-func (c *PostgresClient) StorageGetPublicURL(bucket, path string) string {
-	return ""
 }
 
 // Close closes the database connection

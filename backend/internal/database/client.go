@@ -1,18 +1,12 @@
 package database
 
-import "io"
-
-// DBClient is the interface that both PostgresClient and SupabaseClient implement
+// DBClient is the interface for database operations (PostgreSQL)
 type DBClient interface {
 	From(table string) QueryBuilder
 	Insert(table string, data map[string]interface{}) ([]byte, error)
 	Update(table, keyColumn, keyValue string, data map[string]interface{}) ([]byte, error)
 	Upsert(table string, data []map[string]interface{}, conflictColumn string) ([]byte, error)
 	Delete(table, column, value string) error
-	StorageUpload(bucket, path string, data io.Reader, contentType string) (string, error)
-	StorageDownload(bucket, path string) ([]byte, string, error)
-	StorageDelete(bucket, path string) error
-	StorageGetPublicURL(bucket, path string) string
 }
 
 // QueryBuilder is the interface for building queries
