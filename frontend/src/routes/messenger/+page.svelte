@@ -757,12 +757,23 @@
 		}));
 	}
 
+	let creatingConversation = $state(false);
+	let createError = $state('');
+
 	async function createConversation() {
 		// For channels, we can create without selecting participants
 		// For chats, we need at least one participant
-		if (newChatType !== 'channel' && selectedParticipants.length === 0) return;
-		if (!$user?.id) return;
+		if (newChatType !== 'channel' && selectedParticipants.length === 0) {
+			createError = 'Выберите участников';
+			return;
+		}
+		if (!$user?.id) {
+			createError = 'Необходима авторизация';
+			return;
+		}
 
+		creatingConversation = true;
+		createError = '';
 		const participants = [...selectedParticipants, $user.id];
 
 		try {
@@ -789,6 +800,9 @@
 			activeTab = newChatType === 'channel' ? 'channels' : 'chats';
 		} catch (e) {
 			console.error('Failed to create conversation:', e);
+			createError = e instanceof Error ? e.message : 'Не удалось создать';
+		} finally {
+			creatingConversation = false;
 		}
 	}
 
@@ -1125,6 +1139,7 @@
 		selectedParticipants = [];
 		groupName = '';
 		channelDescription = '';
+		createError = '';
 	}
 </script>
 
@@ -1465,12 +1480,26 @@
 
 					{#if selectedParticipants.length > 0 || newChatType === 'channel'}
 						<div class="mt-4">
+							{#if createError}
+								<div class="mb-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+									{createError}
+								</div>
+							{/if}
 							<button
 								onclick={createConversation}
-								disabled={newChatType !== 'direct' && !groupName.trim()}
-								class="w-full py-3 bg-ekf-red text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+								disabled={(newChatType !== 'direct' && !groupName.trim()) || creatingConversation}
+								class="w-full py-3 bg-ekf-red text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
 							>
-								{#if newChatType === 'direct'}Начать чат{:else if newChatType === 'group'}Создать группу{:else}Создать канал{/if}
+								{#if creatingConversation}
+									<div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+									Создание...
+								{:else if newChatType === 'direct'}
+									Начать чат
+								{:else if newChatType === 'group'}
+									Создать группу
+								{:else}
+									Создать канал
+								{/if}
 							</button>
 						</div>
 					{/if}
