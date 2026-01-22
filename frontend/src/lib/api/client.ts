@@ -200,6 +200,17 @@ export const analytics = {
 };
 
 // Calendar (EWS)
+export interface CreateMeetingRequest {
+	subject: string;
+	body?: string;
+	start: string; // ISO 8601 format
+	end: string; // ISO 8601 format
+	location?: string;
+	required_attendees?: string[]; // Employee IDs or emails
+	optional_attendees?: string[]; // Employee IDs or emails
+	is_online_meeting?: boolean;
+}
+
 export const calendar = {
 	get: (employeeId: string) => request(`/calendar/${employeeId}`),
 	getSimple: (employeeId: string) => request<CalendarEvent[]>(`/calendar/${employeeId}/simple`),
@@ -209,6 +220,8 @@ export const calendar = {
 		request('/calendar/sync', { method: 'POST', body: data }),
 	getRooms: (employeeId: string) =>
 		request<{ rooms: MeetingRoom[] }>(`/calendar/rooms?employee_id=${employeeId}`),
+	createMeeting: (data: CreateMeetingRequest) =>
+		request<{ success: boolean; exchange_id: string; message: string }>('/calendar/create', { method: 'POST', body: data }),
 };
 
 // Messenger
@@ -660,6 +673,7 @@ export interface CalendarAttendee {
 	name: string;
 	email: string;
 	response?: string; // "Accept", "Decline", "Tentative", "Unknown"
+	optional?: boolean; // Required (false) vs Optional (true) attendee
 }
 
 export interface CalendarEvent {

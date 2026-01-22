@@ -1203,6 +1203,125 @@ func (c *Client) parseRoomsResponse(xml string) []MeetingRoom {
 	return rooms
 }
 
+// CreateMeetingRequest represents a request to create a meeting
+type CreateMeetingRequest struct {
+	Subject           string   `json:"subject"`
+	Body              string   `json:"body,omitempty"`
+	Start             string   `json:"start"` // ISO 8601 format
+	End               string   `json:"end"`   // ISO 8601 format
+	Location          string   `json:"location,omitempty"`
+	RequiredAttendees []string `json:"required_attendees,omitempty"` // Email addresses
+	OptionalAttendees []string `json:"optional_attendees,omitempty"` // Email addresses
+	IsOnlineMeeting   bool     `json:"is_online_meeting,omitempty"`
+}
+
+// NewCreateMeetingRequest creates a new CreateMeetingRequest with the provided data
+func (c *Client) NewCreateMeetingRequest(subject, body, start, end, location string, requiredAttendees, optionalAttendees []string, isOnlineMeeting bool) CreateMeetingRequest {
+	return CreateMeetingRequest{
+		Subject:           subject,
+		Body:              body,
+		Start:             start,
+		End:               end,
+		Location:          location,
+		RequiredAttendees: requiredAttendees,
+		OptionalAttendees: optionalAttendees,
+		IsOnlineMeeting:   isOnlineMeeting,
+	}
+}
+
+// CreateCalendarItem creates a new calendar event/meeting in Exchange
+func (c *Client) CreateCalendarItem(username, password string, req CreateMeetingRequest) (string, error) {
+	// Build required attendees XML
+	var requiredAttendeesXML strings.Builder
+	if len(req.RequiredAttendees) > 0 {
+		requiredAttendeesXML.WriteString("<t:RequiredAttendees>")
+		for _, email := range req.RequiredAttendees {
+			requiredAttendeesXML.WriteString(fmt.Sprintf(`<t:Attendee><t:Mailbox><t:EmailAddress>%s</t:EmailAddress></t:Mailbox></t:Attendee>`, email))
+		}
+		requiredAttendeesXML.WriteString("</t:RequiredAttendees>")
+	}
+
+	// Build optional attendees XML
+	var optionalAttendeesXML strings.Builder
+	if len(req.OptionalAttendees) > 0 {
+		optionalAttendeesXML.WriteString("<t:OptionalAttendees>")
+		for _, email := range req.OptionalAttendees {
+			optionalAttendeesXML.WriteString(fmt.Sprintf(`<t:Attendee><t:Mailbox><t:EmailAddress>%s</t:EmailAddress></t:Mailbox></t:Attendee>`, email))
+		}
+		optionalAttendeesXML.WriteString("</t:OptionalAttendees>")
+	}
+
+	// Build location XML
+	locationXML := ""
+	if req.Location != "" {
+		locationXML = fmt.Sprintf("<t:Location>%s</t:Location>", req.Location)
+	}
+
+	// Build body XML
+	bodyXML := ""
+	if req.Body != "" {
+		bodyXML = fmt.Sprintf(`<t:Body BodyType="HTML">%s</t:Body>`, req.Body)
+	}
+
+	soap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:CreateItem SendMeetingInvitations="SendToAllAndSaveCopy">
+      <m:SavedItemFolderId>
+        <t:DistinguishedFolderId Id="calendar"/>
+      </m:SavedItemFolderId>
+      <m:Items>
+        <t:CalendarItem>
+          <t:Subject>%s</t:Subject>
+          %s
+          <t:ReminderIsSet>true</t:ReminderIsSet>
+          <t:ReminderMinutesBeforeStart>15</t:ReminderMinutesBeforeStart>
+          <t:Start>%s</t:Start>
+          <t:End>%s</t:End>
+          %s
+          %s
+          %s
+          <t:LegacyFreeBusyStatus>Busy</t:LegacyFreeBusyStatus>
+        </t:CalendarItem>
+      </m:Items>
+    </m:CreateItem>
+  </soap:Body>
+</soap:Envelope>`, req.Subject, bodyXML, req.Start, req.End, locationXML, requiredAttendeesXML.String(), optionalAttendeesXML.String())
+
+	log.Printf("DEBUG CreateCalendarItem SOAP Request:\n%s", soap)
+
+	body, err := c.doRequest(soap, username, password)
+	if err != nil {
+		return "", fmt.Errorf("failed to create calendar item: %w", err)
+	}
+
+	log.Printf("DEBUG CreateCalendarItem Response (first 1000 chars):\n%s", string(body[:min(1000, len(body))]))
+
+	// Parse ItemId from response
+	itemIDRegex := regexp.MustCompile(`<t:ItemId Id="([^"]+)"`)
+	matches := itemIDRegex.FindStringSubmatch(string(body))
+	if len(matches) > 1 {
+		return matches[1], nil
+	}
+
+	// Check for errors in response
+	if strings.Contains(string(body), "ResponseClass=\"Error\"") {
+		errorRegex := regexp.MustCompile(`<m:MessageText>([^<]+)</m:MessageText>`)
+		errorMatches := errorRegex.FindStringSubmatch(string(body))
+		if len(errorMatches) > 1 {
+			return "", fmt.Errorf("exchange error: %s", errorMatches[1])
+		}
+		return "", fmt.Errorf("failed to create calendar item: unknown error")
+	}
+
+	return "", nil // Success but no item ID returned (rare case)
+}
+
 // RespondToMeetingRequest responds to a meeting invitation (Accept, Decline, Tentative)
 func (c *Client) RespondToMeetingRequest(username, password, itemID, changeKey, response string) error {
 	// Determine the response element based on response type

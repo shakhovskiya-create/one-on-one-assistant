@@ -383,20 +383,22 @@
 				location = newEvent.location;
 			}
 
-			await meetingsApi.create({
-				title: newEvent.title,
-				date: newEvent.date,
-				start_time: `${newEvent.date}T${newEvent.start_time}:00`,
-				end_time: `${newEvent.date}T${newEvent.end_time}:00`,
+			// Create meeting in Exchange via EWS
+			await calendarApi.createMeeting({
+				subject: newEvent.title,
+				start: `${newEvent.date}T${newEvent.start_time}:00`,
+				end: `${newEvent.date}T${newEvent.end_time}:00`,
 				location: location || undefined,
-				employee_id: newEvent.employee_id || undefined,
-				participant_ids: newEvent.participants.length > 0 ? newEvent.participants : undefined
+				required_attendees: newEvent.participants.length > 0 ? newEvent.participants : undefined,
+				is_online_meeting: newEvent.is_online
 			});
+
+			// Reload calendar to show the new event
 			await loadCalendar();
 			showEventDialog = false;
-		} catch (e) {
+		} catch (e: any) {
 			console.error(e);
-			alert('Ошибка создания события');
+			alert('Ошибка создания события: ' + (e.message || 'Unknown error'));
 		}
 	}
 
@@ -1108,38 +1110,47 @@
 							</svg>
 							<span class="text-sm font-medium">Участники ({selectedEvent.attendees.length})</span>
 						</div>
-						<div class="ml-8 max-h-48 overflow-y-auto space-y-1.5">
+						<div class="ml-8 max-h-48 overflow-y-auto space-y-2">
 							{#each selectedEvent.attendees as attendee}
-								<div class="flex items-center gap-2 text-sm">
+								<div class="flex items-center gap-2 text-sm group">
+									<!-- Avatar with initials -->
+									<div class="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
+										{(attendee.name || attendee.email).split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+									</div>
 									<!-- Response status indicator -->
 									{#if attendee.response === 'Accept'}
-										<span class="w-4 h-4 flex-shrink-0 rounded-full bg-green-100 text-green-600 flex items-center justify-center" title="Принял">
+										<span class="w-5 h-5 flex-shrink-0 rounded-full bg-green-100 text-green-600 flex items-center justify-center" title="Принял">
 											<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
 											</svg>
 										</span>
 									{:else if attendee.response === 'Decline'}
-										<span class="w-4 h-4 flex-shrink-0 rounded-full bg-red-100 text-red-600 flex items-center justify-center" title="Отклонил">
+										<span class="w-5 h-5 flex-shrink-0 rounded-full bg-red-100 text-red-600 flex items-center justify-center" title="Отклонил">
 											<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12" />
 											</svg>
 										</span>
 									{:else if attendee.response === 'Tentative'}
-										<span class="w-4 h-4 flex-shrink-0 rounded-full bg-yellow-100 text-yellow-600 flex items-center justify-center" title="Возможно">
+										<span class="w-5 h-5 flex-shrink-0 rounded-full bg-yellow-100 text-yellow-600 flex items-center justify-center" title="Возможно">
 											<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 6v6m0 4h.01" />
 											</svg>
 										</span>
 									{:else}
-										<span class="w-4 h-4 flex-shrink-0 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center" title="Ожидает ответа">
+										<span class="w-5 h-5 flex-shrink-0 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center" title="Ожидает ответа">
 											<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01" />
 											</svg>
 										</span>
 									{/if}
-									<span class="text-gray-700 truncate" title={attendee.email}>
-										{attendee.name || attendee.email}
-									</span>
+									<div class="flex-1 min-w-0">
+										<span class="text-gray-700 truncate block" title={attendee.email}>
+											{attendee.name || attendee.email}
+										</span>
+										{#if attendee.optional}
+											<span class="text-xs text-gray-400">Необязательный</span>
+										{/if}
+									</div>
 								</div>
 							{/each}
 						</div>

@@ -495,3 +495,121 @@ func (h *Handler) SyncCalendar(c *fiber.Ctx) error {
 		"source":         "connector_ews",
 	})
 }
+
+// CreateMeetingRequest represents the request body for creating a meeting
+type CreateMeetingRequest struct {
+	Subject           string   `json:"subject"`
+	Body              string   `json:"body,omitempty"`
+	Start             string   `json:"start"` // ISO 8601 format
+	End               string   `json:"end"`   // ISO 8601 format
+	Location          string   `json:"location,omitempty"`
+	RequiredAttendees []string `json:"required_attendees,omitempty"` // Employee IDs or emails
+	OptionalAttendees []string `json:"optional_attendees,omitempty"` // Employee IDs or emails
+	IsOnlineMeeting   bool     `json:"is_online_meeting,omitempty"`
+}
+
+// CreateCalendarEvent creates a new meeting in Exchange calendar via EWS
+func (h *Handler) CreateCalendarEvent(c *fiber.Ctx) error {
+	if h.EWS == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "EWS not configured"})
+	}
+
+	var req CreateMeetingRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body: " + err.Error()})
+	}
+
+	// Validation
+	if req.Subject == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Subject is required"})
+	}
+	if req.Start == "" || req.End == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Start and end times are required"})
+	}
+
+	// Get current user's employee ID from JWT
+	userID, ok := c.Locals("user_id").(string)
+	if !ok || userID == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "User not authenticated"})
+	}
+
+	// Get employee credentials from database
+	var employees []struct {
+		ADLogin           *string `json:"ad_login"`
+		EncryptedPassword *string `json:"encrypted_password"`
+	}
+	err := h.DB.From("employees").Select("ad_login, encrypted_password").Eq("id", userID).Limit(1).Execute(&employees)
+	if err != nil || len(employees) == 0 {
+		return c.Status(404).JSON(fiber.Map{"error": "Employee not found"})
+	}
+
+	employee := employees[0]
+	if employee.ADLogin == nil || employee.EncryptedPassword == nil || *employee.EncryptedPassword == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "EWS credentials not configured for this user"})
+	}
+
+	// Decrypt password
+	password, err := utils.DecryptPassword(*employee.EncryptedPassword, h.Config.JWTSecret)
+	if err != nil {
+		log.Printf("Failed to decrypt password for user %s: %v", userID, err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to decrypt credentials"})
+	}
+
+	username := "ekfgroup\\" + *employee.ADLogin
+
+	// Convert employee IDs to emails if needed
+	requiredEmails := make([]string, 0)
+	optionalEmails := make([]string, 0)
+
+	// Process required attendees
+	for _, id := range req.RequiredAttendees {
+		email := h.resolveAttendeeEmail(id)
+		if email != "" {
+			requiredEmails = append(requiredEmails, email)
+		}
+	}
+
+	// Process optional attendees
+	for _, id := range req.OptionalAttendees {
+		email := h.resolveAttendeeEmail(id)
+		if email != "" {
+			optionalEmails = append(optionalEmails, email)
+		}
+	}
+
+	// Create meeting request for EWS
+	ewsReq := h.EWS.NewCreateMeetingRequest(req.Subject, req.Body, req.Start, req.End, req.Location, requiredEmails, optionalEmails, req.IsOnlineMeeting)
+
+	itemID, err := h.EWS.CreateCalendarItem(username, password, ewsReq)
+	if err != nil {
+		log.Printf("Failed to create meeting in Exchange: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to create meeting: " + err.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"success":     true,
+		"exchange_id": itemID,
+		"message":     "Meeting created and invitations sent",
+	})
+}
+
+// resolveAttendeeEmail converts an employee ID or email to an email address
+func (h *Handler) resolveAttendeeEmail(idOrEmail string) string {
+	// If it looks like an email, return as-is
+	if strings.Contains(idOrEmail, "@") {
+		return idOrEmail
+	}
+
+	// Otherwise, look up employee by ID
+	if h.DB != nil {
+		var employees []struct {
+			Email string `json:"email"`
+		}
+		err := h.DB.From("employees").Select("email").Eq("id", idOrEmail).Limit(1).Execute(&employees)
+		if err == nil && len(employees) > 0 {
+			return employees[0].Email
+		}
+	}
+
+	return ""
+}
