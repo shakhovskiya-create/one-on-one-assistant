@@ -11,6 +11,9 @@ const config = {
 		paths: {
 			base: '',
 			assets: ''
+		},
+		csrf: {
+			checkOrigin: false // Required for local development
 		}
 	}
 };
