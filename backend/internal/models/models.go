@@ -94,25 +94,25 @@ type Agreement struct {
 
 // Task represents a work item
 type Task struct {
-	ID              string        `json:"id"`
-	Title           string        `json:"title"`
-	Description     *string       `json:"description,omitempty"`
-	Status          string        `json:"status"`
-	Priority        int           `json:"priority"`
-	StoryPoints     *int          `json:"story_points,omitempty"`
-	Sprint          *string       `json:"sprint,omitempty"`
-	FlagColor       *string       `json:"flag_color,omitempty"`
-	AssigneeID      *string       `json:"assignee_id,omitempty"`
-	CoAssigneeID    *string       `json:"co_assignee_id,omitempty"`
-	CreatorID       *string       `json:"creator_id,omitempty"`
-	MeetingID       *string       `json:"meeting_id,omitempty"`
-	ProjectID       *string       `json:"project_id,omitempty"`
-	ParentID        *string       `json:"parent_id,omitempty"`
-	IsEpic          bool          `json:"is_epic"`
-	DueDate         *string       `json:"due_date,omitempty"`
-	OriginalDueDate *string       `json:"original_due_date,omitempty"`
-	CompletedAt     *time.Time    `json:"completed_at,omitempty"`
-	CreatedAt       *time.Time    `json:"created_at,omitempty"`
+	ID              string     `json:"id"`
+	Title           string     `json:"title"`
+	Description     *string    `json:"description,omitempty"`
+	Status          string     `json:"status"`
+	Priority        int        `json:"priority"`
+	StoryPoints     *int       `json:"story_points,omitempty"`
+	Sprint          *string    `json:"sprint,omitempty"`
+	FlagColor       *string    `json:"flag_color,omitempty"`
+	AssigneeID      *string    `json:"assignee_id,omitempty"`
+	CoAssigneeID    *string    `json:"co_assignee_id,omitempty"`
+	CreatorID       *string    `json:"creator_id,omitempty"`
+	MeetingID       *string    `json:"meeting_id,omitempty"`
+	ProjectID       *string    `json:"project_id,omitempty"`
+	ParentID        *string    `json:"parent_id,omitempty"`
+	IsEpic          bool       `json:"is_epic"`
+	DueDate         *string    `json:"due_date,omitempty"`
+	OriginalDueDate *string    `json:"original_due_date,omitempty"`
+	CompletedAt     *time.Time `json:"completed_at,omitempty"`
+	CreatedAt       *time.Time `json:"created_at,omitempty"`
 	// Resource planning fields
 	EstimatedHours *float64 `json:"estimated_hours,omitempty"`
 	ActualHours    *float64 `json:"actual_hours,omitempty"`

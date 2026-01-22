@@ -794,7 +794,7 @@ export const mail = {
 	},
 	getEmailBody: (data: { username: string; password: string; item_id: string; change_key?: string }) =>
 		request<{ body: string }>('/mail/body', { method: 'POST', body: data }),
-	sendEmail: (data: { username: string; password: string; to: string[]; cc?: string[]; subject: string; body: string }) =>
+	sendEmail: (data: { username: string; password: string; to: string[]; cc?: string[]; subject: string; body: string; attachments?: { name: string; content: string }[] }) =>
 		request('/mail/send', { method: 'POST', body: data }),
 	markAsRead: (data: { username: string; password: string; item_id: string; change_key?: string }) =>
 		request('/mail/mark-read', { method: 'POST', body: data }),

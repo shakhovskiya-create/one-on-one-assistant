@@ -4,6 +4,7 @@
 	import type { MailFolder, EmailMessage, EmailPerson, EmailAttachment, Employee } from '$lib/api/client';
 	import { user } from '$lib/stores/auth';
 	import { browser } from '$app/environment';
+	import RichTextEditor from '$lib/components/RichTextEditor.svelte';
 
 	// State
 	let folders: MailFolder[] = $state([]);
@@ -26,6 +27,7 @@
 	let composeBody = $state('');
 	let sending = $state(false);
 	let composeMode: 'new' | 'reply' | 'replyAll' | 'forward' = $state('new');
+	let composeAttachments: { name: string; content: string; size: number }[] = $state([]);
 
 	// Full email view modal
 	let showEmailModal = $state(false);
@@ -454,7 +456,8 @@
 				to: toList,
 				cc: ccList,
 				subject: composeSubject,
-				body: composeBody
+				body: composeBody,
+				attachments: composeAttachments.map(a => ({ name: a.name, content: a.content }))
 			});
 
 			showCompose = false;
@@ -462,6 +465,7 @@
 			composeCc = '';
 			composeSubject = '';
 			composeBody = '';
+			composeAttachments = [];
 
 			// Refresh sent folder if selected
 			if (selectedFolder?.display_name.toLowerCase().includes('sent') || selectedFolder?.display_name.toLowerCase().includes('отправленные')) {
@@ -473,6 +477,35 @@
 		} finally {
 			sending = false;
 		}
+	}
+
+	function handleAttachmentSelect(event: Event) {
+		const input = event.target as HTMLInputElement;
+		if (!input.files) return;
+
+		for (const file of Array.from(input.files)) {
+			const reader = new FileReader();
+			reader.onload = () => {
+				const base64 = (reader.result as string).split(',')[1];
+				composeAttachments = [...composeAttachments, {
+					name: file.name,
+					content: base64,
+					size: file.size
+				}];
+			};
+			reader.readAsDataURL(file);
+		}
+		input.value = ''; // Reset input for re-selection
+	}
+
+	function removeComposeAttachment(index: number) {
+		composeAttachments = composeAttachments.filter((_, i) => i !== index);
+	}
+
+	function formatFileSize(bytes: number): string {
+		if (bytes < 1024) return bytes + ' Б';
+		if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ';
+		return (bytes / (1024 * 1024)).toFixed(1) + ' МБ';
 	}
 
 	function logout() {
@@ -870,11 +903,12 @@
 			? selectedEmail.subject
 			: `Re: ${selectedEmail.subject}`;
 
-		// Quote original message
+		// Quote original message with HTML formatting
 		const originalDate = new Date(selectedEmail.received_at).toLocaleString('ru-RU');
 		const originalFrom = selectedEmail.from?.name || selectedEmail.from?.email || 'Неизвестный';
-		composeBody = `\n\n---\n${originalDate}, ${originalFrom} написал(а):\n\n${stripHtml(selectedEmail.body || '')}`;
+		composeBody = `<p><br></p><hr><p><strong>${originalDate}, ${originalFrom} написал(а):</strong></p><blockquote>${selectedEmail.body || ''}</blockquote>`;
 
+		composeAttachments = [];
 		showCompose = true;
 	}
 
@@ -889,12 +923,18 @@
 			? selectedEmail.subject
 			: `Fwd: ${selectedEmail.subject}`;
 
-		// Include original message
+		// Include original message with HTML formatting
 		const originalDate = new Date(selectedEmail.received_at).toLocaleString('ru-RU');
 		const originalFrom = selectedEmail.from?.name || selectedEmail.from?.email || 'Неизвестный';
 		const originalTo = selectedEmail.to?.map(p => p.name || p.email).join(', ') || '';
-		composeBody = `\n\n---------- Пересылаемое сообщение ----------\nОт: ${originalFrom}\nДата: ${originalDate}\nТема: ${selectedEmail.subject}\nКому: ${originalTo}\n\n${stripHtml(selectedEmail.body || '')}`;
+		composeBody = `<p><br></p><hr><p><strong>---------- Пересылаемое сообщение ----------</strong></p>
+<p><strong>От:</strong> ${originalFrom}<br>
+<strong>Дата:</strong> ${originalDate}<br>
+<strong>Тема:</strong> ${selectedEmail.subject}<br>
+<strong>Кому:</strong> ${originalTo}</p>
+<div>${selectedEmail.body || ''}</div>`;
 
+		composeAttachments = [];
 		showCompose = true;
 	}
 
@@ -961,7 +1001,7 @@
 		<div class="{sidebarCollapsed ? 'w-16' : 'w-60'} border-r border-gray-200 flex flex-col bg-gray-50 transition-all duration-200">
 			<div class="p-3 flex {sidebarCollapsed ? 'justify-center' : 'gap-2'}">
 				<button
-					onclick={() => { composeMode = 'new'; composeTo = ''; composeCc = ''; composeSubject = ''; composeBody = ''; showCompose = true; }}
+					onclick={() => { composeMode = 'new'; composeTo = ''; composeCc = ''; composeSubject = ''; composeBody = ''; composeAttachments = []; showCompose = true; }}
 					class="{sidebarCollapsed ? 'w-10 h-10 p-0 justify-center' : 'flex-1 py-2 px-4'} bg-ekf-red text-white rounded-lg font-medium hover:bg-red-700 transition-colors flex items-center gap-2"
 					title={sidebarCollapsed ? 'Написать' : ''}
 				>
@@ -1695,11 +1735,42 @@
 						</div>
 						<div>
 							<label class="block text-sm font-medium text-gray-700 mb-1">Сообщение</label>
-							<textarea
-								bind:value={composeBody}
-								rows="10"
-								class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ekf-red/20 resize-none"
-							></textarea>
+							<RichTextEditor
+								content={composeBody}
+								placeholder="Введите текст письма..."
+								onchange={(html) => composeBody = html}
+							/>
+						</div>
+						<!-- Attachments section -->
+						<div>
+							<label class="block text-sm font-medium text-gray-700 mb-2">Вложения</label>
+							{#if composeAttachments.length > 0}
+								<div class="flex flex-wrap gap-2 mb-2">
+									{#each composeAttachments as att, i}
+										<div class="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-sm">
+											<span class="text-gray-600">📎</span>
+											<span class="max-w-[150px] truncate">{att.name}</span>
+											<span class="text-gray-400 text-xs">({formatFileSize(att.size)})</span>
+											<button
+												type="button"
+												onclick={() => removeComposeAttachment(i)}
+												class="text-gray-400 hover:text-red-500 ml-1"
+											>
+												<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+												</svg>
+											</button>
+										</div>
+									{/each}
+								</div>
+							{/if}
+							<label class="inline-flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors">
+								<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+								</svg>
+								Прикрепить файл
+								<input type="file" multiple class="hidden" onchange={handleAttachmentSelect} />
+							</label>
 						</div>
 					</div>
 				</div>

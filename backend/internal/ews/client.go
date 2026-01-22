@@ -2,6 +2,7 @@ package ews
 
 import (
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log"
@@ -771,6 +772,132 @@ func (c *Client) SendEmail(username, password, subject string, toEmails []string
 
 	_, err := c.doRequest(soap, username, password)
 	return err
+}
+
+// EmailAttachment represents an attachment to send
+type EmailAttachment struct {
+	Name    string
+	Content []byte // Base64 will be encoded internally
+}
+
+// SendEmailWithAttachments sends an email with attachments via Exchange
+func (c *Client) SendEmailWithAttachments(username, password, subject string, toEmails []string, body string, ccEmails []string, attachments []EmailAttachment) error {
+	// If no attachments, use simple send
+	if len(attachments) == 0 {
+		return c.SendEmail(username, password, subject, toEmails, body, ccEmails)
+	}
+
+	// Step 1: Create the email as draft (SaveOnly)
+	var toRecipients strings.Builder
+	for _, email := range toEmails {
+		toRecipients.WriteString(fmt.Sprintf(`<t:Mailbox><t:EmailAddress>%s</t:EmailAddress></t:Mailbox>`, email))
+	}
+
+	var ccRecipients strings.Builder
+	for _, email := range ccEmails {
+		ccRecipients.WriteString(fmt.Sprintf(`<t:Mailbox><t:EmailAddress>%s</t:EmailAddress></t:Mailbox>`, email))
+	}
+
+	ccSection := ""
+	if len(ccEmails) > 0 {
+		ccSection = fmt.Sprintf(`<t:CcRecipients>%s</t:CcRecipients>`, ccRecipients.String())
+	}
+
+	createSoap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:CreateItem MessageDisposition="SaveOnly">
+      <m:SavedItemFolderId>
+        <t:DistinguishedFolderId Id="drafts"/>
+      </m:SavedItemFolderId>
+      <m:Items>
+        <t:Message>
+          <t:Subject>%s</t:Subject>
+          <t:Body BodyType="HTML">%s</t:Body>
+          <t:ToRecipients>%s</t:ToRecipients>
+          %s
+        </t:Message>
+      </m:Items>
+    </m:CreateItem>
+  </soap:Body>
+</soap:Envelope>`, escapeXML(subject), escapeXML(body), toRecipients.String(), ccSection)
+
+	createResp, err := c.doRequest(createSoap, username, password)
+	if err != nil {
+		return fmt.Errorf("failed to create draft: %w", err)
+	}
+
+	// Extract ItemId and ChangeKey from response
+	itemID := extractValue(string(createResp), `<t:ItemId Id="`, `"`)
+	changeKey := extractValue(string(createResp), `ChangeKey="`, `"`)
+	if itemID == "" {
+		return fmt.Errorf("failed to get item ID from create response")
+	}
+
+	// Step 2: Add attachments
+	for _, att := range attachments {
+		attachSoap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:CreateAttachment>
+      <m:ParentItemId Id="%s" ChangeKey="%s"/>
+      <m:Attachments>
+        <t:FileAttachment>
+          <t:Name>%s</t:Name>
+          <t:Content>%s</t:Content>
+        </t:FileAttachment>
+      </m:Attachments>
+    </m:CreateAttachment>
+  </soap:Body>
+</soap:Envelope>`, itemID, changeKey, escapeXML(att.Name), base64.StdEncoding.EncodeToString(att.Content))
+
+		attachResp, err := c.doRequest(attachSoap, username, password)
+		if err != nil {
+			return fmt.Errorf("failed to add attachment %s: %w", att.Name, err)
+		}
+		// Update changeKey for next attachment
+		newChangeKey := extractValue(string(attachResp), `ChangeKey="`, `"`)
+		if newChangeKey != "" {
+			changeKey = newChangeKey
+		}
+	}
+
+	// Step 3: Send the email
+	sendSoap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:SendItem SaveItemToFolder="true">
+      <m:ItemIds>
+        <t:ItemId Id="%s" ChangeKey="%s"/>
+      </m:ItemIds>
+      <m:SavedItemFolderId>
+        <t:DistinguishedFolderId Id="sentitems"/>
+      </m:SavedItemFolderId>
+    </m:SendItem>
+  </soap:Body>
+</soap:Envelope>`, itemID, changeKey)
+
+	_, err = c.doRequest(sendSoap, username, password)
+	if err != nil {
+		return fmt.Errorf("failed to send email: %w", err)
+	}
+
+	return nil
 }
 
 // MarkEmailAsRead marks an email as read

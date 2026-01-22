@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"encoding/base64"
+
+	"github.com/ekf/one-on-one-backend/internal/ews"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -48,14 +51,21 @@ func (h *Handler) GetEmails(c *fiber.Ctx) error {
 	return c.JSON(emails)
 }
 
+// SendMailAttachment represents an attachment in email request
+type SendMailAttachment struct {
+	Name    string `json:"name"`
+	Content string `json:"content"` // Base64 encoded content
+}
+
 // SendMailRequest represents the request body for sending email
 type SendMailRequest struct {
-	Username string   `json:"username"`
-	Password string   `json:"password"`
-	To       []string `json:"to"`
-	CC       []string `json:"cc"`
-	Subject  string   `json:"subject"`
-	Body     string   `json:"body"`
+	Username    string               `json:"username"`
+	Password    string               `json:"password"`
+	To          []string             `json:"to"`
+	CC          []string             `json:"cc"`
+	Subject     string               `json:"subject"`
+	Body        string               `json:"body"`
+	Attachments []SendMailAttachment `json:"attachments"`
 }
 
 // SendEmail sends an email
@@ -77,7 +87,28 @@ func (h *Handler) SendEmail(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "at least one recipient required"})
 	}
 
-	if err := h.EWS.SendEmail(req.Username, req.Password, req.Subject, req.To, req.Body, req.CC); err != nil {
+	// Convert attachments
+	var ewsAttachments []ews.EmailAttachment
+	for _, att := range req.Attachments {
+		content, err := base64.StdEncoding.DecodeString(att.Content)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid attachment content: " + att.Name})
+		}
+		ewsAttachments = append(ewsAttachments, ews.EmailAttachment{
+			Name:    att.Name,
+			Content: content,
+		})
+	}
+
+	// Send with or without attachments
+	var err error
+	if len(ewsAttachments) > 0 {
+		err = h.EWS.SendEmailWithAttachments(req.Username, req.Password, req.Subject, req.To, req.Body, req.CC, ewsAttachments)
+	} else {
+		err = h.EWS.SendEmail(req.Username, req.Password, req.Subject, req.To, req.Body, req.CC)
+	}
+
+	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
