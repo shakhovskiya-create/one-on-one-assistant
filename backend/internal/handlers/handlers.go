@@ -7,6 +7,7 @@ import (
 	"github.com/ekf/one-on-one-backend/internal/ews"
 	"github.com/ekf/one-on-one-backend/internal/services"
 	"github.com/ekf/one-on-one-backend/internal/services/confluence"
+	"github.com/ekf/one-on-one-backend/internal/services/github"
 	"github.com/ekf/one-on-one-backend/internal/storage"
 	"github.com/ekf/one-on-one-backend/pkg/ai"
 	"github.com/ekf/one-on-one-backend/pkg/auth"
@@ -27,6 +28,7 @@ type Handler struct {
 	JWT        *auth.JWTManager
 	Camunda    *camunda.Client
 	Confluence *confluence.Client
+	GitHub     *github.Client
 }
 
 // NewHandler creates a new handler with all dependencies
@@ -81,6 +83,9 @@ func NewHandler(cfg *config.Config) *Handler {
 	// Initialize Confluence client
 	confluenceClient := confluence.NewClient(cfg.ConfluenceURL, cfg.ConfluenceUsername, cfg.ConfluencePassword)
 
+	// Initialize GitHub client
+	githubClient := github.NewClient(cfg.GitHubToken)
+
 	return &Handler{
 		Config:     cfg,
 		DB:         db,
@@ -93,5 +98,6 @@ func NewHandler(cfg *config.Config) *Handler {
 		JWT:        jwtManager,
 		Camunda:    camundaClient,
 		Confluence: confluenceClient,
+		GitHub:     githubClient,
 	}
 }

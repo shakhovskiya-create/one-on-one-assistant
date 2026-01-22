@@ -42,6 +42,8 @@ type Config struct {
 	ConfluenceURL      string // Confluence Server URL
 	ConfluenceUsername string // Confluence username
 	ConfluencePassword string // Confluence password
+	// GitHub Configuration
+	GitHubToken string // GitHub personal access token for API access
 }
 
 func Load() *Config {
@@ -81,6 +83,7 @@ func Load() *Config {
 		ConfluenceURL:      getEnv("CONFLUENCE_URL", "https://confluence.ekf.su"),
 		ConfluenceUsername: getEnv("CONFLUENCE_USERNAME", ""),
 		ConfluencePassword: getEnv("CONFLUENCE_PASSWORD", ""),
+		GitHubToken:        getEnv("GITHUB_TOKEN", ""),
 	}
 }
 

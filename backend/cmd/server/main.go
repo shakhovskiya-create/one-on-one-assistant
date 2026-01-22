@@ -264,6 +264,15 @@ func main() {
 	protectedAPI.Get("/confluence/search", h.SearchConfluence)
 	protectedAPI.Get("/confluence/recent", h.GetRecentConfluencePages)
 
+	// GitHub Integration
+	protectedAPI.Get("/github/status", h.GetGitHubStatus)
+	protectedAPI.Post("/github/parse-url", h.ParseRepoURL)
+	protectedAPI.Get("/github/repos/:owner/:repo", h.GetRepository)
+	protectedAPI.Get("/github/repos/:owner/:repo/commits", h.GetCommits)
+	protectedAPI.Get("/github/repos/:owner/:repo/branches", h.GetBranches)
+	protectedAPI.Get("/github/repos/:owner/:repo/pulls", h.GetPullRequests)
+	protectedAPI.Get("/github/tasks/:id/commits", h.GetTaskCommits)
+
 	// User role (for current user)
 	protectedAPI.Get("/auth/role", h.GetCurrentUserRole)
 

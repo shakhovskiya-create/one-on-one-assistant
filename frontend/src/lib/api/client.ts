@@ -898,6 +898,123 @@ export const giphy = {
 	}
 };
 
+// GitHub types
+export interface GitHubRepository {
+	id: number;
+	name: string;
+	full_name: string;
+	description: string;
+	html_url: string;
+	clone_url: string;
+	default_branch: string;
+	private: boolean;
+	fork: boolean;
+	created_at: string;
+	updated_at: string;
+	pushed_at: string;
+	language: string;
+	stargazers_count: number;
+	forks_count: number;
+}
+
+export interface GitHubCommitAuthor {
+	name: string;
+	email: string;
+	date: string;
+}
+
+export interface GitHubCommit {
+	sha: string;
+	html_url: string;
+	commit: {
+		message: string;
+		author: GitHubCommitAuthor;
+		committer: GitHubCommitAuthor;
+	};
+	author?: {
+		login: string;
+		avatar_url: string;
+		html_url: string;
+	};
+	committer?: {
+		login: string;
+		avatar_url: string;
+		html_url: string;
+	};
+	stats?: {
+		additions: number;
+		deletions: number;
+		total: number;
+	};
+}
+
+export interface GitHubBranch {
+	name: string;
+	commit: {
+		sha: string;
+		url: string;
+	};
+	protected: boolean;
+}
+
+export interface GitHubPullRequest {
+	id: number;
+	number: number;
+	state: string;
+	title: string;
+	body: string;
+	html_url: string;
+	created_at: string;
+	updated_at: string;
+	closed_at?: string;
+	merged_at?: string;
+	user?: {
+		login: string;
+		avatar_url: string;
+		html_url: string;
+	};
+	head: {
+		ref: string;
+		sha: string;
+	};
+	base: {
+		ref: string;
+		sha: string;
+	};
+	mergeable?: boolean;
+}
+
+// GitHub API
+export const github = {
+	status: () => request<{ configured: boolean }>('/github/status'),
+	parseUrl: (url: string) =>
+		request<{ owner: string; repo: string }>('/github/parse-url', {
+			method: 'POST',
+			body: { url }
+		}),
+	getRepository: (owner: string, repo: string) =>
+		request<GitHubRepository>(`/github/repos/${owner}/${repo}`),
+	getCommits: (owner: string, repo: string, branch?: string, limit?: number) => {
+		const params = new URLSearchParams();
+		if (branch) params.append('branch', branch);
+		if (limit) params.append('limit', String(limit));
+		return request<GitHubCommit[]>(`/github/repos/${owner}/${repo}/commits${params.toString() ? `?${params}` : ''}`);
+	},
+	getBranches: (owner: string, repo: string, limit?: number) =>
+		request<GitHubBranch[]>(`/github/repos/${owner}/${repo}/branches${limit ? `?limit=${limit}` : ''}`),
+	getPullRequests: (owner: string, repo: string, state?: string, limit?: number) => {
+		const params = new URLSearchParams();
+		if (state) params.append('state', state);
+		if (limit) params.append('limit', String(limit));
+		return request<GitHubPullRequest[]>(`/github/repos/${owner}/${repo}/pulls${params.toString() ? `?${params}` : ''}`);
+	},
+	getTaskCommits: (taskId: string, owner: string, repo: string, limit?: number) => {
+		const params = new URLSearchParams({ owner, repo });
+		if (limit) params.append('limit', String(limit));
+		return request<GitHubCommit[]>(`/github/tasks/${taskId}/commits?${params}`);
+	}
+};
+
 // Admin types
 export interface AdminStats {
 	total_users: number;
@@ -1015,6 +1132,7 @@ export const api = {
 	bpmn,
 	mail,
 	giphy,
+	github,
 	admin,
 	auth
 };

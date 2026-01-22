@@ -1,7 +1,7 @@
 # EKF Hub - План работ
 
 **Дата создания:** 2026-01-21
-**Статус:** Sprint 5 завершён ✅
+**Статус:** Sprint 6 завершён ✅
 **Последнее обновление:** 2026-01-22
 
 ---
@@ -16,9 +16,10 @@
 | Зависимости задач | ⚠️ Частично | БД есть, хендлеры не полные |
 | Планирование ресурсов | ❌ Нет | Нет полей cost/budget |
 | Теги | ✅ Есть | Полная поддержка |
-| Режим бизнес/разработка | ❌ Нет | Нет разделения по департаментам |
-| Админ-панель | ❌ Нет | Только read-only настройки |
-| Интеграция Confluence | ❌ Нет | |
+| Режим бизнес/разработка | ✅ Есть | По департаментам с workflow_modes |
+| Админ-панель | ✅ Есть | Управление пользователями, роли, audit logs |
+| Интеграция Confluence | ✅ Есть | REST API, spaces, pages, search |
+| Интеграция GitHub | ✅ Есть | Коммиты, ветки, PR, привязка к задачам |
 
 ### Сообщения (Messenger)
 | Функция | Статус | Примечание |
@@ -272,18 +273,18 @@
 
 | JIRA Feature | EKF Hub | Приоритет |
 |--------------|---------|-----------|
-| Workflows (настраиваемые) | ❌ | HIGH |
+| Workflows (настраиваемые) | ✅ | HIGH |
 | Custom fields | ❌ | MEDIUM |
-| Dashboards/Reports | ❌ | HIGH |
-| Time tracking | ❌ | HIGH |
+| Dashboards/Reports | ✅ | HIGH |
+| Time tracking | ✅ | HIGH |
 | Roadmap/Timeline | ❌ | MEDIUM |
 | Backlog refinement | ⚠️ Частично | LOW |
 | Scrum/Sprint boards | ⚠️ Частично | MEDIUM |
 | Версии/Releases | ❌ | HIGH |
 | Components | ❌ | MEDIUM |
-| Permissions scheme | ❌ | HIGH |
+| Permissions scheme | ✅ | HIGH |
 | Automation rules | ❌ | LOW |
-| Integrations (Git, CI/CD) | ❌ | HIGH |
+| Integrations (Git, CI/CD) | ✅ | HIGH |
 
 ---
 
@@ -322,11 +323,11 @@
 3. ✅ **Транскрибирование интеграция** - запись аудио в модалке, загрузка файлов, транскрибирование через Whisper/Yandex
 4. ✅ **Time tracking для задач** - уже реализовано в Sprint 3 (time_entries)
 
-### Sprint 6: Advanced
-1. Confluence Server интеграция
-2. Workflows (настраиваемые)
-3. Dashboards/Reports
-4. Git интеграция
+### Sprint 6: Advanced ✅ ЗАВЕРШЁН
+1. ✅ **Confluence Server интеграция** - REST API клиент, поиск, просмотр страниц, spaces
+2. ✅ **Workflows (настраиваемые)** - уже реализовано в Sprint 3 (workflow_modes, department_workflows)
+3. ✅ **Dashboards/Reports** - уже реализовано (analytics page 627 lines, dashboard 309 lines)
+4. ✅ **Git интеграция** - GitHub API клиент, коммиты, ветки, PR, интеграция с задачами
 
 ---
 
