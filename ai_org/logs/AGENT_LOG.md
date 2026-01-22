@@ -49,9 +49,17 @@
 - **Деплой:** Выполнен на 10.100.0.131
 - **Замечания:** Полностью завершён JIRA parity для Versions
 
+### WORKPLAN.md обновление
+- **Инициатор:** PM
+- **Исполнитель:** Developer
+- **Результат:**
+  - Статус обновлён на Sprint 7 завершён
+  - Версии/Releases отмечены как ✅ в JIRA comparison
+  - Добавлен Sprint 7 в список спринтов
+  - Добавлен Sprint 8 (ожидает утверждения)
+
 ---
 
 ## Следующие задачи (ожидают решения PM)
-- Sprint 2: Messenger enhancements (уже реализовано в предыдущих спринтах)
 - JIRA parity: Custom fields, Roadmap/Timeline (осталось)
-- test change in CONTEXT.md
+- Sprint 8: расширение функционала

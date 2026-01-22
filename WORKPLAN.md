@@ -1,7 +1,7 @@
 # EKF Hub - План работ
 
 **Дата создания:** 2026-01-21
-**Статус:** Sprint 6 завершён ✅
+**Статус:** Sprint 7 завершён ✅
 **Последнее обновление:** 2026-01-22
 
 ---
@@ -280,7 +280,7 @@
 | Roadmap/Timeline | ❌ | MEDIUM |
 | Backlog refinement | ⚠️ Частично | LOW |
 | Scrum/Sprint boards | ⚠️ Частично | MEDIUM |
-| Версии/Releases | ❌ | HIGH |
+| Версии/Releases | ✅ | HIGH |
 | Components | ❌ | MEDIUM |
 | Permissions scheme | ✅ | HIGH |
 | Automation rules | ❌ | LOW |
@@ -328,6 +328,20 @@
 2. ✅ **Workflows (настраиваемые)** - уже реализовано в Sprint 3 (workflow_modes, department_workflows)
 3. ✅ **Dashboards/Reports** - уже реализовано (analytics page 627 lines, dashboard 309 lines)
 4. ✅ **Git интеграция** - GitHub API клиент, коммиты, ветки, PR, интеграция с задачами
+
+### Sprint 7: JIRA Parity - Versions/Releases ✅ ЗАВЕРШЁН
+1. ✅ **Versions/Releases** - таблица versions, fix_version_id в tasks
+2. ✅ **Backend handlers** - CRUD, release, release-notes генерация
+3. ✅ **Frontend UI** - полная страница /releases с фильтрами, прогрессом, модалками
+4. ✅ **Release Notes** - автогенерация с группировкой features/fixes/other
+
+### Sprint 8: JIRA Parity - Расширение (ожидает утверждения)
+Возможные задачи:
+- Custom fields для задач
+- Roadmap/Timeline view
+- Components (группировка задач по компонентам)
+- Scrum/Sprint boards улучшения
+- Automation rules
 
 ---
 
