@@ -580,12 +580,6 @@
 		composeAttachments = composeAttachments.filter((_, i) => i !== index);
 	}
 
-	function formatFileSize(bytes: number): string {
-		if (bytes < 1024) return bytes + ' Б';
-		if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ';
-		return (bytes / (1024 * 1024)).toFixed(1) + ' МБ';
-	}
-
 	function logout() {
 		if (browser) {
 			sessionStorage.removeItem('ews_credentials');
