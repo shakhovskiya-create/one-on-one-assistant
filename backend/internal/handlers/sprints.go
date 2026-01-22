@@ -257,11 +257,16 @@ func (h *Handler) UpdateSprint(c *fiber.Ctx) error {
 
 			// Deactivate other active sprints in same project
 			if current.ProjectID != nil {
-				h.DB.From("sprints").
-					Update(map[string]interface{}{"status": "planning"}).
-					Eq("project_id", *current.ProjectID).
-					Eq("status", "active").
-					Neq("id", id)
+				var activeSprints []models.Sprint
+				h.DB.From("sprints").Select("id").Eq("project_id", *current.ProjectID).Eq("status", "active").Execute(&activeSprints)
+				for _, s := range activeSprints {
+					if s.ID != id {
+						h.DB.Update("sprints", "id", s.ID, map[string]interface{}{
+							"status":     "planning",
+							"updated_at": time.Now().Format(time.RFC3339),
+						})
+					}
+				}
 			}
 		}
 		data["status"] = *req.Status
@@ -333,10 +338,14 @@ func (h *Handler) StartSprint(c *fiber.Ctx) error {
 
 	// Deactivate other active sprints in same project
 	if sprint.ProjectID != nil {
-		h.DB.From("sprints").
-			Update(map[string]interface{}{"status": "planning", "updated_at": time.Now().Format(time.RFC3339)}).
-			Eq("project_id", *sprint.ProjectID).
-			Eq("status", "active")
+		var activeSprints []models.Sprint
+		h.DB.From("sprints").Select("id").Eq("project_id", *sprint.ProjectID).Eq("status", "active").Execute(&activeSprints)
+		for _, s := range activeSprints {
+			h.DB.Update("sprints", "id", s.ID, map[string]interface{}{
+				"status":     "planning",
+				"updated_at": time.Now().Format(time.RFC3339),
+			})
+		}
 	}
 
 	// Activate this sprint
