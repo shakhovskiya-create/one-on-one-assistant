@@ -174,6 +174,15 @@ func main() {
 	protectedAPI.Get("/workflows/departments", h.ListDepartmentWorkflows)
 	protectedAPI.Post("/workflows/departments", h.SetDepartmentWorkflow)
 
+	// Versions/Releases (JIRA-like)
+	protectedAPI.Get("/versions", h.ListVersions)
+	protectedAPI.Post("/versions", h.CreateVersion)
+	protectedAPI.Get("/versions/:id", h.GetVersion)
+	protectedAPI.Put("/versions/:id", h.UpdateVersion)
+	protectedAPI.Delete("/versions/:id", h.DeleteVersion)
+	protectedAPI.Post("/versions/:id/release", h.ReleaseVersion)
+	protectedAPI.Get("/versions/:id/release-notes", h.GetVersionReleaseNotes)
+
 	// Calendar (EWS) - specific routes MUST come before parametric routes
 	protectedAPI.Post("/calendar/sync", h.SyncCalendar)
 	protectedAPI.Post("/calendar/free-slots", h.FindFreeSlots)

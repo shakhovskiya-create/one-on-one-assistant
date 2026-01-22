@@ -1066,6 +1066,52 @@ export interface DepartmentInfo {
 	workflow_mode_id?: string;
 }
 
+// Versions/Releases (JIRA-like)
+export interface Version {
+	id: string;
+	project_id?: string;
+	name: string;
+	description?: string;
+	status: 'unreleased' | 'released' | 'archived';
+	start_date?: string;
+	release_date?: string;
+	released_at?: string;
+	created_by?: string;
+	created_at?: string;
+	updated_at?: string;
+	project?: Project;
+	tasks_count?: number;
+	tasks_done?: number;
+	progress?: number;
+}
+
+export interface VersionWithTasks {
+	version: Version;
+	tasks: Task[];
+}
+
+export interface ReleaseNotes {
+	version: Version;
+	features: Task[];
+	fixes: Task[];
+	other: Task[];
+	total: number;
+}
+
+// Versions API
+export const versions = {
+	list: (params?: { project_id?: string; status?: string }) => {
+		const query = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+		return request<Version[]>(`/versions${query}`);
+	},
+	get: (id: string) => request<VersionWithTasks>(`/versions/${id}`),
+	create: (data: Partial<Version>) => request<Version>('/versions', { method: 'POST', body: data }),
+	update: (id: string, data: Partial<Version>) => request<Version>(`/versions/${id}`, { method: 'PUT', body: data }),
+	delete: (id: string) => request(`/versions/${id}`, { method: 'DELETE' }),
+	release: (id: string) => request<Version>(`/versions/${id}/release`, { method: 'POST' }),
+	getReleaseNotes: (id: string) => request<ReleaseNotes>(`/versions/${id}/release-notes`),
+};
+
 // Admin API (requires admin role)
 const ADMIN_URL = browser ? '/api/admin' : 'http://backend:8080/api/admin';
 
@@ -1133,6 +1179,7 @@ export const api = {
 	mail,
 	giphy,
 	github,
+	versions,
 	admin,
 	auth
 };
