@@ -5,6 +5,7 @@
 	import { user } from '$lib/stores/auth';
 	import { browser } from '$app/environment';
 	import RichTextEditor from '$lib/components/RichTextEditor.svelte';
+	import AttachmentPreview from '$lib/components/AttachmentPreview.svelte';
 
 	// State
 	let folders: MailFolder[] = $state([]);
@@ -36,6 +37,9 @@
 	let attachments: EmailAttachment[] = $state([]);
 	let loadingAttachments = $state(false);
 	let downloadingAttachment = $state<string | null>(null);
+
+	// Attachment preview
+	let previewAttachment: { name: string; contentType: string; content: string } | null = $state(null);
 
 	// Meeting response
 	let respondingToMeeting = $state<'Accept' | 'Decline' | 'Tentative' | null>(null);
@@ -418,6 +422,80 @@
 		} finally {
 			downloadingAttachment = null;
 		}
+	}
+
+	// Check if attachment can be previewed
+	function canPreview(contentType: string): boolean {
+		return contentType.startsWith('image/') ||
+			contentType.includes('pdf') ||
+			contentType.startsWith('text/') ||
+			contentType.includes('json') ||
+			contentType.includes('xml') ||
+			contentType.startsWith('video/') ||
+			contentType.startsWith('audio/');
+	}
+
+	async function previewOrDownloadAttachment(attachment: EmailAttachment) {
+		downloadingAttachment = attachment.id;
+		try {
+			const result = await mail.getAttachmentContent({
+				username: credentials.username,
+				password: credentials.password,
+				attachment_id: attachment.id
+			});
+
+			// Check if can preview
+			if (canPreview(result.content_type)) {
+				previewAttachment = {
+					name: result.name || attachment.name,
+					contentType: result.content_type,
+					content: result.content
+				};
+			} else {
+				// Download directly
+				const byteCharacters = atob(result.content);
+				const byteNumbers = new Array(byteCharacters.length);
+				for (let i = 0; i < byteCharacters.length; i++) {
+					byteNumbers[i] = byteCharacters.charCodeAt(i);
+				}
+				const byteArray = new Uint8Array(byteNumbers);
+				const blob = new Blob([byteArray], { type: result.content_type });
+
+				const url = URL.createObjectURL(blob);
+				const link = document.createElement('a');
+				link.href = url;
+				link.download = result.name || attachment.name;
+				document.body.appendChild(link);
+				link.click();
+				document.body.removeChild(link);
+				URL.revokeObjectURL(url);
+			}
+		} catch (err) {
+			console.error('Failed to preview attachment:', err);
+		} finally {
+			downloadingAttachment = null;
+		}
+	}
+
+	function downloadPreviewedAttachment() {
+		if (!previewAttachment) return;
+
+		const byteCharacters = atob(previewAttachment.content);
+		const byteNumbers = new Array(byteCharacters.length);
+		for (let i = 0; i < byteCharacters.length; i++) {
+			byteNumbers[i] = byteCharacters.charCodeAt(i);
+		}
+		const byteArray = new Uint8Array(byteNumbers);
+		const blob = new Blob([byteArray], { type: previewAttachment.contentType });
+
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = previewAttachment.name;
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+		URL.revokeObjectURL(url);
 	}
 
 	function formatFileSize(bytes: number): string {
@@ -1317,6 +1395,11 @@
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
 								</svg>
 							</button>
+							<button onclick={() => window.open(`/mail/${selectedEmail?.id}`, '_blank')} class="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Открыть в новом окне">
+								<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+								</svg>
+							</button>
 							<div class="w-px h-5 bg-gray-200 mx-1"></div>
 							<button onclick={() => deleteEmail(selectedEmail!)} class="p-2 hover:bg-red-50 rounded-lg transition-colors" title="Удалить">
 								<svg class="w-5 h-5 text-gray-500 hover:text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1459,7 +1542,7 @@
 									<div class="grid gap-2">
 										{#each attachments.filter(a => !a.is_inline) as attachment}
 											<button
-												onclick={() => downloadAttachment(attachment)}
+												onclick={() => previewOrDownloadAttachment(attachment)}
 												disabled={downloadingAttachment === attachment.id}
 												class="flex items-center gap-3 p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-left transition-colors disabled:opacity-50"
 											>
@@ -1521,6 +1604,11 @@
 						<button onclick={forwardEmail} class="p-2 hover:bg-gray-100 rounded-lg" title="Переслать">
 							<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+							</svg>
+						</button>
+						<button onclick={() => window.open(`/mail/${selectedEmail?.id}`, '_blank')} class="p-2 hover:bg-gray-100 rounded-lg" title="Открыть в новом окне">
+							<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
 							</svg>
 						</button>
 						<button onclick={() => { deleteEmail(selectedEmail!); showEmailModal = false; }} class="p-2 hover:bg-red-50 rounded-lg" title="Удалить">
@@ -1669,7 +1757,7 @@
 							<div class="flex flex-wrap gap-2">
 								{#each attachments.filter(a => !a.is_inline) as attachment}
 									<button
-										onclick={() => downloadAttachment(attachment)}
+										onclick={() => previewOrDownloadAttachment(attachment)}
 										disabled={downloadingAttachment === attachment.id}
 										class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-left transition-colors disabled:opacity-50"
 									>
@@ -1791,5 +1879,16 @@
 				</div>
 			</div>
 		</div>
+	{/if}
+
+	<!-- Attachment Preview Modal -->
+	{#if previewAttachment}
+		<AttachmentPreview
+			name={previewAttachment.name}
+			contentType={previewAttachment.contentType}
+			content={previewAttachment.content}
+			onclose={() => previewAttachment = null}
+			ondownload={downloadPreviewedAttachment}
+		/>
 	{/if}
 {/if}
