@@ -593,6 +593,150 @@ func (h *Handler) CreateCalendarEvent(c *fiber.Ctx) error {
 	})
 }
 
+// UpdateCalendarEventRequest represents the request body for updating a meeting
+type UpdateCalendarEventRequest struct {
+	ItemID    string `json:"item_id"`
+	ChangeKey string `json:"change_key,omitempty"`
+	Subject   string `json:"subject,omitempty"`
+	Start     string `json:"start,omitempty"`
+	End       string `json:"end,omitempty"`
+	Location  string `json:"location,omitempty"`
+}
+
+// UpdateCalendarEvent updates an existing meeting in Exchange calendar via EWS
+func (h *Handler) UpdateCalendarEvent(c *fiber.Ctx) error {
+	if h.EWS == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "EWS not configured"})
+	}
+
+	var req UpdateCalendarEventRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body: " + err.Error()})
+	}
+
+	if req.ItemID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "item_id is required"})
+	}
+
+	// Get current user's employee ID from JWT
+	userID, ok := c.Locals("user_id").(string)
+	if !ok || userID == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "User not authenticated"})
+	}
+
+	// Get employee credentials from database
+	var employees []struct {
+		ADLogin           *string `json:"ad_login"`
+		EncryptedPassword *string `json:"encrypted_password"`
+	}
+	err := h.DB.From("employees").Select("ad_login, encrypted_password").Eq("id", userID).Limit(1).Execute(&employees)
+	if err != nil || len(employees) == 0 {
+		return c.Status(404).JSON(fiber.Map{"error": "Employee not found"})
+	}
+
+	employee := employees[0]
+	if employee.ADLogin == nil || employee.EncryptedPassword == nil || *employee.EncryptedPassword == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "EWS credentials not configured for this user"})
+	}
+
+	// Decrypt password
+	password, err := utils.DecryptPassword(*employee.EncryptedPassword, h.Config.JWTSecret)
+	if err != nil {
+		log.Printf("Failed to decrypt password for user %s: %v", userID, err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to decrypt credentials"})
+	}
+
+	username := "ekfgroup\\" + *employee.ADLogin
+
+	// Build updates map
+	updates := make(map[string]interface{})
+	if req.Subject != "" {
+		updates["subject"] = req.Subject
+	}
+	if req.Start != "" {
+		updates["start"] = req.Start
+	}
+	if req.End != "" {
+		updates["end"] = req.End
+	}
+	if req.Location != "" {
+		updates["location"] = req.Location
+	}
+
+	if err := h.EWS.UpdateCalendarItem(username, password, req.ItemID, req.ChangeKey, updates); err != nil {
+		log.Printf("Failed to update meeting in Exchange: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to update meeting: " + err.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": "Meeting updated successfully",
+	})
+}
+
+// DeleteCalendarEventRequest represents the request body for deleting a meeting
+type DeleteCalendarEventRequest struct {
+	ItemID            string `json:"item_id"`
+	ChangeKey         string `json:"change_key,omitempty"`
+	SendCancellations bool   `json:"send_cancellations"`
+}
+
+// DeleteCalendarEvent deletes a meeting from Exchange calendar via EWS
+func (h *Handler) DeleteCalendarEvent(c *fiber.Ctx) error {
+	if h.EWS == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "EWS not configured"})
+	}
+
+	var req DeleteCalendarEventRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body: " + err.Error()})
+	}
+
+	if req.ItemID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "item_id is required"})
+	}
+
+	// Get current user's employee ID from JWT
+	userID, ok := c.Locals("user_id").(string)
+	if !ok || userID == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "User not authenticated"})
+	}
+
+	// Get employee credentials from database
+	var employees []struct {
+		ADLogin           *string `json:"ad_login"`
+		EncryptedPassword *string `json:"encrypted_password"`
+	}
+	err := h.DB.From("employees").Select("ad_login, encrypted_password").Eq("id", userID).Limit(1).Execute(&employees)
+	if err != nil || len(employees) == 0 {
+		return c.Status(404).JSON(fiber.Map{"error": "Employee not found"})
+	}
+
+	employee := employees[0]
+	if employee.ADLogin == nil || employee.EncryptedPassword == nil || *employee.EncryptedPassword == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "EWS credentials not configured for this user"})
+	}
+
+	// Decrypt password
+	password, err := utils.DecryptPassword(*employee.EncryptedPassword, h.Config.JWTSecret)
+	if err != nil {
+		log.Printf("Failed to decrypt password for user %s: %v", userID, err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to decrypt credentials"})
+	}
+
+	username := "ekfgroup\\" + *employee.ADLogin
+
+	if err := h.EWS.DeleteCalendarItem(username, password, req.ItemID, req.ChangeKey, req.SendCancellations); err != nil {
+		log.Printf("Failed to delete meeting in Exchange: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to delete meeting: " + err.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": "Meeting deleted successfully",
+	})
+}
+
 // resolveAttendeeEmail converts an employee ID or email to an email address
 func (h *Handler) resolveAttendeeEmail(idOrEmail string) string {
 	// If it looks like an email, return as-is

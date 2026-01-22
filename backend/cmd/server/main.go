@@ -187,6 +187,8 @@ func main() {
 	protectedAPI.Post("/calendar/sync", h.SyncCalendar)
 	protectedAPI.Post("/calendar/free-slots", h.FindFreeSlots)
 	protectedAPI.Post("/calendar/create", h.CreateCalendarEvent)
+	protectedAPI.Put("/calendar/update", h.UpdateCalendarEvent)
+	protectedAPI.Delete("/calendar/delete", h.DeleteCalendarEvent)
 	protectedAPI.Get("/calendar/free-slots/simple", h.FreeSlotsSimple)
 	protectedAPI.Get("/calendar/rooms", h.GetMeetingRooms)
 	protectedAPI.Get("/calendar/:id", h.GetCalendar)

@@ -67,6 +67,9 @@
 	let showTimeEntryForm = $state(false);
 	let newTimeEntry = $state({ hours: 0, description: '', date: new Date().toISOString().split('T')[0] });
 
+	// Loading states for task modal
+	let loadingTaskDetails = $state(false);
+
 	// Status columns for Kanban (dynamically loaded from workflow)
 	let statusColumns: StatusColumn[] = $state([
 		{ id: 'backlog', label: 'Backlog', color: 'bg-gray-100', wipLimit: 0 },
@@ -146,13 +149,25 @@
 	async function openEditTask(task: Task) {
 		editingTask = { ...task };
 		showTaskModal = true;
+		// Reset state
+		taskDependencies = [];
+		taskDependents = [];
+		taskBlockers = [];
+		isTaskBlocked = false;
+		timeEntries = [];
+		resourceSummary = null;
 		// Load dependencies and time entries for existing task
 		if (task.id) {
-			await Promise.all([
-				loadTaskDependencies(task.id),
-				loadTimeEntries(task.id),
-				loadResourceSummary(task.id)
-			]);
+			loadingTaskDetails = true;
+			try {
+				await Promise.all([
+					loadTaskDependencies(task.id),
+					loadTimeEntries(task.id),
+					loadResourceSummary(task.id)
+				]);
+			} finally {
+				loadingTaskDetails = false;
+			}
 		}
 	}
 
@@ -189,18 +204,21 @@
 	// Dependencies functions
 	async function loadTaskDependencies(taskId: string) {
 		try {
-			const result = await api.tasks.getDependencies(taskId);
+			// Load dependencies and blocked status in parallel
+			const [result, blockedResult] = await Promise.all([
+				api.tasks.getDependencies(taskId),
+				api.tasks.isBlocked(taskId)
+			]);
 			taskDependencies = result.dependencies || [];
 			taskDependents = result.dependents || [];
-
-			// Check if blocked
-			const blockedResult = await api.tasks.isBlocked(taskId);
 			isTaskBlocked = blockedResult.blocked;
 			taskBlockers = blockedResult.blockers || [];
 		} catch (e) {
 			console.error('Error loading dependencies:', e);
 			taskDependencies = [];
 			taskDependents = [];
+			isTaskBlocked = false;
+			taskBlockers = [];
 		}
 	}
 
@@ -867,15 +885,27 @@
 					<div class="border-t pt-3 mt-3">
 						<div class="flex items-center justify-between mb-2">
 							<label class="block text-xs font-medium text-gray-500">Зависимости (блокирующие задачи)</label>
-							<button
-								type="button"
-								onclick={() => showDependencyPicker = !showDependencyPicker}
-								class="text-xs text-ekf-red hover:text-red-700"
-							>
-								+ Добавить
-							</button>
+							{#if loadingTaskDetails}
+								<span class="text-xs text-gray-400">Загрузка...</span>
+							{:else}
+								<button
+									type="button"
+									onclick={() => showDependencyPicker = !showDependencyPicker}
+									class="text-xs text-ekf-red hover:text-red-700"
+								>
+									+ Добавить
+								</button>
+							{/if}
 						</div>
 
+						{#if loadingTaskDetails}
+							<div class="flex items-center justify-center py-4">
+								<svg class="w-5 h-5 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
+									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+								</svg>
+							</div>
+						{:else}
 						<!-- Blocked warning -->
 						{#if isTaskBlocked}
 							<div class="mb-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-800">
@@ -951,6 +981,7 @@
 									{/if}
 								</div>
 							</div>
+						{/if}
 						{/if}
 					</div>
 

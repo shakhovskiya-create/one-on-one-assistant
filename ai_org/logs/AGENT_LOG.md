@@ -86,13 +86,23 @@
     - Выявлена проблема: GITHUB_TOKEN не передавался в docker-compose.yml
     - Добавлена переменная среды GITHUB_TOKEN в docker-compose.yml
     - Требуется: установить GITHUB_TOKEN в .env на сервере
+  - **Календарь: Редактирование и удаление событий**
+    - EWS client: добавлены методы UpdateCalendarItem и DeleteCalendarItem
+    - Backend handlers: UpdateCalendarEvent и DeleteCalendarEvent с JWT авторизацией
+    - Routes: PUT /calendar/update и DELETE /calendar/delete
+    - Frontend API: updateMeeting и deleteMeeting в client.ts
+    - UI: кнопки "Редактировать" и "Удалить" в модальном окне события
+    - Inline редактирование: название, время, место
+    - Отправка уведомлений участникам при удалении
+
+  - **Задачи: Оптимизация производительности**
+    - Добавлен loadingTaskDetails state для индикации загрузки
+    - Параллельная загрузка зависимостей и статуса блокировки
+    - Добавлен loading spinner в секции зависимостей
+    - Reset state при открытии модального окна
 
 ---
 
 ## Следующие задачи (Sprint 8)
-- Исправить создание каналов в Messenger
-- Почта: CSRF token, приглашения, связь с календарём
-- Календарь: участники, редактирование, переговорные
-- Задачи: зависание, ресурсы, релизы
-- GitHub: диагностика
-- Транскрибирование: Content-length error
+- Почта: связь с календарём, приглашения
+- Транскрибирование: асинхронное API для больших файлов

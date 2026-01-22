@@ -1322,6 +1322,152 @@ func (c *Client) CreateCalendarItem(username, password string, req CreateMeeting
 	return "", nil // Success but no item ID returned (rare case)
 }
 
+// UpdateCalendarItem updates an existing calendar event/meeting in Exchange
+func (c *Client) UpdateCalendarItem(username, password, itemID, changeKey string, updates map[string]interface{}) error {
+	var updateFields strings.Builder
+
+	if subject, ok := updates["subject"].(string); ok && subject != "" {
+		updateFields.WriteString(fmt.Sprintf(`
+			<t:SetItemField>
+				<t:FieldURI FieldURI="item:Subject"/>
+				<t:CalendarItem>
+					<t:Subject>%s</t:Subject>
+				</t:CalendarItem>
+			</t:SetItemField>`, escapeXML(subject)))
+	}
+
+	if start, ok := updates["start"].(string); ok && start != "" {
+		updateFields.WriteString(fmt.Sprintf(`
+			<t:SetItemField>
+				<t:FieldURI FieldURI="calendar:Start"/>
+				<t:CalendarItem>
+					<t:Start>%s</t:Start>
+				</t:CalendarItem>
+			</t:SetItemField>`, start))
+	}
+
+	if end, ok := updates["end"].(string); ok && end != "" {
+		updateFields.WriteString(fmt.Sprintf(`
+			<t:SetItemField>
+				<t:FieldURI FieldURI="calendar:End"/>
+				<t:CalendarItem>
+					<t:End>%s</t:End>
+				</t:CalendarItem>
+			</t:SetItemField>`, end))
+	}
+
+	if location, ok := updates["location"].(string); ok {
+		updateFields.WriteString(fmt.Sprintf(`
+			<t:SetItemField>
+				<t:FieldURI FieldURI="calendar:Location"/>
+				<t:CalendarItem>
+					<t:Location>%s</t:Location>
+				</t:CalendarItem>
+			</t:SetItemField>`, escapeXML(location)))
+	}
+
+	if updateFields.Len() == 0 {
+		return nil // Nothing to update
+	}
+
+	var itemIdElement string
+	if changeKey != "" {
+		itemIdElement = fmt.Sprintf(`<t:ItemId Id="%s" ChangeKey="%s"/>`, itemID, changeKey)
+	} else {
+		itemIdElement = fmt.Sprintf(`<t:ItemId Id="%s"/>`, itemID)
+	}
+
+	soap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:UpdateItem MessageDisposition="SaveOnly" ConflictResolution="AlwaysOverwrite" SendMeetingInvitationsOrCancellations="SendToAllAndSaveCopy">
+      <m:ItemChanges>
+        <t:ItemChange>
+          %s
+          <t:Updates>%s</t:Updates>
+        </t:ItemChange>
+      </m:ItemChanges>
+    </m:UpdateItem>
+  </soap:Body>
+</soap:Envelope>`, itemIdElement, updateFields.String())
+
+	log.Printf("DEBUG UpdateCalendarItem SOAP Request:\n%s", soap)
+
+	body, err := c.doRequest(soap, username, password)
+	if err != nil {
+		return fmt.Errorf("failed to update calendar item: %w", err)
+	}
+
+	log.Printf("DEBUG UpdateCalendarItem Response (first 500 chars):\n%s", string(body[:min(500, len(body))]))
+
+	// Check for errors
+	if strings.Contains(string(body), "ResponseClass=\"Error\"") {
+		errorMsg := extractValue(string(body), "<m:MessageText>", "</m:MessageText>")
+		if errorMsg != "" {
+			return fmt.Errorf("exchange error: %s", errorMsg)
+		}
+		return fmt.Errorf("failed to update calendar item: unknown error")
+	}
+
+	return nil
+}
+
+// DeleteCalendarItem deletes a calendar event/meeting from Exchange
+func (c *Client) DeleteCalendarItem(username, password, itemID, changeKey string, sendCancellations bool) error {
+	var itemIdElement string
+	if changeKey != "" {
+		itemIdElement = fmt.Sprintf(`<t:ItemId Id="%s" ChangeKey="%s"/>`, itemID, changeKey)
+	} else {
+		itemIdElement = fmt.Sprintf(`<t:ItemId Id="%s"/>`, itemID)
+	}
+
+	sendCancellationsMode := "SendToNone"
+	if sendCancellations {
+		sendCancellationsMode = "SendToAllAndSaveCopy"
+	}
+
+	soap := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+    <t:RequestServerVersion Version="Exchange2013"/>
+  </soap:Header>
+  <soap:Body>
+    <m:DeleteItem DeleteType="MoveToDeletedItems" SendMeetingCancellations="%s">
+      <m:ItemIds>
+        %s
+      </m:ItemIds>
+    </m:DeleteItem>
+  </soap:Body>
+</soap:Envelope>`, sendCancellationsMode, itemIdElement)
+
+	log.Printf("DEBUG DeleteCalendarItem SOAP Request:\n%s", soap)
+
+	body, err := c.doRequest(soap, username, password)
+	if err != nil {
+		return fmt.Errorf("failed to delete calendar item: %w", err)
+	}
+
+	log.Printf("DEBUG DeleteCalendarItem Response (first 500 chars):\n%s", string(body[:min(500, len(body))]))
+
+	// Check for errors
+	if strings.Contains(string(body), "ResponseClass=\"Error\"") {
+		errorMsg := extractValue(string(body), "<m:MessageText>", "</m:MessageText>")
+		if errorMsg != "" {
+			return fmt.Errorf("exchange error: %s", errorMsg)
+		}
+		return fmt.Errorf("failed to delete calendar item: unknown error")
+	}
+
+	return nil
+}
+
 // RespondToMeetingRequest responds to a meeting invitation (Accept, Decline, Tentative)
 func (c *Client) RespondToMeetingRequest(username, password, itemID, changeKey, response string) error {
 	// Determine the response element based on response type

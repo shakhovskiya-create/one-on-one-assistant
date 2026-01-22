@@ -211,6 +211,21 @@ export interface CreateMeetingRequest {
 	is_online_meeting?: boolean;
 }
 
+export interface UpdateMeetingRequest {
+	item_id: string;
+	change_key?: string;
+	subject?: string;
+	start?: string;
+	end?: string;
+	location?: string;
+}
+
+export interface DeleteMeetingRequest {
+	item_id: string;
+	change_key?: string;
+	send_cancellations?: boolean;
+}
+
 export const calendar = {
 	get: (employeeId: string) => request(`/calendar/${employeeId}`),
 	getSimple: (employeeId: string) => request<CalendarEvent[]>(`/calendar/${employeeId}/simple`),
@@ -222,6 +237,10 @@ export const calendar = {
 		request<{ rooms: MeetingRoom[] }>(`/calendar/rooms?employee_id=${employeeId}`),
 	createMeeting: (data: CreateMeetingRequest) =>
 		request<{ success: boolean; exchange_id: string; message: string }>('/calendar/create', { method: 'POST', body: data }),
+	updateMeeting: (data: UpdateMeetingRequest) =>
+		request<{ success: boolean; message: string }>('/calendar/update', { method: 'PUT', body: data }),
+	deleteMeeting: (data: DeleteMeetingRequest) =>
+		request<{ success: boolean; message: string }>('/calendar/delete', { method: 'DELETE', body: data }),
 };
 
 // Messenger

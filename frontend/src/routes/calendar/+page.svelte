@@ -14,6 +14,17 @@
 	let showEventModal = $state(false);
 	let modalEvent: CalendarEvent | null = $state(null);
 
+	// Edit/Delete state
+	let isEditingEvent = $state(false);
+	let editingEvent = $state({
+		subject: '',
+		start: '',
+		end: '',
+		location: ''
+	});
+	let deletingEvent = $state(false);
+	let updatingEvent = $state(false);
+
 	// Transcription state
 	let isRecording = $state(false);
 	let recordingTime = $state(0);
@@ -27,11 +38,76 @@
 	function openEventModal(event: CalendarEvent) {
 		modalEvent = event;
 		showEventModal = true;
+		isEditingEvent = false;
 		// Reset transcription state
 		transcript = '';
 		showTranscriptSection = false;
 		isRecording = false;
 		recordingTime = 0;
+	}
+
+	function startEditEvent() {
+		if (!modalEvent) return;
+		const startDate = modalEvent.start || modalEvent.start_time || '';
+		const endDate = modalEvent.end || modalEvent.end_time || '';
+		editingEvent = {
+			subject: modalEvent.subject || modalEvent.title || '',
+			start: startDate.slice(0, 16), // Format: YYYY-MM-DDTHH:MM
+			end: endDate.slice(0, 16),
+			location: modalEvent.location || ''
+		};
+		isEditingEvent = true;
+	}
+
+	function cancelEditEvent() {
+		isEditingEvent = false;
+	}
+
+	async function saveEditEvent() {
+		if (!modalEvent || !modalEvent.id) return;
+		updatingEvent = true;
+		try {
+			await calendarApi.updateMeeting({
+				item_id: modalEvent.id,
+				subject: editingEvent.subject,
+				start: editingEvent.start + ':00',
+				end: editingEvent.end + ':00',
+				location: editingEvent.location
+			});
+			await loadCalendar();
+			showEventModal = false;
+			modalEvent = null;
+			isEditingEvent = false;
+		} catch (e: any) {
+			console.error('Failed to update event:', e);
+			alert('Ошибка обновления события: ' + (e.message || 'Unknown error'));
+		} finally {
+			updatingEvent = false;
+		}
+	}
+
+	async function deleteEvent(sendCancellations: boolean = true) {
+		if (!modalEvent || !modalEvent.id) return;
+		if (!confirm(sendCancellations
+			? 'Удалить событие и отправить уведомления участникам?'
+			: 'Удалить событие без уведомлений?')) {
+			return;
+		}
+		deletingEvent = true;
+		try {
+			await calendarApi.deleteMeeting({
+				item_id: modalEvent.id,
+				send_cancellations: sendCancellations
+			});
+			await loadCalendar();
+			showEventModal = false;
+			modalEvent = null;
+		} catch (e: any) {
+			console.error('Failed to delete event:', e);
+			alert('Ошибка удаления события: ' + (e.message || 'Unknown error'));
+		} finally {
+			deletingEvent = false;
+		}
 	}
 
 	async function startRecording() {
@@ -1727,10 +1803,19 @@
 		<div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-auto">
 			<div class="p-6">
 				<div class="flex items-start justify-between mb-4">
-					<h2 class="text-xl font-semibold text-gray-900">{modalEvent.subject || modalEvent.title}</h2>
+					{#if isEditingEvent}
+						<input
+							type="text"
+							bind:value={editingEvent.subject}
+							placeholder="Название события"
+							class="flex-1 text-xl font-semibold text-gray-900 border-b-2 border-blue-500 outline-none bg-transparent"
+						/>
+					{:else}
+						<h2 class="text-xl font-semibold text-gray-900">{modalEvent.subject || modalEvent.title}</h2>
+					{/if}
 					<button
-						onclick={() => { showEventModal = false; modalEvent = null; }}
-						class="p-1 hover:bg-gray-100 rounded"
+						onclick={() => { showEventModal = false; modalEvent = null; isEditingEvent = false; }}
+						class="p-1 hover:bg-gray-100 rounded ml-2"
 					>
 						<svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -1744,16 +1829,45 @@
 						<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
 						</svg>
-						<div>
-							<div class="text-sm font-medium text-gray-900">
-								{new Date(modalEvent.start || modalEvent.start_time || '').toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+						{#if isEditingEvent}
+							<div class="flex gap-2 items-center">
+								<input
+									type="datetime-local"
+									bind:value={editingEvent.start}
+									class="text-sm border rounded px-2 py-1"
+								/>
+								<span class="text-gray-400">—</span>
+								<input
+									type="datetime-local"
+									bind:value={editingEvent.end}
+									class="text-sm border rounded px-2 py-1"
+								/>
 							</div>
-							<div class="text-sm">{formatEventTime(modalEvent)}</div>
-						</div>
+						{:else}
+							<div>
+								<div class="text-sm font-medium text-gray-900">
+									{new Date(modalEvent.start || modalEvent.start_time || '').toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+								</div>
+								<div class="text-sm">{formatEventTime(modalEvent)}</div>
+							</div>
+						{/if}
 					</div>
 
 					<!-- Location -->
-					{#if modalEvent.location}
+					{#if isEditingEvent}
+						<div class="flex items-center gap-3 text-gray-600">
+							<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+							</svg>
+							<input
+								type="text"
+								bind:value={editingEvent.location}
+								placeholder="Место проведения"
+								class="flex-1 text-sm border rounded px-2 py-1"
+							/>
+						</div>
+					{:else if modalEvent.location}
 						<div class="flex items-center gap-3 text-gray-600">
 							<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -1934,9 +2048,63 @@
 					</div>
 				</div>
 
-				<div class="mt-6 flex justify-end">
+				<div class="mt-6 flex justify-between">
+					<div class="flex gap-2">
+						{#if !isEditingEvent}
+							<button
+								onclick={startEditEvent}
+								class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm font-medium flex items-center gap-2"
+							>
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+								</svg>
+								Редактировать
+							</button>
+							<button
+								onclick={() => deleteEvent(true)}
+								disabled={deletingEvent}
+								class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+							>
+								{#if deletingEvent}
+									<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+										<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+										<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+									</svg>
+								{:else}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+									</svg>
+								{/if}
+								Удалить
+							</button>
+						{:else}
+							<button
+								onclick={saveEditEvent}
+								disabled={updatingEvent}
+								class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+							>
+								{#if updatingEvent}
+									<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+										<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+										<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+									</svg>
+								{:else}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+									</svg>
+								{/if}
+								Сохранить
+							</button>
+							<button
+								onclick={cancelEditEvent}
+								class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium"
+							>
+								Отмена
+							</button>
+						{/if}
+					</div>
 					<button
-						onclick={() => { showEventModal = false; modalEvent = null; }}
+						onclick={() => { showEventModal = false; modalEvent = null; isEditingEvent = false; }}
 						class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium"
 					>
 						Закрыть
