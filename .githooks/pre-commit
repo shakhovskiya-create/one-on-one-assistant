@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# если менялся код/доки — требуем обновление агентного лога
+CHANGED="$(git diff --cached --name-only)"
+
+# считаем "существенным" всё, кроме самого лога/статуса и мелочей
+SIGNIFICANT="$(echo "$CHANGED" | grep -Ev '^(ai_org/logs/AGENT_LOG\.md|ai_org/state/STATUS\.md|ai_org/state/ROADMAP\.md)$' || true)"
+
+if [ -n "$SIGNIFICANT" ]; then
+  if ! echo "$CHANGED" | grep -q '^ai_org/logs/AGENT_LOG\.md$'; then
+    echo "❌ Нужно обновить ai_org/logs/AGENT_LOG.md (есть существенные изменения)"
+    echo "$SIGNIFICANT" | sed 's/^/ - /'
+    exit 1
+  fi
+fi

@@ -54,3 +54,4 @@
 ## Следующие задачи (ожидают решения PM)
 - Sprint 2: Messenger enhancements (уже реализовано в предыдущих спринтах)
 - JIRA parity: Custom fields, Roadmap/Timeline (осталось)
+- test change in CONTEXT.md
