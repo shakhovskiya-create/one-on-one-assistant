@@ -35,8 +35,22 @@
 - **Деплой:** Выполнен на 10.100.0.131
 - **Замечания:** Требуются credentials Confluence Server
 
+### Sprint 7: Versions/Releases (JIRA parity)
+- **Инициатор:** PM (WORKPLAN - HIGH priority)
+- **Исполнитель:** Developer
+- **Результат:**
+  - Миграция: `migrations/018_versions.sql` (таблица versions, fix_version_id в tasks)
+  - Backend handlers: `backend/internal/handlers/versions.go` (CRUD, release, release-notes)
+  - Models: добавлен Version struct и FixVersionID в Task
+  - Routes: добавлены /versions endpoints в main.go
+  - Frontend: `frontend/src/routes/releases/+page.svelte` (полный UI)
+  - Sidebar: добавлена ссылка на Releases
+  - Коммит: `33ee40b`
+- **Деплой:** Выполнен на 10.100.0.131
+- **Замечания:** Полностью завершён JIRA parity для Versions
+
 ---
 
 ## Следующие задачи (ожидают решения PM)
-- Sprint 2: Messenger enhancements (стикеры, GIF, реакции)
-- JIRA parity: Версии/Releases, Custom fields, Roadmap/Timeline
+- Sprint 2: Messenger enhancements (уже реализовано в предыдущих спринтах)
+- JIRA parity: Custom fields, Roadmap/Timeline (осталось)
