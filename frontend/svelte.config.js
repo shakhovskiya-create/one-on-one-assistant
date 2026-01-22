@@ -13,9 +13,13 @@ const config = {
 			assets: ''
 		},
 		csrf: {
-			checkOrigin: false // Required for local development
+			checkOrigin: false
 		}
 	}
 };
+
+// Note: If CSRF issues persist, the problem may be in form handling.
+// All API requests go through client.ts which uses fetch with JSON body,
+// not native form submissions. CSRF typically affects form submissions.
 
 export default config;

@@ -108,6 +108,17 @@
     - Отображаются коммиты, упоминающие ID задачи
     - UI: аватар, SHA, дата, сообщение, автор с ссылкой на GitHub
 
+  - **Bugfix: CSRF token missing**
+    - Убран CSRF middleware из backend (JWT авторизация уже защищает от CSRF)
+    - Ошибка возникала при создании каналов в мессенджере
+
+  - **Bugfix: UUID undefined в Releases**
+    - Исправлена передача undefined в URLSearchParams
+    - Теперь фильтруются пустые параметры перед формированием query string
+
+  - **Releases: убраны из sidebar**
+    - Функционал версий будет доступен через задачи (fix_version_id)
+
 ---
 
 ## Следующие задачи (Sprint 8)

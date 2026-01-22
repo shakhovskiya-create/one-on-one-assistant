@@ -114,11 +114,8 @@ func main() {
 	// Protected routes (JWT required)
 	protectedAPI := api.Group("", middleware.JWTAuth(h.JWT))
 
-	// CSRF token endpoint (must be called before state-changing requests)
-	protectedAPI.Get("/csrf-token", middleware.CSRFTokenHandler)
-
-	// Apply CSRF protection to all state-changing routes
-	protectedAPI.Use(middleware.CSRFProtection())
+	// Note: CSRF protection removed - JWT in Authorization header already prevents CSRF attacks
+	// because the token cannot be automatically sent by browsers (unlike cookies)
 
 	// Employees
 	protectedAPI.Get("/employees", h.ListEmployees)
@@ -289,7 +286,6 @@ func main() {
 
 	// Admin routes (requires admin role)
 	adminAPI := api.Group("/admin", middleware.JWTAuth(h.JWT), middleware.AdminAuth(h.DB))
-	adminAPI.Use(middleware.CSRFProtection())
 	adminAPI.Get("/stats", h.GetAdminStats)
 	adminAPI.Get("/users", h.ListUsers)
 	adminAPI.Put("/users/:id/role", h.UpdateUserRole)

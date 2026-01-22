@@ -1119,7 +1119,12 @@ export interface ReleaseNotes {
 // Versions API
 export const versions = {
 	list: (params?: { project_id?: string; status?: string }) => {
-		const query = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+		if (!params) return request<Version[]>('/versions');
+		// Filter out undefined values to prevent "undefined" string in URL
+		const filtered: Record<string, string> = {};
+		if (params.project_id) filtered.project_id = params.project_id;
+		if (params.status) filtered.status = params.status;
+		const query = Object.keys(filtered).length > 0 ? '?' + new URLSearchParams(filtered).toString() : '';
 		return request<Version[]>(`/versions${query}`);
 	},
 	get: (id: string) => request<VersionWithTasks>(`/versions/${id}`),

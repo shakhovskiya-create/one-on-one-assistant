@@ -33,7 +33,6 @@
 		{ href: '/mail', label: 'Почта', icon: 'mail' },
 		{ href: '/calendar', label: 'Календарь', icon: 'schedule' },
 		{ href: '/confluence', label: 'Confluence', icon: 'book' },
-		{ href: '/releases', label: 'Releases', icon: 'release' },
 		{ href: '/analytics', label: 'Аналитика', icon: 'chart' },
 		{ href: '/settings', label: 'Настройки', icon: 'settings' },
 	];
