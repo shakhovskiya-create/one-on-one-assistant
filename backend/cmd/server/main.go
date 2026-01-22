@@ -180,6 +180,16 @@ func main() {
 	protectedAPI.Post("/versions/:id/release", h.ReleaseVersion)
 	protectedAPI.Get("/versions/:id/release-notes", h.GetVersionReleaseNotes)
 
+	// Sprints (Scrum)
+	protectedAPI.Get("/sprints", h.ListSprints)
+	protectedAPI.Post("/sprints", h.CreateSprint)
+	protectedAPI.Get("/sprints/active", h.GetActiveSprint)
+	protectedAPI.Get("/sprints/:id", h.GetSprint)
+	protectedAPI.Put("/sprints/:id", h.UpdateSprint)
+	protectedAPI.Delete("/sprints/:id", h.DeleteSprint)
+	protectedAPI.Post("/sprints/:id/start", h.StartSprint)
+	protectedAPI.Post("/sprints/:id/complete", h.CompleteSprint)
+
 	// Calendar (EWS) - specific routes MUST come before parametric routes
 	protectedAPI.Post("/calendar/sync", h.SyncCalendar)
 	protectedAPI.Post("/calendar/free-slots", h.FindFreeSlots)

@@ -145,9 +145,22 @@
     - Решение: использовать `[...result].sort()` вместо `result.sort()`
     - Файл: frontend/src/routes/tasks/+page.svelte
 
+  - **JIRA-like: Спринты и Версии в задачах**
+    - Миграция: `migrations/019_sprints.sql` (таблица sprints, sprint_id в tasks)
+    - Backend handlers: `backend/internal/handlers/sprints.go` (CRUD, start, complete)
+    - Models: Sprint struct, sprint_id и fix_version_id в Task
+    - Routes: /sprints endpoints добавлены в main.go
+    - Frontend API: sprints client с list, get, getActive, create, update, delete, start, complete
+    - UI задач:
+      - Селекторы спринта и версии в модальном окне задачи
+      - Фильтр по спринту в панели фильтров
+      - Бейджи спринта и версии в Kanban карточках
+      - Модалка задачи расширена до max-w-2xl
+
 ---
 
 ## Следующие задачи (Sprint 8)
 - Почта: связь с календарём, приглашения
 - Транскрибирование: асинхронное API для больших файлов
 - Проверить работу задач с пользователем после очистки кэша
+- Управление спринтами (создание, активация, завершение) - отдельная страница

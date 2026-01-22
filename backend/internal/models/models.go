@@ -120,9 +120,12 @@ type Task struct {
 	ActualCost     *float64 `json:"actual_cost,omitempty"`
 	// Release version
 	FixVersionID *string `json:"fix_version_id,omitempty"`
+	// Sprint
+	SprintID *string `json:"sprint_id,omitempty"`
 	// Relations
 	Tags       []Tag         `json:"tags,omitempty"`
 	FixVersion *Version      `json:"fix_version,omitempty"`
+	SprintRef  *Sprint       `json:"sprint_ref,omitempty"`
 	Assignee   *Employee     `json:"assignee,omitempty"`
 	CoAssignee *Employee     `json:"co_assignee,omitempty"`
 	Creator    *Employee     `json:"creator,omitempty"`
@@ -243,4 +246,26 @@ type Version struct {
 	TasksCount int      `json:"tasks_count,omitempty"`
 	TasksDone  int      `json:"tasks_done,omitempty"`
 	Progress   int      `json:"progress,omitempty"` // percentage
+}
+
+// Sprint represents a Scrum sprint for task grouping
+type Sprint struct {
+	ID        string     `json:"id"`
+	ProjectID *string    `json:"project_id,omitempty"`
+	Name      string     `json:"name"`
+	Goal      *string    `json:"goal,omitempty"`
+	StartDate string     `json:"start_date"`
+	EndDate   string     `json:"end_date"`
+	Status    string     `json:"status"` // "planning", "active", "completed"
+	Velocity  int        `json:"velocity,omitempty"`
+	CreatedBy *string    `json:"created_by,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	// Computed fields
+	Project         *Project `json:"project,omitempty"`
+	TasksCount      int      `json:"tasks_count,omitempty"`
+	TasksDone       int      `json:"tasks_done,omitempty"`
+	TotalPoints     int      `json:"total_points,omitempty"`
+	CompletedPoints int      `json:"completed_points,omitempty"`
+	Progress        int      `json:"progress,omitempty"` // percentage
 }

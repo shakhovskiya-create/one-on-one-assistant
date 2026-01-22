@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, workflows, tasks as tasksApi, github } from '$lib/api/client';
+	import { api, workflows, tasks as tasksApi, github, versions as versionsApi, sprints as sprintsApi } from '$lib/api/client';
 	import { user, subordinates } from '$lib/stores/auth';
-	import type { TaskDependency, StatusColumn, TimeEntry, ResourceSummary, GitHubCommit } from '$lib/api/client';
+	import type { TaskDependency, StatusColumn, TimeEntry, ResourceSummary, GitHubCommit, Version, Sprint } from '$lib/api/client';
 
 	// Types
 	interface Task {
@@ -20,6 +20,8 @@
 		due_date?: string;
 		parent_id?: string;
 		sprint?: string;
+		sprint_id?: string;
+		fix_version_id?: string;
 		created_at: string;
 		// Resource planning
 		estimated_hours?: number;
@@ -37,6 +39,9 @@
 	let tasks: Task[] = $state([]);
 	let projects: Project[] = $state([]);
 	let employees: any[] = $state([]);
+	let sprints: Sprint[] = $state([]);
+	let versions: Version[] = $state([]);
+	let activeSprint: Sprint | null = $state(null);
 	let loading = $state(true);
 
 	// View mode
@@ -46,6 +51,7 @@
 	let filterProject = $state('');
 	let filterAssignee = $state('');
 	let filterStatus = $state('');
+	let filterSprint = $state('');
 	let searchQuery = $state('');
 
 	// Modal state
@@ -110,15 +116,21 @@
 	async function loadData() {
 		loading = true;
 		try {
-			const [tasksRes, projectsRes, employeesRes, workflowRes] = await Promise.all([
+			const [tasksRes, projectsRes, employeesRes, workflowRes, sprintsRes, versionsRes, activeSprintRes] = await Promise.all([
 				api.tasks.list(),
 				api.projects.list().catch(() => []),
 				api.employees.list().catch(() => []),
-				workflows.getMyWorkflow().catch(() => null)
+				workflows.getMyWorkflow().catch(() => null),
+				sprintsApi.list().catch(() => []),
+				versionsApi.list().catch(() => []),
+				sprintsApi.getActive().catch(() => null)
 			]);
 			tasks = tasksRes || [];
 			projects = projectsRes || [];
 			employees = employeesRes || [];
+			sprints = sprintsRes || [];
+			versions = versionsRes || [];
+			activeSprint = activeSprintRes;
 
 			// Apply workflow statuses if loaded
 			if (workflowRes?.workflow?.statuses) {
@@ -143,7 +155,9 @@
 			project_id: filterProject || '',
 			due_date: '',
 			estimated_hours: undefined,
-			estimated_cost: undefined
+			estimated_cost: undefined,
+			sprint_id: activeSprint?.id || '',
+			fix_version_id: ''
 		};
 		// Reset dependencies for new task
 		taskDependencies = [];
@@ -203,7 +217,10 @@
 				story_points: editingTask.story_points ? Number(editingTask.story_points) : undefined,
 				// Resource planning fields
 				estimated_hours: editingTask.estimated_hours ? Number(editingTask.estimated_hours) : undefined,
-				estimated_cost: editingTask.estimated_cost ? Number(editingTask.estimated_cost) : undefined
+				estimated_cost: editingTask.estimated_cost ? Number(editingTask.estimated_cost) : undefined,
+				// Sprint and Version
+				sprint_id: editingTask.sprint_id || undefined,
+				fix_version_id: editingTask.fix_version_id || undefined
 			};
 
 			if (editingTask.id) {
@@ -397,6 +414,9 @@
 		if (filterStatus) {
 			result = result.filter(t => t.status === filterStatus);
 		}
+		if (filterSprint) {
+			result = result.filter(t => t.sprint_id === filterSprint);
+		}
 		if (searchQuery) {
 			const q = searchQuery.toLowerCase();
 			result = result.filter(t =>
@@ -477,6 +497,18 @@
 		if (!id) return '';
 		const proj = projects.find(p => p.id === id);
 		return proj?.name || '';
+	}
+
+	function getSprintName(id: string | undefined): string {
+		if (!id) return '';
+		const sprint = sprints.find(s => s.id === id);
+		return sprint?.name || '';
+	}
+
+	function getVersionName(id: string | undefined): string {
+		if (!id) return '';
+		const version = versions.find(v => v.id === id);
+		return version?.name || '';
 	}
 
 	function formatDate(dateStr: string | undefined): string {
@@ -593,6 +625,23 @@
 			{#each statusColumns as col}
 				<option value={col.id}>{col.label}</option>
 			{/each}
+		</select>
+
+		<select bind:value={filterSprint} class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-ekf-red">
+			<option value="">Все спринты</option>
+			{#if activeSprint}
+				<option value={activeSprint.id}>⚡ {activeSprint.name} (активный)</option>
+			{/if}
+			{#each sprints.filter(s => s.id !== activeSprint?.id && s.status !== 'completed') as sprint}
+				<option value={sprint.id}>{sprint.name}</option>
+			{/each}
+			{#if sprints.filter(s => s.status === 'completed').length > 0}
+				<optgroup label="Завершённые">
+					{#each sprints.filter(s => s.status === 'completed') as sprint}
+						<option value={sprint.id}>{sprint.name}</option>
+					{/each}
+				</optgroup>
+			{/if}
 		</select>
 
 		<!-- View Toggle -->
@@ -793,6 +842,21 @@
 								{#if task.description}
 									<p class="text-xs text-gray-500 line-clamp-2 mb-2">{task.description}</p>
 								{/if}
+								<!-- Sprint & Version badges -->
+								{#if task.sprint_id || task.fix_version_id}
+									<div class="flex flex-wrap gap-1 mb-2">
+										{#if task.sprint_id}
+											<span class="px-1.5 py-0.5 rounded text-[10px] bg-blue-50 text-blue-600" title="Спринт">
+												⚡ {getSprintName(task.sprint_id)}
+											</span>
+										{/if}
+										{#if task.fix_version_id}
+											<span class="px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-600" title="Версия">
+												🏷️ {getVersionName(task.fix_version_id)}
+											</span>
+										{/if}
+									</div>
+								{/if}
 								<div class="flex items-center justify-between text-xs">
 									<div class="flex items-center gap-1.5">
 										<span class="px-1.5 py-0.5 rounded {priorityLabels[task.priority || 3].color}">
@@ -834,7 +898,7 @@
 <!-- Task Modal -->
 {#if showTaskModal && editingTask}
 	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onclick={() => showTaskModal = false}>
-		<div class="bg-white rounded-lg shadow-xl w-full max-w-md" onclick={(e) => e.stopPropagation()}>
+		<div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onclick={(e) => e.stopPropagation()}>
 			<div class="p-4 border-b flex items-center justify-between">
 				<h2 class="font-bold text-gray-900">{editingTask.id ? 'Редактировать задачу' : 'Новая задача'}</h2>
 				<button onclick={() => showTaskModal = false} class="p-1 hover:bg-gray-100 rounded">
@@ -921,6 +985,61 @@
 							bind:value={editingTask.due_date}
 							class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
 						/>
+					</div>
+				</div>
+
+				<!-- Sprint and Version -->
+				<div class="grid grid-cols-2 gap-3">
+					<div>
+						<label class="block text-xs font-medium text-gray-500 mb-1">
+							<span class="flex items-center gap-1">
+								<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+								</svg>
+								Спринт
+							</span>
+						</label>
+						<select bind:value={editingTask.sprint_id} class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+							<option value="">Без спринта</option>
+							{#each sprints.filter(s => s.status !== 'completed') as sprint}
+								<option value={sprint.id}>
+									{sprint.name}
+									{#if sprint.status === 'active'}
+										(активный)
+									{/if}
+								</option>
+							{/each}
+							{#if sprints.filter(s => s.status === 'completed').length > 0}
+								<optgroup label="Завершённые">
+									{#each sprints.filter(s => s.status === 'completed') as sprint}
+										<option value={sprint.id}>{sprint.name}</option>
+									{/each}
+								</optgroup>
+							{/if}
+						</select>
+					</div>
+					<div>
+						<label class="block text-xs font-medium text-gray-500 mb-1">
+							<span class="flex items-center gap-1">
+								<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+								</svg>
+								Версия (Fix Version)
+							</span>
+						</label>
+						<select bind:value={editingTask.fix_version_id} class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+							<option value="">Без версии</option>
+							{#each versions.filter(v => v.status === 'unreleased') as version}
+								<option value={version.id}>{version.name}</option>
+							{/each}
+							{#if versions.filter(v => v.status === 'released').length > 0}
+								<optgroup label="Выпущенные">
+									{#each versions.filter(v => v.status === 'released') as version}
+										<option value={version.id}>{version.name}</option>
+									{/each}
+								</optgroup>
+							{/if}
+						</select>
 					</div>
 				</div>
 

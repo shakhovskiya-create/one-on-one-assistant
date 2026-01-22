@@ -1135,6 +1135,54 @@ export const versions = {
 	getReleaseNotes: (id: string) => request<ReleaseNotes>(`/versions/${id}/release-notes`),
 };
 
+// Sprint type
+export interface Sprint {
+	id: string;
+	project_id?: string;
+	name: string;
+	goal?: string;
+	start_date: string;
+	end_date: string;
+	status: 'planning' | 'active' | 'completed';
+	velocity?: number;
+	created_by?: string;
+	created_at?: string;
+	updated_at?: string;
+	project?: Project;
+	tasks_count?: number;
+	tasks_done?: number;
+	total_points?: number;
+	completed_points?: number;
+	progress?: number;
+}
+
+export interface SprintWithTasks {
+	sprint: Sprint;
+	tasks: Task[];
+}
+
+// Sprints API
+export const sprints = {
+	list: (params?: { project_id?: string; status?: string }) => {
+		if (!params) return request<Sprint[]>('/sprints');
+		const filtered: Record<string, string> = {};
+		if (params.project_id) filtered.project_id = params.project_id;
+		if (params.status) filtered.status = params.status;
+		const query = Object.keys(filtered).length > 0 ? '?' + new URLSearchParams(filtered).toString() : '';
+		return request<Sprint[]>(`/sprints${query}`);
+	},
+	get: (id: string) => request<SprintWithTasks>(`/sprints/${id}`),
+	getActive: (projectId?: string) => {
+		const query = projectId ? `?project_id=${projectId}` : '';
+		return request<Sprint | null>(`/sprints/active${query}`);
+	},
+	create: (data: Partial<Sprint>) => request<Sprint>('/sprints', { method: 'POST', body: data }),
+	update: (id: string, data: Partial<Sprint>) => request<Sprint>(`/sprints/${id}`, { method: 'PUT', body: data }),
+	delete: (id: string) => request(`/sprints/${id}`, { method: 'DELETE' }),
+	start: (id: string) => request<Sprint>(`/sprints/${id}/start`, { method: 'POST' }),
+	complete: (id: string) => request<Sprint>(`/sprints/${id}/complete`, { method: 'POST' }),
+};
+
 // Admin API (requires admin role)
 const ADMIN_URL = browser ? '/api/admin' : 'http://backend:8080/api/admin';
 
@@ -1203,6 +1251,7 @@ export const api = {
 	giphy,
 	github,
 	versions,
+	sprints,
 	admin,
 	auth
 };

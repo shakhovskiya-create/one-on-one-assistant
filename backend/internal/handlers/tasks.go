@@ -25,6 +25,12 @@ func (h *Handler) ListTasks(c *fiber.Ctx) error {
 	if status := c.Query("status"); status != "" {
 		query = query.Eq("status", status)
 	}
+	if sprintID := c.Query("sprint_id"); sprintID != "" {
+		query = query.Eq("sprint_id", sprintID)
+	}
+	if fixVersionID := c.Query("fix_version_id"); fixVersionID != "" {
+		query = query.Eq("fix_version_id", fixVersionID)
+	}
 	if parentID := c.Query("parent_id"); parentID != "" {
 		query = query.Eq("parent_id", parentID)
 	} else if c.Query("include_subtasks") != "true" {
@@ -150,6 +156,8 @@ func (h *Handler) CreateTask(c *fiber.Ctx) error {
 		Priority     int      `json:"priority"`
 		StoryPoints  *int     `json:"story_points"`
 		Sprint       *string  `json:"sprint"`
+		SprintID     *string  `json:"sprint_id"`
+		FixVersionID *string  `json:"fix_version_id"`
 		FlagColor    *string  `json:"flag_color"`
 		AssigneeID   *string  `json:"assignee_id"`
 		CoAssigneeID *string  `json:"co_assignee_id"`
@@ -180,6 +188,8 @@ func (h *Handler) CreateTask(c *fiber.Ctx) error {
 		"priority":       input.Priority,
 		"story_points":   input.StoryPoints,
 		"sprint":         input.Sprint,
+		"sprint_id":      input.SprintID,
+		"fix_version_id": input.FixVersionID,
 		"flag_color":     input.FlagColor,
 		"assignee_id":    input.AssigneeID,
 		"co_assignee_id": input.CoAssigneeID,
@@ -259,6 +269,10 @@ func (h *Handler) UpdateTask(c *fiber.Ctx) error {
 			oldValue = current.StoryPoints
 		case "sprint":
 			oldValue = current.Sprint
+		case "sprint_id":
+			oldValue = current.SprintID
+		case "fix_version_id":
+			oldValue = current.FixVersionID
 		case "assignee_id":
 			oldValue = current.AssigneeID
 		case "due_date":
