@@ -1409,9 +1409,10 @@
 						</button>
 						<div class="flex items-center gap-1">
 							<!-- Thread navigation -->
-							{@const currentThread = getCurrentThread()}
-							{#if currentThread && currentThread.emails.length > 1}
-								{@const currentIdx = currentThread.emails.findIndex(e => e.id === selectedEmail?.id)}
+							{#if showThreaded}
+								{@const currentThread = getCurrentThread()}
+								{#if currentThread && currentThread.emails.length > 1}
+									{@const currentIdx = currentThread.emails.findIndex(e => e.id === selectedEmail?.id)}
 								<div class="flex items-center gap-0.5 mr-2 px-2 py-1 bg-gray-100 rounded-lg">
 									<button
 										onclick={() => navigateThread('first')}
@@ -1455,6 +1456,7 @@
 										</svg>
 									</button>
 								</div>
+								{/if}
 							{/if}
 							<button onclick={() => replyToEmail('reply')} class="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Ответить">
 								<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
