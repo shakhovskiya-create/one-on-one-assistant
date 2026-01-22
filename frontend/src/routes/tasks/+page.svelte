@@ -405,7 +405,8 @@
 			);
 		}
 
-		return result.sort((a, b) => {
+		// Use spread to create a copy before sorting (Svelte 5 prohibits mutating state in $derived)
+		return [...result].sort((a, b) => {
 			// Sort by priority first, then by created_at
 			if ((a.priority || 3) !== (b.priority || 3)) {
 				return (a.priority || 3) - (b.priority || 3);

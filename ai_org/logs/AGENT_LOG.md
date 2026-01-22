@@ -139,6 +139,12 @@
     - Причина: браузер кэширует старый JS код, вызывая бесконечные GET запросы к /mail/emails
     - Требуется: жёсткое обновление браузера (Ctrl+Shift+R) для очистки кэша
 
+  - **Bugfix: Svelte 5 state_unsafe_mutation**
+    - Ошибка: `Uncaught Error: https://svelte.dev/e/state_unsafe_mutation`
+    - Причина: `.sort()` мутировал $state массив внутри `$derived.by()`
+    - Решение: использовать `[...result].sort()` вместо `result.sort()`
+    - Файл: frontend/src/routes/tasks/+page.svelte
+
 ---
 
 ## Следующие задачи (Sprint 8)
