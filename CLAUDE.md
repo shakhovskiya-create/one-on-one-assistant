@@ -1,5 +1,4 @@
 # CURSOR_RULES_STRICT.md
-# Вариант 1 — Жёсткий (максимум сохранения контекста + QA мирового уровня)
 
 Скопируй содержимое этого файла в:
 Cursor → Settings → Rules and Commands → Project Rules → Add Rule
