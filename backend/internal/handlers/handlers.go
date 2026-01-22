@@ -6,6 +6,7 @@ import (
 	"github.com/ekf/one-on-one-backend/internal/database"
 	"github.com/ekf/one-on-one-backend/internal/ews"
 	"github.com/ekf/one-on-one-backend/internal/services"
+	"github.com/ekf/one-on-one-backend/internal/services/confluence"
 	"github.com/ekf/one-on-one-backend/internal/storage"
 	"github.com/ekf/one-on-one-backend/pkg/ai"
 	"github.com/ekf/one-on-one-backend/pkg/auth"
@@ -15,16 +16,17 @@ import (
 
 // Handler holds all handler dependencies
 type Handler struct {
-	Config    *config.Config
-	DB        database.DBClient
-	Storage   *storage.MinIOClient
-	AI        *ai.Client
-	AD        *ad.Client
-	EWS       *ews.Client
-	Telegram  *telegram.Client
-	Connector *services.ConnectorManager
-	JWT       *auth.JWTManager
-	Camunda   *camunda.Client
+	Config     *config.Config
+	DB         database.DBClient
+	Storage    *storage.MinIOClient
+	AI         *ai.Client
+	AD         *ad.Client
+	EWS        *ews.Client
+	Telegram   *telegram.Client
+	Connector  *services.ConnectorManager
+	JWT        *auth.JWTManager
+	Camunda    *camunda.Client
+	Confluence *confluence.Client
 }
 
 // NewHandler creates a new handler with all dependencies
@@ -76,16 +78,20 @@ func NewHandler(cfg *config.Config) *Handler {
 		}
 	}
 
+	// Initialize Confluence client
+	confluenceClient := confluence.NewClient(cfg.ConfluenceURL, cfg.ConfluenceUsername, cfg.ConfluencePassword)
+
 	return &Handler{
-		Config:    cfg,
-		DB:        db,
-		Storage:   storageClient,
-		AI:        aiClient,
-		AD:        adClient,
-		EWS:       ewsClient,
-		Telegram:  tgClient,
-		Connector: connector,
-		JWT:       jwtManager,
-		Camunda:   camundaClient,
+		Config:     cfg,
+		DB:         db,
+		Storage:    storageClient,
+		AI:         aiClient,
+		AD:         adClient,
+		EWS:        ewsClient,
+		Telegram:   tgClient,
+		Connector:  connector,
+		JWT:        jwtManager,
+		Camunda:    camundaClient,
+		Confluence: confluenceClient,
 	}
 }

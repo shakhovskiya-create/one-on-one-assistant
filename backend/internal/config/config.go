@@ -38,6 +38,10 @@ type Config struct {
 	MinIOPublicURL string // Public URL for media access (e.g., http://localhost/media)
 	// External APIs
 	GiphyAPIKey string // GIPHY API key for GIF search
+	// Confluence Configuration
+	ConfluenceURL      string // Confluence Server URL
+	ConfluenceUsername string // Confluence username
+	ConfluencePassword string // Confluence password
 }
 
 func Load() *Config {
@@ -67,13 +71,16 @@ func Load() *Config {
 		CamundaUser:      getEnv("CAMUNDA_USER", ""),
 		CamundaPassword:  getEnv("CAMUNDA_PASSWORD", ""),
 		// MinIO Storage
-		MinIOEndpoint:  getEnv("MINIO_ENDPOINT", "minio:9000"),
-		MinIOAccessKey: getEnv("MINIO_ACCESS_KEY", "minioadmin"),
-		MinIOSecretKey: getEnv("MINIO_SECRET_KEY", "minioadmin123"),
-		MinioBucket:    getEnv("MINIO_BUCKET", "media"),
-		MinIOUseSSL:    getEnv("MINIO_USE_SSL", "false") == "true",
-		MinIOPublicURL: getEnv("MINIO_PUBLIC_URL", "/media"),
-		GiphyAPIKey:    getEnv("GIPHY_API_KEY", ""),
+		MinIOEndpoint:      getEnv("MINIO_ENDPOINT", "minio:9000"),
+		MinIOAccessKey:     getEnv("MINIO_ACCESS_KEY", "minioadmin"),
+		MinIOSecretKey:     getEnv("MINIO_SECRET_KEY", "minioadmin123"),
+		MinioBucket:        getEnv("MINIO_BUCKET", "media"),
+		MinIOUseSSL:        getEnv("MINIO_USE_SSL", "false") == "true",
+		MinIOPublicURL:     getEnv("MINIO_PUBLIC_URL", "/media"),
+		GiphyAPIKey:        getEnv("GIPHY_API_KEY", ""),
+		ConfluenceURL:      getEnv("CONFLUENCE_URL", "https://confluence.ekf.su"),
+		ConfluenceUsername: getEnv("CONFLUENCE_USERNAME", ""),
+		ConfluencePassword: getEnv("CONFLUENCE_PASSWORD", ""),
 	}
 }
 

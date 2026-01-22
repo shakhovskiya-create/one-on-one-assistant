@@ -254,6 +254,16 @@ func main() {
 	protectedAPI.Post("/mail/attachment/content", h.GetAttachmentContent)
 	protectedAPI.Post("/mail/meeting/respond", h.RespondToMeeting)
 
+	// Confluence
+	protectedAPI.Get("/confluence/status", h.ConfluenceStatus)
+	protectedAPI.Get("/confluence/spaces", h.GetConfluenceSpaces)
+	protectedAPI.Get("/confluence/spaces/:key", h.GetConfluenceSpace)
+	protectedAPI.Get("/confluence/spaces/:key/content", h.GetConfluenceSpaceContent)
+	protectedAPI.Get("/confluence/pages/:id", h.GetConfluencePage)
+	protectedAPI.Get("/confluence/pages/:id/children", h.GetConfluenceChildPages)
+	protectedAPI.Get("/confluence/search", h.SearchConfluence)
+	protectedAPI.Get("/confluence/recent", h.GetRecentConfluencePages)
+
 	// User role (for current user)
 	protectedAPI.Get("/auth/role", h.GetCurrentUserRole)
 

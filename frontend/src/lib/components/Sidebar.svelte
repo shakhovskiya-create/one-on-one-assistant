@@ -32,6 +32,7 @@
 		{ href: '/messenger', label: 'Сообщения', icon: 'messenger' },
 		{ href: '/mail', label: 'Почта', icon: 'mail' },
 		{ href: '/calendar', label: 'Календарь', icon: 'schedule' },
+		{ href: '/confluence', label: 'Confluence', icon: 'book' },
 		{ href: '/analytics', label: 'Аналитика', icon: 'chart' },
 		{ href: '/settings', label: 'Настройки', icon: 'settings' },
 	];
@@ -81,6 +82,8 @@
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
 							{:else if item.icon === 'mail'}
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+							{:else if item.icon === 'book'}
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
 							{:else if item.icon === 'upload'}
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
 							{:else if item.icon === 'script'}

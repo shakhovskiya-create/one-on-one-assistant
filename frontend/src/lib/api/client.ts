@@ -371,6 +371,66 @@ export const speech = {
 	}
 };
 
+// Confluence
+export interface ConfluenceSpace {
+	id: number;
+	key: string;
+	name: string;
+	type: string;
+	description?: { plain?: { value: string } };
+	_links: { webui: string };
+}
+
+export interface ConfluenceContent {
+	id: string;
+	type: string;
+	status: string;
+	title: string;
+	space?: ConfluenceSpace;
+	version?: { number: number };
+	body?: {
+		storage?: { value: string };
+		view?: { value: string };
+	};
+	_links: { webui: string; tinyui?: string };
+	ancestors?: ConfluenceContent[];
+}
+
+export interface ConfluenceSearchResult {
+	content: ConfluenceContent;
+	title: string;
+	excerpt: string;
+	url: string;
+	lastModified: string;
+	friendlyLastModified: string;
+}
+
+export const confluence = {
+	status: () => request<{ configured: boolean; url: string }>('/confluence/status'),
+	getSpaces: (limit?: number) =>
+		request<{ spaces: ConfluenceSpace[] }>(`/confluence/spaces${limit ? `?limit=${limit}` : ''}`),
+	getSpace: (key: string) => request<ConfluenceSpace>(`/confluence/spaces/${key}`),
+	getSpaceContent: (spaceKey: string, type?: string, limit?: number) => {
+		const params = new URLSearchParams();
+		if (type) params.append('type', type);
+		if (limit) params.append('limit', String(limit));
+		return request<{ pages: ConfluenceContent[] }>(`/confluence/spaces/${spaceKey}/content${params.toString() ? `?${params}` : ''}`);
+	},
+	getPage: (id: string, expandBody?: boolean) =>
+		request<ConfluenceContent>(`/confluence/pages/${id}${expandBody ? '?expand_body=true' : ''}`),
+	getChildPages: (id: string, limit?: number) =>
+		request<{ pages: ConfluenceContent[] }>(`/confluence/pages/${id}/children${limit ? `?limit=${limit}` : ''}`),
+	search: (query: string, spaceKey?: string, limit?: number) => {
+		const params = new URLSearchParams();
+		params.append('q', query);
+		if (spaceKey) params.append('space', spaceKey);
+		if (limit) params.append('limit', String(limit));
+		return request<{ results: ConfluenceSearchResult[]; totalSize: number }>(`/confluence/search?${params}`);
+	},
+	getRecent: (limit?: number) =>
+		request<{ pages: ConfluenceContent[] }>(`/confluence/recent${limit ? `?limit=${limit}` : ''}`),
+};
+
 // BPMN / Camunda
 export const bpmn = {
 	status: () => request<BPMNStatus>('/bpmn/status'),
