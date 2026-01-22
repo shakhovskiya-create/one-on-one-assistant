@@ -65,6 +65,9 @@
 - **Результаты:**
   - Добавлена обработка ошибок при создании каналов
   - Добавлен индикатор загрузки и сообщения об ошибках
+  - **SECURITY FIX:** Исправлена передача паролей почты через GET query params
+    - Backend: mail/folders и mail/emails теперь POST с body
+    - Frontend: client.ts обновлён для POST запросов
   - WORKPLAN.md обновлён с Sprint 8 (bugfixes) и Sprint 9 (features)
 
 ---

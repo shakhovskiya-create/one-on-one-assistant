@@ -856,16 +856,15 @@ export interface GifResult {
 	height: string;
 }
 
-// Mail API
+// Mail API - credentials sent in POST body for security
 export const mail = {
 	getFolders: (username: string, password: string) =>
-		request<MailFolder[]>(`/mail/folders?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`),
-	getEmails: (username: string, password: string, folderId?: string, limit?: number) => {
-		const params = new URLSearchParams({ username, password });
-		if (folderId) params.append('folder_id', folderId);
-		if (limit) params.append('limit', limit.toString());
-		return request<EmailMessage[]>(`/mail/emails?${params}`);
-	},
+		request<MailFolder[]>('/mail/folders', { method: 'POST', body: { username, password } }),
+	getEmails: (username: string, password: string, folderId?: string, limit?: number) =>
+		request<EmailMessage[]>('/mail/emails', {
+			method: 'POST',
+			body: { username, password, folder_id: folderId, limit: limit || 50 }
+		}),
 	getEmailBody: (data: { username: string; password: string; item_id: string; change_key?: string }) =>
 		request<{ body: string }>('/mail/body', { method: 'POST', body: data }),
 	sendEmail: (data: { username: string; password: string; to: string[]; cc?: string[]; subject: string; body: string; attachments?: { name: string; content: string }[] }) =>

@@ -252,9 +252,9 @@ func main() {
 	api.Get("/gifs/search", h.SearchGifs)
 	api.Get("/gifs/trending", h.TrendingGifs)
 
-	// Mail (EWS)
-	protectedAPI.Get("/mail/folders", h.GetMailFolders)
-	protectedAPI.Get("/mail/emails", h.GetEmails)
+	// Mail (EWS) - POST for credentials security
+	protectedAPI.Post("/mail/folders", h.GetMailFolders)
+	protectedAPI.Post("/mail/emails", h.GetEmails)
 	protectedAPI.Post("/mail/body", h.GetEmailBody)
 	protectedAPI.Post("/mail/send", h.SendEmail)
 	protectedAPI.Post("/mail/mark-read", h.MarkEmailAsRead)

@@ -7,20 +7,30 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// MailCredentialsRequest represents credentials for mail operations
+type MailCredentialsRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	FolderID string `json:"folder_id,omitempty"`
+	Limit    int    `json:"limit,omitempty"`
+}
+
 // GetMailFolders returns user's mail folders
 func (h *Handler) GetMailFolders(c *fiber.Ctx) error {
 	if h.EWS == nil {
 		return c.Status(503).JSON(fiber.Map{"error": "EWS not configured"})
 	}
 
-	username := c.Query("username")
-	password := c.Query("password")
+	var req MailCredentialsRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
 
-	if username == "" || password == "" {
+	if req.Username == "" || req.Password == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "username and password required"})
 	}
 
-	folders, err := h.EWS.GetMailFolders("", username, password)
+	folders, err := h.EWS.GetMailFolders("", req.Username, req.Password)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -34,16 +44,21 @@ func (h *Handler) GetEmails(c *fiber.Ctx) error {
 		return c.Status(503).JSON(fiber.Map{"error": "EWS not configured"})
 	}
 
-	username := c.Query("username")
-	password := c.Query("password")
-	folderID := c.Query("folder_id")
-	limit := c.QueryInt("limit", 50)
+	var req MailCredentialsRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
 
-	if username == "" || password == "" {
+	if req.Username == "" || req.Password == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "username and password required"})
 	}
 
-	emails, err := h.EWS.GetEmails("", username, password, folderID, limit)
+	limit := req.Limit
+	if limit == 0 {
+		limit = 50
+	}
+
+	emails, err := h.EWS.GetEmails("", req.Username, req.Password, req.FolderID, limit)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
