@@ -37,6 +37,7 @@
 	let attachments: EmailAttachment[] = $state([]);
 	let loadingAttachments = $state(false);
 	let downloadingAttachment = $state<string | null>(null);
+	let attachmentError = $state('');
 
 	// Attachment preview
 	let previewAttachment: { name: string; contentType: string; content: string } | null = $state(null);
@@ -274,6 +275,7 @@
 		selectedEmail = email;
 		bodyError = '';
 		attachments = [];
+		attachmentError = '';
 
 		// Load attachments first if email has them (needed for inline images)
 		let inlineAttachments: EmailAttachment[] = [];
@@ -288,8 +290,12 @@
 				});
 				attachments = result.attachments || [];
 				inlineAttachments = attachments.filter(a => a.is_inline && a.content_id);
+				if (attachments.length === 0) {
+					attachmentError = 'Вложения не найдены (возможно, они были удалены)';
+				}
 			} catch (err) {
 				console.error('Failed to load attachments:', err);
+				attachmentError = err instanceof Error ? err.message : 'Ошибка загрузки вложений';
 			} finally {
 				loadingAttachments = false;
 			}
@@ -849,6 +855,34 @@
 		}
 	}
 
+	// Get current thread for selected email
+	function getCurrentThread(): EmailThread | null {
+		if (!selectedEmail || !showThreaded) return null;
+		const threads = groupedEmails();
+		if (!threads) return null;
+		return threads.find(t => t.emails.some(e => e.id === selectedEmail?.id)) || null;
+	}
+
+	// Navigate within thread
+	function navigateThread(direction: 'first' | 'prev' | 'next' | 'last') {
+		const thread = getCurrentThread();
+		if (!thread || !selectedEmail) return;
+
+		const currentIdx = thread.emails.findIndex(e => e.id === selectedEmail.id);
+		let newIdx = currentIdx;
+
+		switch (direction) {
+			case 'first': newIdx = 0; break;
+			case 'prev': newIdx = Math.max(0, currentIdx - 1); break;
+			case 'next': newIdx = Math.min(thread.emails.length - 1, currentIdx + 1); break;
+			case 'last': newIdx = thread.emails.length - 1; break;
+		}
+
+		if (newIdx !== currentIdx) {
+			selectEmail(thread.emails[newIdx]);
+		}
+	}
+
 	// Check if selected email belongs to this thread
 	function isThreadSelected(thread: EmailThread): boolean {
 		if (!selectedEmail) return false;
@@ -1374,6 +1408,54 @@
 							</svg>
 						</button>
 						<div class="flex items-center gap-1">
+							<!-- Thread navigation -->
+							{@const currentThread = getCurrentThread()}
+							{#if currentThread && currentThread.emails.length > 1}
+								{@const currentIdx = currentThread.emails.findIndex(e => e.id === selectedEmail?.id)}
+								<div class="flex items-center gap-0.5 mr-2 px-2 py-1 bg-gray-100 rounded-lg">
+									<button
+										onclick={() => navigateThread('first')}
+										disabled={currentIdx === 0}
+										class="p-1 hover:bg-gray-200 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+										title="Первое письмо (оригинал)"
+									>
+										<svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+										</svg>
+									</button>
+									<button
+										onclick={() => navigateThread('prev')}
+										disabled={currentIdx === 0}
+										class="p-1 hover:bg-gray-200 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+										title="Предыдущее"
+									>
+										<svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+										</svg>
+									</button>
+									<span class="text-xs text-gray-500 px-1">{currentIdx + 1}/{currentThread.emails.length}</span>
+									<button
+										onclick={() => navigateThread('next')}
+										disabled={currentIdx === currentThread.emails.length - 1}
+										class="p-1 hover:bg-gray-200 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+										title="Следующее"
+									>
+										<svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+										</svg>
+									</button>
+									<button
+										onclick={() => navigateThread('last')}
+										disabled={currentIdx === currentThread.emails.length - 1}
+										class="p-1 hover:bg-gray-200 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+										title="Последнее письмо"
+									>
+										<svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+										</svg>
+									</button>
+								</div>
+							{/if}
 							<button onclick={() => replyToEmail('reply')} class="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Ответить">
 								<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
@@ -1532,7 +1614,11 @@
 										<span class="animate-spin inline-block w-4 h-4 border-2 border-gray-300 border-t-ekf-red rounded-full"></span>
 									{/if}
 								</h4>
-								{#if attachments.length > 0}
+								{#if attachmentError}
+									<div class="p-2 bg-red-50 border border-red-200 rounded-lg">
+										<p class="text-sm text-red-600">{attachmentError}</p>
+									</div>
+								{:else if attachments.length > 0}
 									<div class="grid gap-2">
 										{#each attachments.filter(a => !a.is_inline) as attachment}
 											<button
