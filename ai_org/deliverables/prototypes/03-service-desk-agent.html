@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EKF Hub - Service Desk (Agent Console)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Inter', sans-serif; }
+        .ticket-row { transition: all 0.15s ease; }
+        .ticket-row:hover { background: #f9fafb; }
+        .ticket-row.selected { background: #eff6ff; border-left: 3px solid #3b82f6; }
+        .priority-critical { color: #dc2626; }
+        .priority-high { color: #ea580c; }
+        .priority-medium { color: #ca8a04; }
+        .priority-low { color: #16a34a; }
+        .sla-breached { background: #fef2f2; color: #dc2626; }
+        .sla-warning { background: #fffbeb; color: #ca8a04; }
+        .sla-ok { background: #f0fdf4; color: #16a34a; }
+        .nav-tab { padding: 12px 16px; border-bottom: 2px solid transparent; cursor: pointer; }
+        .nav-tab:hover { background: #f9fafb; }
+        .nav-tab.active { border-bottom-color: #3b82f6; color: #3b82f6; font-weight: 500; }
+        .stat-card { background: white; border-radius: 12px; padding: 16px; border: 1px solid #e5e7eb; }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-60 bg-slate-800 text-white flex flex-col">
+            <div class="p-4 border-b border-slate-700">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center font-bold">E</div>
+                    <div>
+                        <div class="font-semibold">EKF Hub</div>
+                        <div class="text-xs text-slate-400">Service Desk</div>
+                    </div>
+                </div>
+            </div>
+
+            <nav class="flex-1 p-3 space-y-1">
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-700 text-white">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                    <span>Queue</span>
+                    <span class="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">24</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    <span>Incidents</span>
+                    <span class="ml-auto text-xs text-slate-400">18</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                    <span>Service Requests</span>
+                    <span class="ml-auto text-xs text-slate-400">6</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <span>Problems</span>
+                    <span class="ml-auto text-xs text-slate-400">3</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    <span>Changes</span>
+                    <span class="ml-auto text-xs text-slate-400">2</span>
+                </a>
+
+                <div class="pt-4 mt-4 border-t border-slate-700">
+                    <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                        <span>Knowledge Base</span>
+                    </a>
+                    <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        <span>Reports</span>
+                    </a>
+                    <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        <span>Settings</span>
+                    </a>
+                </div>
+            </nav>
+
+            <div class="p-4 border-t border-slate-700">
+                <div class="flex items-center gap-3">
+                    <img src="https://i.pravatar.cc/40?img=10" class="w-10 h-10 rounded-full">
+                    <div class="flex-1 min-w-0">
+                        <div class="font-medium text-sm truncate">Alexey Petrov</div>
+                        <div class="text-xs text-slate-400">IT Support Agent</div>
+                    </div>
+                    <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col overflow-hidden">
+            <!-- Top Stats Bar -->
+            <div class="bg-white border-b px-6 py-4">
+                <div class="grid grid-cols-6 gap-4">
+                    <div class="stat-card">
+                        <div class="text-2xl font-bold text-gray-900">24</div>
+                        <div class="text-sm text-gray-500">Open Tickets</div>
+                    </div>
+                    <div class="stat-card border-l-4 border-red-500">
+                        <div class="text-2xl font-bold text-red-600">3</div>
+                        <div class="text-sm text-gray-500">SLA Breached</div>
+                    </div>
+                    <div class="stat-card border-l-4 border-yellow-500">
+                        <div class="text-2xl font-bold text-yellow-600">5</div>
+                        <div class="text-sm text-gray-500">SLA Warning</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="text-2xl font-bold text-gray-900">8</div>
+                        <div class="text-sm text-gray-500">My Assigned</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="text-2xl font-bold text-green-600">42</div>
+                        <div class="text-sm text-gray-500">Resolved Today</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="text-2xl font-bold text-gray-900">94%</div>
+                        <div class="text-sm text-gray-500">SLA Compliance</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="bg-white border-b flex items-center px-6">
+                <div class="nav-tab active">All Tickets</div>
+                <div class="nav-tab">My Assigned</div>
+                <div class="nav-tab">Unassigned</div>
+                <div class="nav-tab">Awaiting Response</div>
+                <div class="nav-tab">On Hold</div>
+                <div class="ml-auto flex items-center gap-2 py-2">
+                    <div class="relative">
+                        <input type="text" placeholder="Search tickets..." class="pl-9 pr-4 py-1.5 border rounded-lg text-sm w-64 focus:ring-2 focus:ring-blue-500">
+                        <svg class="w-4 h-4 text-gray-400 absolute left-3 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
+                    <button class="px-3 py-1.5 border rounded-lg text-sm hover:bg-gray-50 flex items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+                        Filter
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex-1 flex overflow-hidden">
+                <!-- Ticket List -->
+                <div class="w-1/2 border-r overflow-y-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50 sticky top-0">
+                            <tr class="text-xs text-gray-500 uppercase">
+                                <th class="px-4 py-3 text-left font-medium">Ticket</th>
+                                <th class="px-4 py-3 text-left font-medium">Requester</th>
+                                <th class="px-4 py-3 text-left font-medium">Priority</th>
+                                <th class="px-4 py-3 text-left font-medium">Status</th>
+                                <th class="px-4 py-3 text-left font-medium">SLA</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y">
+                            <!-- Critical SLA Breached -->
+                            <tr class="ticket-row selected cursor-pointer">
+                                <td class="px-4 py-3">
+                                    <div class="flex items-center gap-2">
+                                        <svg class="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
+                                        <div>
+                                            <div class="font-medium text-sm">INC-2024-0145</div>
+                                            <div class="text-xs text-gray-500 truncate w-40">Email server not responding</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <div class="flex items-center gap-2">
+                                        <img src="https://i.pravatar.cc/24?img=3" class="w-6 h-6 rounded-full">
+                                        <span class="text-sm">Maria K.</span>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="text-xs font-semibold priority-critical">Critical</span>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="text-xs px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full">In Progress</span>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="text-xs px-2 py-1 sla-breached rounded-full font-medium">Breached</span>
+                                </td>
+                            </tr>
+
+                            <!-- High Priority -->
+                            <tr class="ticket-row cursor-pointer">
+                                <td class="px-4 py-3">
+                                    <div>
+                                        <div class="font-medium text-sm">INC-2024-0144</div>
+                                        <div class="text-xs text-gray-500 truncate w-40">VPN connection drops every 10 min</div>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <div class="flex items-center gap-2">
+                                        <img src="https://i.pravatar.cc/24?img=5" class="w-6 h-6 rounded-full">
+                                        <span class="text-sm">Ivan S.</span>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="text-xs font-semibold priority-high">High</span>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full">New</span>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="text-xs px-2 py-1 sla-warning rounded-full font-medium">45min left</span>
+                                </td>
+                            </tr>
+
+                            <!-- Service Request -->
+                            <tr class="ticket-row cursor-pointer">
+                                <td class="px-4 py-3">
+                                    <div>
+                                        <div class="font-medium text-sm">REQ-2024-0089</div>
+                                        <div class="text-xs text-gray-500 truncate w-40">New laptop request for developer</div>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <div class="flex items-center gap-2">
+                                        <img src="https://i.pravatar.cc/24?img=1" class="w-6 h-6 rounded-full">
+                                        <span class="text-sm">Anton S.</span>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="text-xs font-semibold priority-medium">Medium</span>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-full">Pending Approval</span>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="text-xs px-2 py-1 sla-ok rounded-full font-medium">2d left</span>
+                                </td>
+                            </tr>
+
+                            <!-- More tickets... -->
+                            <tr class="ticket-row cursor-pointer">
+                                <td class="px-4 py-3">
+                                    <div>
+                                        <div class="font-medium text-sm">INC-2024-0143</div>
+                                        <div class="text-xs text-gray-500 truncate w-40">Printer not working in office 305</div>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <div class="flex items-center gap-2">
+                                        <img src="https://i.pravatar.cc/24?img=8" class="w-6 h-6 rounded-full">
+                                        <span class="text-sm">Elena P.</span>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="text-xs font-semibold priority-low">Low</span>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded-full">On Hold</span>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="text-xs px-2 py-1 sla-ok rounded-full font-medium">5d left</span>
+                                </td>
+                            </tr>
+
+                            <tr class="ticket-row cursor-pointer">
+                                <td class="px-4 py-3">
+                                    <div>
+                                        <div class="font-medium text-sm">REQ-2024-0088</div>
+                                        <div class="text-xs text-gray-500 truncate w-40">Access to shared folder Marketing</div>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <div class="flex items-center gap-2">
+                                        <img src="https://i.pravatar.cc/24?img=12" class="w-6 h-6 rounded-full">
+                                        <span class="text-sm">Olga M.</span>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="text-xs font-semibold priority-medium">Medium</span>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">Resolved</span>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="text-xs text-gray-400">Completed</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Ticket Detail Panel -->
+                <div class="w-1/2 bg-white overflow-y-auto">
+                    <!-- Ticket Header -->
+                    <div class="p-4 border-b bg-red-50">
+                        <div class="flex items-start justify-between mb-2">
+                            <div>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="text-sm text-gray-500">INC-2024-0145</span>
+                                    <span class="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full">Incident</span>
+                                    <span class="text-xs px-2 py-0.5 bg-red-600 text-white rounded-full">SLA Breached</span>
+                                </div>
+                                <h2 class="text-lg font-semibold">Email server not responding</h2>
+                            </div>
+                            <div class="flex gap-2">
+                                <button class="p-2 hover:bg-gray-100 rounded-lg">
+                                    <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                </button>
+                                <button class="p-2 hover:bg-gray-100 rounded-lg">
+                                    <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"></path></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="p-4 border-b flex gap-2">
+                        <button class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">Resolve</button>
+                        <button class="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50">Escalate</button>
+                        <button class="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50">Put on Hold</button>
+                        <button class="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50">Link to Problem</button>
+                    </div>
+
+                    <!-- Ticket Details -->
+                    <div class="p-4 border-b">
+                        <div class="grid grid-cols-3 gap-4">
+                            <div>
+                                <label class="text-xs text-gray-500 block mb-1">Status</label>
+                                <select class="w-full border rounded-lg px-3 py-2 text-sm">
+                                    <option>In Progress</option>
+                                    <option>Pending</option>
+                                    <option>On Hold</option>
+                                    <option>Resolved</option>
+                                    <option>Closed</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500 block mb-1">Priority</label>
+                                <select class="w-full border rounded-lg px-3 py-2 text-sm">
+                                    <option selected>Critical</option>
+                                    <option>High</option>
+                                    <option>Medium</option>
+                                    <option>Low</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500 block mb-1">Assigned To</label>
+                                <select class="w-full border rounded-lg px-3 py-2 text-sm">
+                                    <option>Alexey Petrov</option>
+                                    <option>Dmitry K.</option>
+                                    <option>Unassigned</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500 block mb-1">Category</label>
+                                <select class="w-full border rounded-lg px-3 py-2 text-sm">
+                                    <option>Email & Calendar</option>
+                                    <option>Network</option>
+                                    <option>Hardware</option>
+                                    <option>Software</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500 block mb-1">Impact</label>
+                                <select class="w-full border rounded-lg px-3 py-2 text-sm">
+                                    <option>Organization-wide</option>
+                                    <option>Department</option>
+                                    <option>Individual</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500 block mb-1">SLA</label>
+                                <div class="bg-red-100 text-red-700 px-3 py-2 rounded-lg text-sm font-medium">
+                                    Breached by 45min
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Requester Info -->
+                    <div class="p-4 border-b">
+                        <h3 class="text-sm font-medium mb-3">Requester</h3>
+                        <div class="flex items-center gap-3">
+                            <img src="https://i.pravatar.cc/48?img=3" class="w-12 h-12 rounded-full">
+                            <div>
+                                <div class="font-medium">Maria Kuznetsova</div>
+                                <div class="text-sm text-gray-500">Marketing Department</div>
+                                <div class="text-sm text-gray-500">maria.k@ekf.su &bull; +7 (495) 123-45-67</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Description -->
+                    <div class="p-4 border-b">
+                        <h3 class="text-sm font-medium mb-2">Description</h3>
+                        <p class="text-sm text-gray-600">
+                            Unable to send or receive emails since 9:00 AM this morning. Outlook shows "Disconnected" status.
+                            Affects entire Marketing department (~15 users). Already tried restarting Outlook and computer.
+                            This is blocking critical client communications.
+                        </p>
+                    </div>
+
+                    <!-- Related Items -->
+                    <div class="p-4 border-b">
+                        <h3 class="text-sm font-medium mb-3">Related Items</h3>
+                        <div class="space-y-2">
+                            <div class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
+                                <svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                <span class="text-sm">PRB-2024-0012</span>
+                                <span class="text-xs text-gray-500">Exchange Server Performance Issue</span>
+                            </div>
+                            <div class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
+                                <svg class="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                <span class="text-sm">INC-2024-0142</span>
+                                <span class="text-xs text-gray-500">Similar: Email issues in Sales</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Activity Feed -->
+                    <div class="p-4">
+                        <h3 class="text-sm font-medium mb-3">Activity</h3>
+                        <div class="space-y-4">
+                            <!-- Add Comment Form -->
+                            <div class="flex gap-3">
+                                <img src="https://i.pravatar.cc/32?img=10" class="w-8 h-8 rounded-full">
+                                <div class="flex-1">
+                                    <textarea class="w-full border rounded-lg p-3 text-sm" rows="2" placeholder="Add internal note or reply to requester..."></textarea>
+                                    <div class="flex justify-between mt-2">
+                                        <div class="flex gap-2">
+                                            <button class="text-xs text-gray-500 hover:text-gray-700">Internal Note</button>
+                                            <button class="text-xs text-blue-600 font-medium">Reply to Requester</button>
+                                        </div>
+                                        <button class="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">Send</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Activity Items -->
+                            <div class="border-t pt-4 space-y-4">
+                                <div class="flex gap-3">
+                                    <img src="https://i.pravatar.cc/32?img=10" class="w-8 h-8 rounded-full">
+                                    <div>
+                                        <div class="text-sm">
+                                            <span class="font-medium">Alexey Petrov</span>
+                                            <span class="text-gray-500">added internal note</span>
+                                        </div>
+                                        <p class="text-sm text-gray-600 mt-1">Escalating to infrastructure team. Exchange server showing high memory usage.</p>
+                                        <span class="text-xs text-gray-400">10 minutes ago</span>
+                                    </div>
+                                </div>
+
+                                <div class="flex gap-3">
+                                    <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                                        <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm">
+                                            <span class="font-medium">System</span>
+                                            <span class="text-gray-500">changed status to</span>
+                                            <span class="text-yellow-600 font-medium">In Progress</span>
+                                        </div>
+                                        <span class="text-xs text-gray-400">15 minutes ago</span>
+                                    </div>
+                                </div>
+
+                                <div class="flex gap-3">
+                                    <img src="https://i.pravatar.cc/32?img=10" class="w-8 h-8 rounded-full">
+                                    <div>
+                                        <div class="text-sm">
+                                            <span class="font-medium">Alexey Petrov</span>
+                                            <span class="text-gray-500">assigned ticket to themselves</span>
+                                        </div>
+                                        <span class="text-xs text-gray-400">20 minutes ago</span>
+                                    </div>
+                                </div>
+
+                                <div class="flex gap-3">
+                                    <img src="https://i.pravatar.cc/32?img=3" class="w-8 h-8 rounded-full">
+                                    <div>
+                                        <div class="text-sm">
+                                            <span class="font-medium">Maria K.</span>
+                                            <span class="text-gray-500">created incident</span>
+                                        </div>
+                                        <span class="text-xs text-gray-400">1 hour ago</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

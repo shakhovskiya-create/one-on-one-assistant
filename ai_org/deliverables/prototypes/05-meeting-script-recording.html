@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EKF Hub - Meeting Script & Recording</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Inter', sans-serif; }
+        .script-item { transition: all 0.15s ease; }
+        .script-item:hover { background: #f9fafb; }
+        .script-item.completed { opacity: 0.6; }
+        .tab-active { border-bottom: 2px solid #3b82f6; color: #3b82f6; }
+        .transcript-speaker { min-width: 80px; }
+        .waveform { background: linear-gradient(90deg, #3b82f6 0%, #3b82f6 35%, #e5e7eb 35%, #e5e7eb 100%); height: 4px; border-radius: 2px; }
+        .ai-insight { border-left: 3px solid #8b5cf6; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="flex h-screen">
+        <!-- Main Content Only (without sidebar for focus) -->
+        <main class="flex-1 flex flex-col overflow-hidden">
+            <!-- Header -->
+            <header class="bg-white border-b px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <button class="p-2 hover:bg-gray-100 rounded-lg">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                        </button>
+                        <div>
+                            <h1 class="text-xl font-semibold">Product Demo</h1>
+                            <p class="text-sm text-gray-500">Jan 23, 2026 &bull; 14:00 - 15:00 &bull; Conference Room A</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="flex -space-x-2">
+                            <img src="https://i.pravatar.cc/32?img=1" class="w-8 h-8 rounded-full border-2 border-white">
+                            <img src="https://i.pravatar.cc/32?img=2" class="w-8 h-8 rounded-full border-2 border-white">
+                            <img src="https://i.pravatar.cc/32?img=3" class="w-8 h-8 rounded-full border-2 border-white">
+                            <div class="w-8 h-8 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-xs font-medium">+4</div>
+                        </div>
+                        <button class="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 hover:bg-blue-700">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                            Join Meeting
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Tabs -->
+            <div class="bg-white border-b flex px-6">
+                <button class="py-3 px-4 text-sm font-medium text-gray-500 hover:text-gray-700">Details</button>
+                <button class="py-3 px-4 text-sm font-medium tab-active">Script</button>
+                <button class="py-3 px-4 text-sm font-medium text-gray-500 hover:text-gray-700">Recording</button>
+                <button class="py-3 px-4 text-sm font-medium text-gray-500 hover:text-gray-700">Tasks</button>
+            </div>
+
+            <div class="flex-1 flex overflow-hidden">
+                <!-- Script Panel -->
+                <div class="flex-1 overflow-y-auto p-6">
+                    <div class="max-w-3xl mx-auto">
+                        <!-- Script Header -->
+                        <div class="bg-white rounded-xl border p-6 mb-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h2 class="text-lg font-semibold">Meeting Script</h2>
+                                <div class="flex gap-2">
+                                    <button class="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50 flex items-center gap-2">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                                        Import Template
+                                    </button>
+                                    <button class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                        Add Item
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Progress -->
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="flex-1 bg-gray-200 rounded-full h-2">
+                                    <div class="bg-green-500 h-2 rounded-full" style="width: 40%"></div>
+                                </div>
+                                <span class="text-sm text-gray-500">4 of 10 completed</span>
+                            </div>
+
+                            <!-- Script Items -->
+                            <div class="space-y-3">
+                                <!-- Completed Item -->
+                                <div class="script-item completed flex items-start gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                                    <input type="checkbox" checked class="mt-1 rounded text-green-500">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-sm font-medium line-through text-gray-500">Welcome & Introduction</span>
+                                            <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">5 min</span>
+                                        </div>
+                                        <p class="text-xs text-gray-400 mt-1">Welcome participants, state meeting objectives</p>
+                                    </div>
+                                    <img src="https://i.pravatar.cc/24?img=1" class="w-6 h-6 rounded-full" title="Anton S.">
+                                </div>
+
+                                <div class="script-item completed flex items-start gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                                    <input type="checkbox" checked class="mt-1 rounded text-green-500">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-sm font-medium line-through text-gray-500">Sprint 8 Overview</span>
+                                            <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">10 min</span>
+                                        </div>
+                                        <p class="text-xs text-gray-400 mt-1">Review completed work and achievements</p>
+                                    </div>
+                                    <img src="https://i.pravatar.cc/24?img=1" class="w-6 h-6 rounded-full" title="Anton S.">
+                                </div>
+
+                                <!-- Current Item -->
+                                <div class="script-item flex items-start gap-3 p-3 bg-blue-50 rounded-lg border-2 border-blue-400">
+                                    <input type="checkbox" class="mt-1 rounded">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-sm font-medium">Demo: Tasks Unified View</span>
+                                            <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">15 min</span>
+                                            <span class="text-xs bg-blue-600 text-white px-2 py-0.5 rounded animate-pulse">Current</span>
+                                        </div>
+                                        <p class="text-xs text-gray-600 mt-1">Show new Kanban board with filters for Projects, Sprints, Releases</p>
+                                        <div class="mt-2 text-xs text-gray-500">
+                                            <strong>Talking points:</strong>
+                                            <ul class="list-disc list-inside mt-1">
+                                                <li>Project/Sprint/Release filters in sidebar</li>
+                                                <li>Workflow for development tasks</li>
+                                                <li>GitHub integration in task detail</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <img src="https://i.pravatar.cc/24?img=2" class="w-6 h-6 rounded-full" title="Dmitry K.">
+                                </div>
+
+                                <!-- Upcoming Items -->
+                                <div class="script-item flex items-start gap-3 p-3 bg-white rounded-lg border hover:border-gray-300">
+                                    <input type="checkbox" class="mt-1 rounded">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-sm font-medium">Demo: Service Desk Portal</span>
+                                            <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">10 min</span>
+                                        </div>
+                                        <p class="text-xs text-gray-500 mt-1">ITIL-compliant self-service portal walkthrough</p>
+                                    </div>
+                                    <img src="https://i.pravatar.cc/24?img=3" class="w-6 h-6 rounded-full" title="Maria K.">
+                                </div>
+
+                                <div class="script-item flex items-start gap-3 p-3 bg-white rounded-lg border hover:border-gray-300">
+                                    <input type="checkbox" class="mt-1 rounded">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-sm font-medium">Demo: Meeting Transcription</span>
+                                            <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">10 min</span>
+                                        </div>
+                                        <p class="text-xs text-gray-500 mt-1">Show recording, transcription, and AI analysis features</p>
+                                    </div>
+                                    <img src="https://i.pravatar.cc/24?img=5" class="w-6 h-6 rounded-full" title="Ivan S.">
+                                </div>
+
+                                <div class="script-item flex items-start gap-3 p-3 bg-white rounded-lg border hover:border-gray-300">
+                                    <input type="checkbox" class="mt-1 rounded">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-sm font-medium">Q&A Session</span>
+                                            <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">10 min</span>
+                                        </div>
+                                        <p class="text-xs text-gray-500 mt-1">Open floor for questions and feedback</p>
+                                    </div>
+                                    <div class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs">All</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Notes Section -->
+                        <div class="bg-white rounded-xl border p-6">
+                            <h3 class="text-lg font-semibold mb-4">Meeting Notes</h3>
+                            <textarea class="w-full border rounded-lg p-4 text-sm min-h-[150px]" placeholder="Take notes during the meeting...">- Anton welcomed everyone and outlined the agenda
+- Sprint 8 completion: 42 tasks done, 3 moved to Sprint 9
+- Dmitry started demo of Tasks unified view
+  - New sidebar with Projects, Sprints, Releases filters
+  - Workflow visualization working well
+  - Question from Maria: Can we add custom fields? - Moved to backlog</textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel - Timer & Controls -->
+                <aside class="w-80 bg-white border-l flex flex-col">
+                    <!-- Meeting Timer -->
+                    <div class="p-4 border-b bg-gradient-to-br from-blue-50 to-purple-50">
+                        <div class="text-center">
+                            <div class="text-4xl font-bold text-blue-600 mb-1">23:45</div>
+                            <div class="text-sm text-gray-500">Meeting Duration</div>
+                        </div>
+                        <div class="mt-4 flex gap-2">
+                            <button class="flex-1 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 flex items-center justify-center gap-2">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><rect x="6" y="6" width="8" height="8" rx="1"></rect></svg>
+                                End Meeting
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Recording Controls -->
+                    <div class="p-4 border-b">
+                        <h4 class="text-sm font-medium mb-3">Recording</h4>
+                        <div class="flex items-center gap-3 p-3 bg-red-50 rounded-lg border border-red-200">
+                            <div class="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                            <div class="flex-1">
+                                <div class="text-sm font-medium text-red-700">Recording in progress</div>
+                                <div class="text-xs text-red-600">23:45 elapsed</div>
+                            </div>
+                            <button class="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><rect x="6" y="6" width="8" height="8" rx="1"></rect></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="p-4 border-b">
+                        <h4 class="text-sm font-medium mb-3">Quick Actions</h4>
+                        <div class="space-y-2">
+                            <button class="w-full px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2 text-left">
+                                <svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                                Create Task from Discussion
+                            </button>
+                            <button class="w-full px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2 text-left">
+                                <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                Schedule Follow-up
+                            </button>
+                            <button class="w-full px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2 text-left">
+                                <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
+                                Share Screen
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Live Participants -->
+                    <div class="flex-1 p-4 overflow-y-auto">
+                        <h4 class="text-sm font-medium mb-3">Active Participants (5)</h4>
+                        <div class="space-y-2">
+                            <div class="flex items-center gap-2 p-2 bg-green-50 rounded-lg">
+                                <div class="relative">
+                                    <img src="https://i.pravatar.cc/32?img=1" class="w-8 h-8 rounded-full">
+                                    <div class="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="text-sm font-medium">Anton S.</div>
+                                    <div class="text-xs text-gray-500">Organizer</div>
+                                </div>
+                                <svg class="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd"></path></svg>
+                            </div>
+                            <div class="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50">
+                                <div class="relative">
+                                    <img src="https://i.pravatar.cc/32?img=2" class="w-8 h-8 rounded-full">
+                                    <div class="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="text-sm font-medium">Dmitry K.</div>
+                                    <div class="text-xs text-gray-500">Presenting</div>
+                                </div>
+                                <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                            </div>
+                            <div class="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50">
+                                <div class="relative">
+                                    <img src="https://i.pravatar.cc/32?img=3" class="w-8 h-8 rounded-full">
+                                    <div class="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="text-sm font-medium">Maria K.</div>
+                                </div>
+                                <svg class="w-4 h-4 text-gray-300" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM12.293 7.293a1 1 0 011.414 0L15 8.586l1.293-1.293a1 1 0 111.414 1.414L16.414 10l1.293 1.293a1 1 0 01-1.414 1.414L15 11.414l-1.293 1.293a1 1 0 01-1.414-1.414L13.586 10l-1.293-1.293a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

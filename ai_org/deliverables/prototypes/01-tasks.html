@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Задачи - EKF Hub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'ekf-red': '#E53935',
+                        'ekf-dark': '#1a1a2e',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif; background-color: #f5f5f5; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 3px; }
+        .task-card { transition: all 0.15s ease; }
+        .task-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="bg-ekf-dark text-white w-64 flex flex-col">
+            <!-- Logo -->
+            <div class="p-4 border-b border-gray-700">
+                <div class="flex items-center gap-3">
+                    <div class="bg-ekf-red text-white font-bold text-xl px-3 py-1 rounded">EKF</div>
+                    <span class="text-lg font-semibold">Hub</span>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <nav class="flex-1 p-4 overflow-y-auto">
+                <ul class="space-y-1">
+                    <li>
+                        <a href="#" class="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+                            <span>Дашборд</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                            <span>Сотрудники</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="flex items-center gap-3 px-4 py-3 rounded-lg bg-ekf-red text-white">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+                            <span>Задачи</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            <span>Встречи</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                            <span>Service Desk</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                            <span>Сообщения</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                            <span>Почта</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                            <span>Аналитика</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <!-- Header -->
+            <header class="bg-white shadow-sm border-b border-gray-200 px-4 py-3">
+                <div class="flex items-center justify-between">
+                    <h1 class="text-xl font-semibold text-gray-800">Задачи</h1>
+                    <div class="flex items-center gap-4">
+                        <button class="p-2 rounded-lg hover:bg-gray-100">
+                            <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                        </button>
+                        <div class="flex items-center gap-2 hover:bg-gray-100 rounded-lg px-2 py-1 cursor-pointer">
+                            <div class="text-right">
+                                <div class="text-sm text-gray-700 font-medium">Антон Саховский</div>
+                            </div>
+                            <div class="w-8 h-8 rounded-full bg-ekf-red text-white flex items-center justify-center text-sm font-medium">А</div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Content Area -->
+            <main class="flex-1 overflow-hidden flex flex-col p-4">
+                <!-- Page Header -->
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-900">Задачи</h2>
+                        <div class="flex items-center gap-3 text-sm text-gray-500">
+                            <span>24 задачи</span>
+                            <span class="text-indigo-600 font-medium">89 SP</span>
+                            <span class="flex items-center gap-1">
+                                <span class="w-2 h-2 rounded-full bg-yellow-400"></span>
+                                5 в работе
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                                12 выполнено
+                            </span>
+                        </div>
+                    </div>
+                    <button class="px-3 py-1.5 bg-ekf-red text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-1.5 text-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                        Создать
+                    </button>
+                </div>
+
+                <!-- Filters -->
+                <div class="bg-white rounded-lg shadow-sm p-3 flex flex-wrap items-center gap-3 mb-4">
+                    <!-- Search -->
+                    <div class="relative flex-1 min-w-[200px] max-w-xs">
+                        <input type="text" placeholder="Поиск задач..." class="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-ekf-red focus:border-ekf-red">
+                        <svg class="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
+
+                    <!-- Filters -->
+                    <select class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-ekf-red">
+                        <option>Все проекты</option>
+                        <option>EKF Hub</option>
+                        <option>CRM Integration</option>
+                    </select>
+
+                    <select class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-ekf-red">
+                        <option>Все исполнители</option>
+                        <option>Я</option>
+                        <option>Дмитрий К.</option>
+                    </select>
+
+                    <select class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-ekf-red">
+                        <option>Все спринты</option>
+                        <option>Sprint 8 (активный)</option>
+                        <option>Sprint 9</option>
+                    </select>
+
+                    <select class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-ekf-red">
+                        <option>Все релизы</option>
+                        <option>v2.1.0</option>
+                        <option>v2.0.0</option>
+                    </select>
+
+                    <!-- View Toggle -->
+                    <div class="flex rounded-lg border border-gray-200 overflow-hidden ml-auto">
+                        <button class="px-3 py-1.5 text-sm bg-white text-gray-600 hover:bg-gray-50">Список</button>
+                        <button class="px-3 py-1.5 text-sm bg-ekf-red text-white">Kanban</button>
+                    </div>
+                </div>
+
+                <!-- Kanban Board -->
+                <div class="flex-1 overflow-x-auto">
+                    <div class="flex gap-4 h-full min-w-max pb-4">
+                        <!-- Backlog Column -->
+                        <div class="w-72 bg-gray-100 rounded-lg flex flex-col">
+                            <div class="p-3 border-b border-gray-200">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2 h-2 rounded-full bg-gray-400"></span>
+                                        <span class="font-medium text-sm">Backlog</span>
+                                        <span class="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full">4</span>
+                                    </div>
+                                    <span class="text-xs text-gray-500">12 SP</span>
+                                </div>
+                            </div>
+                            <div class="flex-1 p-2 space-y-2 overflow-y-auto">
+                                <!-- Task Card -->
+                                <div class="task-card bg-white p-3 rounded-lg border border-gray-200 cursor-pointer">
+                                    <div class="flex items-start justify-between mb-2">
+                                        <span class="text-xs text-gray-400">TASK-145</span>
+                                        <span class="text-xs font-medium text-gray-600 bg-gray-50 px-2 py-0.5 rounded">5 SP</span>
+                                    </div>
+                                    <h4 class="font-medium text-sm text-gray-900 mb-2">Добавить экспорт в PDF для отчётов</h4>
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded">feature</span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-gray-500">v2.1.0</span>
+                                        <div class="w-6 h-6 rounded-full bg-ekf-red text-white flex items-center justify-center text-xs">М</div>
+                                    </div>
+                                </div>
+
+                                <div class="task-card bg-white p-3 rounded-lg border border-gray-200 cursor-pointer">
+                                    <div class="flex items-start justify-between mb-2">
+                                        <span class="text-xs text-gray-400">TASK-146</span>
+                                        <span class="text-xs font-medium text-gray-600 bg-gray-50 px-2 py-0.5 rounded">3 SP</span>
+                                    </div>
+                                    <h4 class="font-medium text-sm text-gray-900 mb-2">Тёмная тема для интерфейса</h4>
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded">enhancement</span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex -space-x-2">
+                                            <div class="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs border-2 border-white">Д</div>
+                                            <div class="w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center text-xs border-2 border-white">И</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Analysis Column -->
+                        <div class="w-72 bg-purple-50 rounded-lg flex flex-col">
+                            <div class="p-3 border-b border-purple-100">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2 h-2 rounded-full bg-purple-400"></span>
+                                        <span class="font-medium text-sm">Анализ</span>
+                                        <span class="text-xs text-gray-500 bg-purple-100 px-2 py-0.5 rounded-full">2</span>
+                                    </div>
+                                    <span class="text-xs text-gray-500">8 SP</span>
+                                </div>
+                            </div>
+                            <div class="flex-1 p-2 space-y-2 overflow-y-auto">
+                                <div class="task-card bg-white p-3 rounded-lg border border-purple-200 border-l-4 border-l-red-500 cursor-pointer">
+                                    <div class="flex items-start justify-between mb-2">
+                                        <span class="text-xs text-gray-400">TASK-140</span>
+                                        <span class="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded">Критический</span>
+                                    </div>
+                                    <h4 class="font-medium text-sm text-gray-900 mb-2">Service Desk ITIL спецификация</h4>
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Epic</span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-red-600">Срок: 25 янв</span>
+                                        <div class="w-6 h-6 rounded-full bg-ekf-red text-white flex items-center justify-center text-xs">А</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Development Column -->
+                        <div class="w-72 bg-blue-50 rounded-lg flex flex-col">
+                            <div class="p-3 border-b border-blue-100">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+                                        <span class="font-medium text-sm">Разработка</span>
+                                        <span class="text-xs text-gray-500 bg-blue-100 px-2 py-0.5 rounded-full">3</span>
+                                    </div>
+                                    <span class="text-xs text-gray-500">21 SP</span>
+                                </div>
+                            </div>
+                            <div class="flex-1 p-2 space-y-2 overflow-y-auto">
+                                <div class="task-card bg-white p-3 rounded-lg border border-blue-200 border-l-4 border-l-red-500 cursor-pointer">
+                                    <div class="flex items-start justify-between mb-2">
+                                        <span class="text-xs text-gray-400">TASK-138</span>
+                                        <span class="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded">Высокий</span>
+                                    </div>
+                                    <h4 class="font-medium text-sm text-gray-900 mb-2">Исправить отображение участников встречи</h4>
+                                    <div class="flex items-center gap-1 text-xs text-orange-600 mb-2">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                                        Заблокировано TASK-137
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-1 text-xs text-gray-500">
+                                            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"></path></svg>
+                                            4ч / 8ч
+                                        </div>
+                                        <div class="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs">Д</div>
+                                    </div>
+                                </div>
+
+                                <div class="task-card bg-white p-3 rounded-lg border border-blue-200 cursor-pointer">
+                                    <div class="flex items-start justify-between mb-2">
+                                        <span class="text-xs text-gray-400">TASK-139</span>
+                                        <span class="text-xs font-medium text-orange-600 bg-orange-50 px-2 py-0.5 rounded">Средний</span>
+                                    </div>
+                                    <h4 class="font-medium text-sm text-gray-900 mb-2">Workflow транскрибирования встреч</h4>
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <div class="flex-1 bg-gray-200 rounded-full h-1.5">
+                                            <div class="bg-blue-500 h-1.5 rounded-full" style="width: 65%"></div>
+                                        </div>
+                                        <span class="text-xs text-gray-500">65%</span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-gray-500">8ч / 12ч</span>
+                                        <div class="w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center text-xs">И</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Review Column -->
+                        <div class="w-72 bg-yellow-50 rounded-lg flex flex-col">
+                            <div class="p-3 border-b border-yellow-100">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2 h-2 rounded-full bg-yellow-400"></span>
+                                        <span class="font-medium text-sm">Review</span>
+                                        <span class="text-xs text-gray-500 bg-yellow-100 px-2 py-0.5 rounded-full">1</span>
+                                    </div>
+                                    <span class="text-xs text-gray-500">5 SP</span>
+                                </div>
+                            </div>
+                            <div class="flex-1 p-2 space-y-2 overflow-y-auto">
+                                <div class="task-card bg-white p-3 rounded-lg border border-yellow-200 cursor-pointer">
+                                    <div class="flex items-start justify-between mb-2">
+                                        <span class="text-xs text-gray-400">TASK-135</span>
+                                    </div>
+                                    <h4 class="font-medium text-sm text-gray-900 mb-2">CSRF token fix для мессенджера</h4>
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <svg class="w-4 h-4 text-gray-600" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+                                        <span class="text-xs text-blue-600">PR #127</span>
+                                        <span class="text-xs text-green-600">+42 -15</span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded">Awaiting review</span>
+                                        <div class="w-6 h-6 rounded-full bg-purple-500 text-white flex items-center justify-center text-xs">Е</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Testing Column -->
+                        <div class="w-72 bg-orange-50 rounded-lg flex flex-col">
+                            <div class="p-3 border-b border-orange-100">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2 h-2 rounded-full bg-orange-400"></span>
+                                        <span class="font-medium text-sm">Тестирование</span>
+                                        <span class="text-xs text-gray-500 bg-orange-100 px-2 py-0.5 rounded-full">2</span>
+                                    </div>
+                                    <span class="text-xs text-gray-500">8 SP</span>
+                                </div>
+                            </div>
+                            <div class="flex-1 p-2 space-y-2 overflow-y-auto">
+                                <div class="task-card bg-white p-3 rounded-lg border border-orange-200 cursor-pointer">
+                                    <div class="flex items-start justify-between mb-2">
+                                        <span class="text-xs text-gray-400">TASK-132</span>
+                                    </div>
+                                    <h4 class="font-medium text-sm text-gray-900 mb-2">Предпросмотр вложений в почте</h4>
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded">2 бага</span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-gray-500">QA: Мария К.</span>
+                                        <div class="w-6 h-6 rounded-full bg-pink-500 text-white flex items-center justify-center text-xs">М</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Done Column -->
+                        <div class="w-72 bg-green-50 rounded-lg flex flex-col">
+                            <div class="p-3 border-b border-green-100">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                                        <span class="font-medium text-sm">Готово</span>
+                                        <span class="text-xs text-gray-500 bg-green-100 px-2 py-0.5 rounded-full">12</span>
+                                    </div>
+                                    <span class="text-xs text-gray-500">35 SP</span>
+                                </div>
+                            </div>
+                            <div class="flex-1 p-2 space-y-2 overflow-y-auto">
+                                <div class="task-card bg-white p-3 rounded-lg border border-green-200 opacity-75 cursor-pointer">
+                                    <div class="flex items-start justify-between mb-2">
+                                        <span class="text-xs text-gray-400">TASK-130</span>
+                                    </div>
+                                    <h4 class="font-medium text-sm text-gray-500 line-through mb-2">Страница релизов</h4>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-gray-400">v2.0.0</span>
+                                        <div class="w-6 h-6 rounded-full bg-ekf-red text-white flex items-center justify-center text-xs">А</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+</body>
+</html>

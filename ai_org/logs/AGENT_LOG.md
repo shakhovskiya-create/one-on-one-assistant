@@ -175,6 +175,34 @@
     - Отображение: номер PR, статус (Open/Merged/Closed), название, автор
     - Цветовая индикация статуса: зелёный (open), фиолетовый (merged), красный (closed)
 	
+## 2026-01-23
+
+### UI/UX: Figma Plugin и HTML прототипы
+- **Инициатор:** PM (user request)
+- **Исполнитель:** Developer
+- **Результат:**
+  - **Figma Plugin** (`ai_org/deliverables/figma-plugin/`):
+    - `manifest.json` - конфигурация плагина
+    - `code.ts` / `code.js` - логика генерации компонентов
+    - `ui.html` - интерфейс плагина
+    - `README.md` - документация по установке
+    - Компоненты: Sidebar, Header, Button, Input, Select, TaskCard, KanbanColumn, FilterBar
+    - Страницы: Tasks Page (полный Kanban), Component Library
+    - Цвета: EKF Red (#E53935), EKF Dark (#1a1a2e), полная палитра gray/status
+  - **HTML прототипы** (`ai_org/deliverables/prototypes/`):
+    - `01-tasks.html` - Задачи (Kanban + фильтры) в EKF стиле
+    - `02-service-desk-portal.html` - Service Desk (портал пользователя)
+    - `03-service-desk-agent.html` - Service Desk (консоль агента)
+    - `04-meetings.html` - Встречи (календарь)
+    - `05-meeting-script-recording.html` - Скрипт встречи с записью
+    - `06-meeting-transcription.html` - Транскрибирование и AI анализ
+    - `index.html` - Навигация по прототипам
+  - **Концепт-документ** (`ai_org/deliverables/analyst/2026-01-23__ui_concept.md`)
+- **Замечания:**
+  - Figma REST API не позволяет создавать элементы (read-only), поэтому сделан plugin
+  - Для установки плагина: Figma > Plugins > Development > Import plugin from manifest
+  - Требуется шрифт Inter (Regular, Medium, SemiBold, Bold)
+
 ---
 
 ## Следующие задачи (Sprint 8)

@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EKF Hub - Meeting Transcription & AI Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Inter', sans-serif; }
+        .tab-active { border-bottom: 2px solid #3b82f6; color: #3b82f6; }
+        .transcript-line { transition: all 0.15s ease; }
+        .transcript-line:hover { background: #f9fafb; }
+        .transcript-line.active { background: #eff6ff; border-left: 3px solid #3b82f6; }
+        .waveform-container { height: 60px; background: #f3f4f6; border-radius: 8px; }
+        .ai-card { border-left: 4px solid #8b5cf6; }
+        .action-item { border-left: 3px solid #f59e0b; }
+        .decision { border-left: 3px solid #22c55e; }
+        .question { border-left: 3px solid #3b82f6; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="flex h-screen">
+        <main class="flex-1 flex flex-col overflow-hidden">
+            <!-- Header -->
+            <header class="bg-white border-b px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <button class="p-2 hover:bg-gray-100 rounded-lg">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                        </button>
+                        <div>
+                            <h1 class="text-xl font-semibold">Product Demo</h1>
+                            <p class="text-sm text-gray-500">Jan 23, 2026 &bull; 14:00 - 15:00 &bull; Completed</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button class="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            Export
+                        </button>
+                        <button class="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
+                            Share
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Tabs -->
+            <div class="bg-white border-b flex px-6">
+                <button class="py-3 px-4 text-sm font-medium text-gray-500 hover:text-gray-700">Details</button>
+                <button class="py-3 px-4 text-sm font-medium text-gray-500 hover:text-gray-700">Script</button>
+                <button class="py-3 px-4 text-sm font-medium tab-active">Recording</button>
+                <button class="py-3 px-4 text-sm font-medium text-gray-500 hover:text-gray-700">Tasks (3)</button>
+            </div>
+
+            <div class="flex-1 flex overflow-hidden">
+                <!-- Recording & Transcript Panel -->
+                <div class="flex-1 overflow-y-auto">
+                    <!-- Audio Player -->
+                    <div class="bg-white border-b p-4">
+                        <div class="max-w-4xl mx-auto">
+                            <div class="flex items-center gap-4">
+                                <button class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white hover:bg-blue-700">
+                                    <svg class="w-6 h-6 ml-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path></svg>
+                                </button>
+                                <div class="flex-1">
+                                    <!-- Waveform visualization -->
+                                    <div class="waveform-container relative mb-2 flex items-center px-2">
+                                        <div class="absolute inset-0 flex items-center gap-0.5 px-2">
+                                            <!-- Simplified waveform bars -->
+                                            <div class="flex-1 flex items-center gap-0.5 h-full">
+                                                <div class="w-1 bg-blue-500 rounded" style="height: 30%"></div>
+                                                <div class="w-1 bg-blue-500 rounded" style="height: 50%"></div>
+                                                <div class="w-1 bg-blue-500 rounded" style="height: 70%"></div>
+                                                <div class="w-1 bg-blue-500 rounded" style="height: 40%"></div>
+                                                <div class="w-1 bg-blue-500 rounded" style="height: 60%"></div>
+                                                <div class="w-1 bg-blue-500 rounded" style="height: 80%"></div>
+                                                <div class="w-1 bg-blue-500 rounded" style="height: 45%"></div>
+                                                <div class="w-1 bg-blue-500 rounded" style="height: 55%"></div>
+                                                <div class="w-1 bg-blue-500 rounded" style="height: 35%"></div>
+                                                <div class="w-1 bg-gray-300 rounded" style="height: 65%"></div>
+                                                <div class="w-1 bg-gray-300 rounded" style="height: 45%"></div>
+                                                <div class="w-1 bg-gray-300 rounded" style="height: 75%"></div>
+                                                <div class="w-1 bg-gray-300 rounded" style="height: 55%"></div>
+                                                <div class="w-1 bg-gray-300 rounded" style="height: 40%"></div>
+                                                <div class="w-1 bg-gray-300 rounded" style="height: 60%"></div>
+                                                <div class="w-1 bg-gray-300 rounded" style="height: 50%"></div>
+                                                <div class="w-1 bg-gray-300 rounded" style="height: 70%"></div>
+                                                <div class="w-1 bg-gray-300 rounded" style="height: 45%"></div>
+                                                <div class="w-1 bg-gray-300 rounded" style="height: 55%"></div>
+                                                <div class="w-1 bg-gray-300 rounded" style="height: 65%"></div>
+                                            </div>
+                                        </div>
+                                        <!-- Progress indicator -->
+                                        <div class="absolute left-0 top-0 bottom-0 bg-blue-500/10" style="width: 35%"></div>
+                                    </div>
+                                    <div class="flex justify-between text-xs text-gray-500">
+                                        <span>18:32</span>
+                                        <span>52:47</span>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button class="p-2 hover:bg-gray-100 rounded-lg">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path></svg>
+                                    </button>
+                                    <select class="border rounded-lg px-2 py-1 text-sm">
+                                        <option>1x</option>
+                                        <option>1.25x</option>
+                                        <option>1.5x</option>
+                                        <option>2x</option>
+                                    </select>
+                                    <button class="p-2 hover:bg-gray-100 rounded-lg">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path></svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Transcription Content -->
+                    <div class="p-6 max-w-4xl mx-auto">
+                        <!-- Transcription Status -->
+                        <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                            <div class="flex items-center gap-3">
+                                <svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                <div class="flex-1">
+                                    <div class="font-medium text-green-800">Transcription Complete</div>
+                                    <div class="text-sm text-green-700">52:47 of audio transcribed &bull; 98% accuracy &bull; Whisper Large v3</div>
+                                </div>
+                                <button class="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">Re-transcribe</button>
+                            </div>
+                        </div>
+
+                        <!-- Search & Filter -->
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="relative flex-1">
+                                <input type="text" placeholder="Search transcript..." class="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <svg class="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                            </div>
+                            <select class="border rounded-lg px-3 py-2 text-sm">
+                                <option>All Speakers</option>
+                                <option>Anton S.</option>
+                                <option>Dmitry K.</option>
+                                <option>Maria K.</option>
+                            </select>
+                        </div>
+
+                        <!-- Transcript Lines -->
+                        <div class="bg-white rounded-xl border divide-y">
+                            <div class="transcript-line p-4 cursor-pointer">
+                                <div class="flex items-start gap-3">
+                                    <img src="https://i.pravatar.cc/32?img=1" class="w-8 h-8 rounded-full mt-1">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <span class="font-medium text-sm">Anton Sahovskii</span>
+                                            <span class="text-xs text-gray-400">00:00</span>
+                                        </div>
+                                        <p class="text-sm text-gray-700">Добрый день всем! Давайте начнём нашу демонстрацию продукта. Сегодня мы покажем три основных фичи, которые были реализованы в Sprint 8.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="transcript-line active p-4 cursor-pointer">
+                                <div class="flex items-start gap-3">
+                                    <img src="https://i.pravatar.cc/32?img=2" class="w-8 h-8 rounded-full mt-1">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <span class="font-medium text-sm">Dmitry Kozlov</span>
+                                            <span class="text-xs text-gray-400">18:32</span>
+                                            <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Now Playing</span>
+                                        </div>
+                                        <p class="text-sm text-gray-700">Вот здесь вы можете видеть новый unified view для задач. Обратите внимание на sidebar слева — там теперь есть фильтры по проектам, спринтам и релизам. Всё в одном месте, не нужно переключаться между страницами.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="transcript-line p-4 cursor-pointer">
+                                <div class="flex items-start gap-3">
+                                    <img src="https://i.pravatar.cc/32?img=3" class="w-8 h-8 rounded-full mt-1">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <span class="font-medium text-sm">Maria Kuznetsova</span>
+                                            <span class="text-xs text-gray-400">19:45</span>
+                                        </div>
+                                        <p class="text-sm text-gray-700">Отлично выглядит! А можно ли добавлять кастомные поля к задачам? У нас в маркетинге есть специфичные атрибуты, которые хотелось бы трекать.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="transcript-line p-4 cursor-pointer">
+                                <div class="flex items-start gap-3">
+                                    <img src="https://i.pravatar.cc/32?img=1" class="w-8 h-8 rounded-full mt-1">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <span class="font-medium text-sm">Anton Sahovskii</span>
+                                            <span class="text-xs text-gray-400">20:12</span>
+                                        </div>
+                                        <p class="text-sm text-gray-700">Хороший вопрос, Maria. Custom fields у нас в бэклоге на Sprint 9. Dmitry, добавь это в таск-трекер как напоминание.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="transcript-line p-4 cursor-pointer">
+                                <div class="flex items-start gap-3">
+                                    <img src="https://i.pravatar.cc/32?img=2" class="w-8 h-8 rounded-full mt-1">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <span class="font-medium text-sm">Dmitry Kozlov</span>
+                                            <span class="text-xs text-gray-400">20:28</span>
+                                        </div>
+                                        <p class="text-sm text-gray-700">Принято, создам задачу после встречи.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- More transcript... indicator -->
+                            <div class="p-4 text-center">
+                                <button class="text-sm text-blue-600 hover:underline">Load more (showing 5 of 142 segments)</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Analysis Panel -->
+                <aside class="w-96 bg-white border-l overflow-y-auto">
+                    <div class="p-4 border-b bg-gradient-to-br from-purple-50 to-blue-50">
+                        <div class="flex items-center gap-2 mb-2">
+                            <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+                            <h3 class="font-semibold text-purple-900">AI Analysis</h3>
+                        </div>
+                        <p class="text-sm text-purple-700">Automatic insights from meeting transcription</p>
+                    </div>
+
+                    <div class="p-4 space-y-4">
+                        <!-- Summary -->
+                        <div class="ai-card bg-purple-50 p-4 rounded-r-lg">
+                            <h4 class="font-medium text-sm mb-2 flex items-center gap-2">
+                                <svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                Meeting Summary
+                            </h4>
+                            <p class="text-sm text-gray-700">
+                                Product demo showcasing Sprint 8 deliverables: unified Tasks view with sidebar filters, Service Desk ITIL portal, and meeting transcription feature. Key discussion about custom fields for tasks moved to Sprint 9 backlog. Overall positive reception from stakeholders.
+                            </p>
+                        </div>
+
+                        <!-- Action Items -->
+                        <div>
+                            <h4 class="font-medium text-sm mb-3 flex items-center gap-2">
+                                <svg class="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                                Action Items (3)
+                            </h4>
+                            <div class="space-y-2">
+                                <div class="action-item bg-yellow-50 p-3 rounded-r-lg">
+                                    <div class="flex items-start gap-2">
+                                        <input type="checkbox" class="mt-1 rounded">
+                                        <div class="flex-1">
+                                            <p class="text-sm">Create task for custom fields feature in Sprint 9</p>
+                                            <div class="flex items-center gap-2 mt-1">
+                                                <img src="https://i.pravatar.cc/20?img=2" class="w-5 h-5 rounded-full">
+                                                <span class="text-xs text-gray-500">Dmitry K. &bull; 20:28</span>
+                                            </div>
+                                        </div>
+                                        <button class="text-xs text-blue-600 hover:underline">Create Task</button>
+                                    </div>
+                                </div>
+
+                                <div class="action-item bg-yellow-50 p-3 rounded-r-lg">
+                                    <div class="flex items-start gap-2">
+                                        <input type="checkbox" class="mt-1 rounded">
+                                        <div class="flex-1">
+                                            <p class="text-sm">Schedule follow-up demo with Sales team</p>
+                                            <div class="flex items-center gap-2 mt-1">
+                                                <img src="https://i.pravatar.cc/20?img=1" class="w-5 h-5 rounded-full">
+                                                <span class="text-xs text-gray-500">Anton S. &bull; 45:10</span>
+                                            </div>
+                                        </div>
+                                        <button class="text-xs text-blue-600 hover:underline">Create Task</button>
+                                    </div>
+                                </div>
+
+                                <div class="action-item bg-yellow-50 p-3 rounded-r-lg">
+                                    <div class="flex items-start gap-2">
+                                        <input type="checkbox" checked class="mt-1 rounded text-green-500">
+                                        <div class="flex-1">
+                                            <p class="text-sm line-through text-gray-500">Send demo recording to absent team members</p>
+                                            <div class="flex items-center gap-2 mt-1">
+                                                <img src="https://i.pravatar.cc/20?img=3" class="w-5 h-5 rounded-full">
+                                                <span class="text-xs text-gray-500">Maria K. &bull; Done</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Key Decisions -->
+                        <div>
+                            <h4 class="font-medium text-sm mb-3 flex items-center gap-2">
+                                <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                Key Decisions (2)
+                            </h4>
+                            <div class="space-y-2">
+                                <div class="decision bg-green-50 p-3 rounded-r-lg">
+                                    <p class="text-sm">Custom fields feature postponed to Sprint 9</p>
+                                    <span class="text-xs text-gray-500">20:12 &bull; Anton S.</span>
+                                </div>
+                                <div class="decision bg-green-50 p-3 rounded-r-lg">
+                                    <p class="text-sm">Service Desk portal ready for beta testing with HR department</p>
+                                    <span class="text-xs text-gray-500">35:40 &bull; Maria K.</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Open Questions -->
+                        <div>
+                            <h4 class="font-medium text-sm mb-3 flex items-center gap-2">
+                                <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                Open Questions (2)
+                            </h4>
+                            <div class="space-y-2">
+                                <div class="question bg-blue-50 p-3 rounded-r-lg">
+                                    <p class="text-sm">When will mobile app support be added?</p>
+                                    <span class="text-xs text-gray-500">42:15 &bull; Ivan S.</span>
+                                </div>
+                                <div class="question bg-blue-50 p-3 rounded-r-lg">
+                                    <p class="text-sm">Integration with Jira — is it planned?</p>
+                                    <span class="text-xs text-gray-500">48:30 &bull; Elena P.</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Participants Stats -->
+                        <div>
+                            <h4 class="font-medium text-sm mb-3 flex items-center gap-2">
+                                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                                Speaking Time
+                            </h4>
+                            <div class="space-y-2">
+                                <div class="flex items-center gap-3">
+                                    <img src="https://i.pravatar.cc/24?img=1" class="w-6 h-6 rounded-full">
+                                    <div class="flex-1">
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>Anton S.</span>
+                                            <span>35%</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-1.5">
+                                            <div class="bg-blue-600 h-1.5 rounded-full" style="width: 35%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <img src="https://i.pravatar.cc/24?img=2" class="w-6 h-6 rounded-full">
+                                    <div class="flex-1">
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>Dmitry K.</span>
+                                            <span>40%</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-1.5">
+                                            <div class="bg-green-600 h-1.5 rounded-full" style="width: 40%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <img src="https://i.pravatar.cc/24?img=3" class="w-6 h-6 rounded-full">
+                                    <div class="flex-1">
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>Maria K.</span>
+                                            <span>15%</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-1.5">
+                                            <div class="bg-purple-600 h-1.5 rounded-full" style="width: 15%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <img src="https://i.pravatar.cc/24?img=5" class="w-6 h-6 rounded-full">
+                                    <div class="flex-1">
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>Others</span>
+                                            <span>10%</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-1.5">
+                                            <div class="bg-gray-400 h-1.5 rounded-full" style="width: 10%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Regenerate Button -->
+                        <button class="w-full py-2 border border-purple-200 text-purple-600 rounded-lg text-sm font-medium hover:bg-purple-50 flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            Regenerate Analysis
+                        </button>
+                    </div>
+                </aside>
+            </div>
+        </main>
+    </div>
+</body>
+</html>
