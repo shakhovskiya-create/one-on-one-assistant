@@ -157,6 +157,14 @@
       - Бейджи спринта и версии в Kanban карточках
       - Модалка задачи расширена до max-w-2xl
     - **Bugfix**: QueryBuilder.Update → h.DB.Update (ошибка компиляции)
+
+  - **Sprint Board: Страница управления спринтами**
+    - Frontend: `frontend/src/routes/sprints/+page.svelte`
+    - Функции: создание, редактирование, удаление спринтов
+    - Действия: старт и завершение спринта с подсчётом velocity
+    - Отображение: прогресс, даты, goal, количество задач и story points
+    - Sidebar: добавлены ссылки на Sprints и Releases
+    - Иконка sprint добавлена в Sidebar.svelte
 	
 ---
 
