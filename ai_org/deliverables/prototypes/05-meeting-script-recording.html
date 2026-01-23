@@ -3,277 +3,365 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EKF Hub - Meeting Script & Recording</title>
+    <title>EKF Hub - Проведение встречи</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'ekf-red': '#E53935',
+                        'ekf-dark': '#1a1a2e'
+                    }
+                }
+            }
+        }
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * { font-family: 'Inter', sans-serif; }
         .script-item { transition: all 0.15s ease; }
         .script-item:hover { background: #f9fafb; }
         .script-item.completed { opacity: 0.6; }
-        .tab-active { border-bottom: 2px solid #3b82f6; color: #3b82f6; }
-        .transcript-speaker { min-width: 80px; }
-        .waveform { background: linear-gradient(90deg, #3b82f6 0%, #3b82f6 35%, #e5e7eb 35%, #e5e7eb 100%); height: 4px; border-radius: 2px; }
-        .ai-insight { border-left: 3px solid #8b5cf6; }
+        .recording-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
     </style>
 </head>
-<body class="bg-gray-50">
-    <div class="flex h-screen">
-        <!-- Main Content Only (without sidebar for focus) -->
-        <main class="flex-1 flex flex-col overflow-hidden">
-            <!-- Header -->
-            <header class="bg-white border-b px-6 py-4">
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-4">
-                        <button class="p-2 hover:bg-gray-100 rounded-lg">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-                        </button>
-                        <div>
-                            <h1 class="text-xl font-semibold">Product Demo</h1>
-                            <p class="text-sm text-gray-500">Jan 23, 2026 &bull; 14:00 - 15:00 &bull; Conference Room A</p>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <div class="flex -space-x-2">
-                            <img src="https://i.pravatar.cc/32?img=1" class="w-8 h-8 rounded-full border-2 border-white">
-                            <img src="https://i.pravatar.cc/32?img=2" class="w-8 h-8 rounded-full border-2 border-white">
-                            <img src="https://i.pravatar.cc/32?img=3" class="w-8 h-8 rounded-full border-2 border-white">
-                            <div class="w-8 h-8 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-xs font-medium">+4</div>
-                        </div>
-                        <button class="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 hover:bg-blue-700">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                            Join Meeting
-                        </button>
-                    </div>
-                </div>
-            </header>
+<body class="bg-gray-100">
+    <!-- Global Top Navigation -->
+    <div class="fixed top-0 left-0 right-0 z-50 bg-ekf-dark text-white h-12 flex items-center px-4">
+        <div class="flex items-center gap-3">
+            <div class="bg-ekf-red text-white font-bold text-sm px-2 py-0.5 rounded">EKF</div>
+            <span class="font-semibold">Hub</span>
+        </div>
+        <nav class="flex items-center gap-1 ml-8">
+            <a href="index.html" class="px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded">Главная</a>
+            <a href="01-tasks.html" class="px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded">Задачи</a>
+            <a href="04-meetings.html" class="px-3 py-1.5 text-sm bg-ekf-red text-white rounded">Встречи</a>
+            <a href="03-service-desk-agent.html" class="px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded">Service Desk</a>
+            <a href="#" class="px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded">Сотрудники</a>
+            <a href="#" class="px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded">Аналитика</a>
+        </nav>
+        <div class="ml-auto flex items-center gap-4">
+            <!-- Recording indicator -->
+            <div class="flex items-center gap-2 bg-red-600 px-3 py-1 rounded-full recording-pulse">
+                <div class="w-2 h-2 bg-white rounded-full"></div>
+                <span class="text-xs font-medium">REC 12:34</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <img src="https://i.pravatar.cc/100?img=14" alt="User" class="w-8 h-8 rounded-full">
+                <span class="text-sm">Антон С.</span>
+            </div>
+        </div>
+    </div>
 
-            <!-- Tabs -->
-            <div class="bg-white border-b flex px-6">
-                <button class="py-3 px-4 text-sm font-medium text-gray-500 hover:text-gray-700">Details</button>
-                <button class="py-3 px-4 text-sm font-medium tab-active">Script</button>
-                <button class="py-3 px-4 text-sm font-medium text-gray-500 hover:text-gray-700">Recording</button>
-                <button class="py-3 px-4 text-sm font-medium text-gray-500 hover:text-gray-700">Tasks</button>
+    <div class="flex h-screen pt-12">
+        <!-- Meetings Sidebar -->
+        <aside class="w-60 bg-ekf-dark text-white flex flex-col">
+            <div class="p-4 border-b border-gray-700">
+                <a href="04-meetings.html" class="flex items-center gap-2 text-gray-300 hover:text-white text-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                    Назад к календарю
+                </a>
             </div>
 
-            <div class="flex-1 flex overflow-hidden">
-                <!-- Script Panel -->
-                <div class="flex-1 overflow-y-auto p-6">
-                    <div class="max-w-3xl mx-auto">
-                        <!-- Script Header -->
-                        <div class="bg-white rounded-xl border p-6 mb-6">
-                            <div class="flex items-center justify-between mb-4">
-                                <h2 class="text-lg font-semibold">Meeting Script</h2>
-                                <div class="flex gap-2">
-                                    <button class="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50 flex items-center gap-2">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                                        Import Template
-                                    </button>
-                                    <button class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                                        Add Item
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Progress -->
-                            <div class="flex items-center gap-3 mb-4">
-                                <div class="flex-1 bg-gray-200 rounded-full h-2">
-                                    <div class="bg-green-500 h-2 rounded-full" style="width: 40%"></div>
-                                </div>
-                                <span class="text-sm text-gray-500">4 of 10 completed</span>
-                            </div>
-
-                            <!-- Script Items -->
-                            <div class="space-y-3">
-                                <!-- Completed Item -->
-                                <div class="script-item completed flex items-start gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                                    <input type="checkbox" checked class="mt-1 rounded text-green-500">
-                                    <div class="flex-1">
-                                        <div class="flex items-center gap-2">
-                                            <span class="text-sm font-medium line-through text-gray-500">Welcome & Introduction</span>
-                                            <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">5 min</span>
-                                        </div>
-                                        <p class="text-xs text-gray-400 mt-1">Welcome participants, state meeting objectives</p>
-                                    </div>
-                                    <img src="https://i.pravatar.cc/24?img=1" class="w-6 h-6 rounded-full" title="Anton S.">
-                                </div>
-
-                                <div class="script-item completed flex items-start gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                                    <input type="checkbox" checked class="mt-1 rounded text-green-500">
-                                    <div class="flex-1">
-                                        <div class="flex items-center gap-2">
-                                            <span class="text-sm font-medium line-through text-gray-500">Sprint 8 Overview</span>
-                                            <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">10 min</span>
-                                        </div>
-                                        <p class="text-xs text-gray-400 mt-1">Review completed work and achievements</p>
-                                    </div>
-                                    <img src="https://i.pravatar.cc/24?img=1" class="w-6 h-6 rounded-full" title="Anton S.">
-                                </div>
-
-                                <!-- Current Item -->
-                                <div class="script-item flex items-start gap-3 p-3 bg-blue-50 rounded-lg border-2 border-blue-400">
-                                    <input type="checkbox" class="mt-1 rounded">
-                                    <div class="flex-1">
-                                        <div class="flex items-center gap-2">
-                                            <span class="text-sm font-medium">Demo: Tasks Unified View</span>
-                                            <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">15 min</span>
-                                            <span class="text-xs bg-blue-600 text-white px-2 py-0.5 rounded animate-pulse">Current</span>
-                                        </div>
-                                        <p class="text-xs text-gray-600 mt-1">Show new Kanban board with filters for Projects, Sprints, Releases</p>
-                                        <div class="mt-2 text-xs text-gray-500">
-                                            <strong>Talking points:</strong>
-                                            <ul class="list-disc list-inside mt-1">
-                                                <li>Project/Sprint/Release filters in sidebar</li>
-                                                <li>Workflow for development tasks</li>
-                                                <li>GitHub integration in task detail</li>
-                                            </ul>
-                                        </div>
-                                    </div>
-                                    <img src="https://i.pravatar.cc/24?img=2" class="w-6 h-6 rounded-full" title="Dmitry K.">
-                                </div>
-
-                                <!-- Upcoming Items -->
-                                <div class="script-item flex items-start gap-3 p-3 bg-white rounded-lg border hover:border-gray-300">
-                                    <input type="checkbox" class="mt-1 rounded">
-                                    <div class="flex-1">
-                                        <div class="flex items-center gap-2">
-                                            <span class="text-sm font-medium">Demo: Service Desk Portal</span>
-                                            <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">10 min</span>
-                                        </div>
-                                        <p class="text-xs text-gray-500 mt-1">ITIL-compliant self-service portal walkthrough</p>
-                                    </div>
-                                    <img src="https://i.pravatar.cc/24?img=3" class="w-6 h-6 rounded-full" title="Maria K.">
-                                </div>
-
-                                <div class="script-item flex items-start gap-3 p-3 bg-white rounded-lg border hover:border-gray-300">
-                                    <input type="checkbox" class="mt-1 rounded">
-                                    <div class="flex-1">
-                                        <div class="flex items-center gap-2">
-                                            <span class="text-sm font-medium">Demo: Meeting Transcription</span>
-                                            <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">10 min</span>
-                                        </div>
-                                        <p class="text-xs text-gray-500 mt-1">Show recording, transcription, and AI analysis features</p>
-                                    </div>
-                                    <img src="https://i.pravatar.cc/24?img=5" class="w-6 h-6 rounded-full" title="Ivan S.">
-                                </div>
-
-                                <div class="script-item flex items-start gap-3 p-3 bg-white rounded-lg border hover:border-gray-300">
-                                    <input type="checkbox" class="mt-1 rounded">
-                                    <div class="flex-1">
-                                        <div class="flex items-center gap-2">
-                                            <span class="text-sm font-medium">Q&A Session</span>
-                                            <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">10 min</span>
-                                        </div>
-                                        <p class="text-xs text-gray-500 mt-1">Open floor for questions and feedback</p>
-                                    </div>
-                                    <div class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs">All</div>
-                                </div>
-                            </div>
+            <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+                <!-- Текущая встреча -->
+                <div class="text-xs text-gray-500 uppercase tracking-wider px-3 pt-2 pb-1">Текущая встреча</div>
+                <div class="px-3 py-3 bg-gray-800 rounded-lg mb-4">
+                    <div class="font-semibold text-sm mb-1">Daily Standup</div>
+                    <div class="text-xs text-gray-400 mb-2">10:00 — 10:15</div>
+                    <div class="flex items-center gap-2">
+                        <div class="flex -space-x-2">
+                            <img src="https://i.pravatar.cc/100?img=14" class="w-6 h-6 rounded-full border-2 border-gray-800">
+                            <img src="https://i.pravatar.cc/100?img=12" class="w-6 h-6 rounded-full border-2 border-gray-800">
+                            <img src="https://i.pravatar.cc/100?img=25" class="w-6 h-6 rounded-full border-2 border-gray-800">
                         </div>
-
-                        <!-- Notes Section -->
-                        <div class="bg-white rounded-xl border p-6">
-                            <h3 class="text-lg font-semibold mb-4">Meeting Notes</h3>
-                            <textarea class="w-full border rounded-lg p-4 text-sm min-h-[150px]" placeholder="Take notes during the meeting...">- Anton welcomed everyone and outlined the agenda
-- Sprint 8 completion: 42 tasks done, 3 moved to Sprint 9
-- Dmitry started demo of Tasks unified view
-  - New sidebar with Projects, Sprints, Releases filters
-  - Workflow visualization working well
-  - Question from Maria: Can we add custom fields? - Moved to backlog</textarea>
-                        </div>
+                        <span class="text-xs text-gray-400">+2</span>
                     </div>
                 </div>
 
-                <!-- Right Panel - Timer & Controls -->
-                <aside class="w-80 bg-white border-l flex flex-col">
-                    <!-- Meeting Timer -->
-                    <div class="p-4 border-b bg-gradient-to-br from-blue-50 to-purple-50">
-                        <div class="text-center">
-                            <div class="text-4xl font-bold text-blue-600 mb-1">23:45</div>
-                            <div class="text-sm text-gray-500">Meeting Duration</div>
-                        </div>
-                        <div class="mt-4 flex gap-2">
-                            <button class="flex-1 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 flex items-center justify-center gap-2">
-                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><rect x="6" y="6" width="8" height="8" rx="1"></rect></svg>
-                                End Meeting
-                            </button>
-                        </div>
-                    </div>
+                <!-- Навигация встречи -->
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg bg-ekf-red text-white">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    <span>Скрипт / Повестка</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                    <span>Заметки</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+                    <span>Action Items</span>
+                    <span class="ml-auto text-xs text-gray-400">0</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                    <span>Участники</span>
+                    <span class="ml-auto text-xs text-gray-400">5</span>
+                </a>
 
-                    <!-- Recording Controls -->
-                    <div class="p-4 border-b">
-                        <h4 class="text-sm font-medium mb-3">Recording</h4>
-                        <div class="flex items-center gap-3 p-3 bg-red-50 rounded-lg border border-red-200">
-                            <div class="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                            <div class="flex-1">
-                                <div class="text-sm font-medium text-red-700">Recording in progress</div>
-                                <div class="text-xs text-red-600">23:45 elapsed</div>
+                <!-- Запись -->
+                <div class="text-xs text-gray-500 uppercase tracking-wider px-3 pt-4 pb-1">Запись</div>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                    <span>Аудио</span>
+                    <span class="ml-auto w-2 h-2 bg-red-500 rounded-full recording-pulse"></span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    <span>Видео</span>
+                    <span class="ml-auto text-xs text-gray-500">Выкл</span>
+                </a>
+
+                <div class="pt-4 mt-4 border-t border-gray-700">
+                    <a href="06-meeting-transcription.html" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        <span>Прошлые итоги</span>
+                    </a>
+                </div>
+            </nav>
+
+            <!-- User -->
+            <div class="p-4 border-t border-gray-700">
+                <div class="flex items-center gap-3">
+                    <img src="https://i.pravatar.cc/100?img=14" alt="Антон" class="w-10 h-10 rounded-full">
+                    <div class="flex-1 min-w-0">
+                        <div class="font-medium text-sm truncate">Антон Саховский</div>
+                        <div class="text-xs text-gray-400">Организатор</div>
+                    </div>
+                    <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col overflow-hidden">
+            <!-- Meeting Header -->
+            <div class="bg-white border-b px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-xl font-semibold">Daily Standup — Скрипт встречи</h1>
+                        <div class="text-sm text-gray-500 mt-1">Четверг, 23 января 2026 • 10:00 — 10:15</div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg">
+                            <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span class="text-sm font-medium">12:34</span>
+                        </div>
+                        <button class="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path></svg>
+                            Завершить встречу
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Script Content -->
+            <div class="flex-1 flex overflow-hidden">
+                <!-- Script / Agenda -->
+                <div class="flex-1 overflow-y-auto p-6">
+                    <div class="max-w-3xl mx-auto">
+                        <!-- Progress -->
+                        <div class="mb-6">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-sm font-medium text-gray-700">Прогресс повестки</span>
+                                <span class="text-sm text-gray-500">3 из 5 пунктов</span>
                             </div>
-                            <button class="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
-                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><rect x="6" y="6" width="8" height="8" rx="1"></rect></svg>
-                            </button>
+                            <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                                <div class="h-full bg-ekf-red rounded-full transition-all" style="width: 60%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Script Items -->
+                        <div class="space-y-3">
+                            <!-- Completed item -->
+                            <div class="script-item completed bg-white rounded-lg p-4 border border-gray-200">
+                                <div class="flex items-start gap-3">
+                                    <div class="mt-0.5">
+                                        <div class="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                                            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                        </div>
+                                    </div>
+                                    <div class="flex-1">
+                                        <h3 class="font-medium line-through text-gray-500">Приветствие и проверка присутствия</h3>
+                                        <p class="text-sm text-gray-400 mt-1">Убедиться что все участники подключились</p>
+                                        <div class="flex items-center gap-2 mt-2 text-xs text-gray-400">
+                                            <span>1 мин</span>
+                                            <span>•</span>
+                                            <span>Выполнено</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Completed item -->
+                            <div class="script-item completed bg-white rounded-lg p-4 border border-gray-200">
+                                <div class="flex items-start gap-3">
+                                    <div class="mt-0.5">
+                                        <div class="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                                            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                        </div>
+                                    </div>
+                                    <div class="flex-1">
+                                        <h3 class="font-medium line-through text-gray-500">Что было сделано вчера?</h3>
+                                        <p class="text-sm text-gray-400 mt-1">Каждый участник рассказывает о выполненных задачах</p>
+                                        <div class="flex items-center gap-2 mt-2 text-xs text-gray-400">
+                                            <span>5 мин</span>
+                                            <span>•</span>
+                                            <span>Выполнено</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Completed item -->
+                            <div class="script-item completed bg-white rounded-lg p-4 border border-gray-200">
+                                <div class="flex items-start gap-3">
+                                    <div class="mt-0.5">
+                                        <div class="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                                            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                        </div>
+                                    </div>
+                                    <div class="flex-1">
+                                        <h3 class="font-medium line-through text-gray-500">Что планируется на сегодня?</h3>
+                                        <p class="text-sm text-gray-400 mt-1">Планы на текущий день</p>
+                                        <div class="flex items-center gap-2 mt-2 text-xs text-gray-400">
+                                            <span>5 мин</span>
+                                            <span>•</span>
+                                            <span>Выполнено</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Current item -->
+                            <div class="script-item bg-white rounded-lg p-4 border-2 border-ekf-red shadow-lg">
+                                <div class="flex items-start gap-3">
+                                    <div class="mt-0.5">
+                                        <div class="w-6 h-6 bg-ekf-red rounded-full flex items-center justify-center recording-pulse">
+                                            <div class="w-2 h-2 bg-white rounded-full"></div>
+                                        </div>
+                                    </div>
+                                    <div class="flex-1">
+                                        <h3 class="font-medium text-gray-900">Есть ли блокеры?</h3>
+                                        <p class="text-sm text-gray-600 mt-1">Обсуждение препятствий и проблем, требующих решения</p>
+                                        <div class="flex items-center gap-2 mt-2 text-xs text-gray-500">
+                                            <span>3 мин</span>
+                                            <span>•</span>
+                                            <span class="text-ekf-red font-medium">Сейчас обсуждается</span>
+                                        </div>
+                                        <div class="mt-3 pt-3 border-t">
+                                            <div class="text-xs text-gray-500 mb-2">Быстрые заметки:</div>
+                                            <textarea class="w-full p-2 text-sm border rounded-lg focus:ring-2 focus:ring-ekf-red focus:border-ekf-red" rows="2" placeholder="Записать блокеры..."></textarea>
+                                        </div>
+                                    </div>
+                                    <button class="px-3 py-1.5 bg-ekf-red text-white rounded text-sm font-medium hover:bg-red-700">
+                                        Готово
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Pending item -->
+                            <div class="script-item bg-white rounded-lg p-4 border border-gray-200 opacity-75">
+                                <div class="flex items-start gap-3">
+                                    <div class="mt-0.5">
+                                        <div class="w-6 h-6 border-2 border-gray-300 rounded-full"></div>
+                                    </div>
+                                    <div class="flex-1">
+                                        <h3 class="font-medium text-gray-700">Подведение итогов</h3>
+                                        <p class="text-sm text-gray-500 mt-1">Краткое резюме и напоминания</p>
+                                        <div class="flex items-center gap-2 mt-2 text-xs text-gray-400">
+                                            <span>1 мин</span>
+                                            <span>•</span>
+                                            <span>Ожидает</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Add item -->
+                        <button class="w-full mt-4 p-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-ekf-red hover:text-ekf-red transition-colors flex items-center justify-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                            Добавить пункт повестки
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Participants Panel -->
+                <div class="w-80 border-l bg-white overflow-y-auto">
+                    <div class="p-4 border-b">
+                        <h2 class="font-semibold">Участники (5)</h2>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <!-- Participant speaking -->
+                        <div class="flex items-center gap-3 p-2 bg-green-50 rounded-lg border border-green-200">
+                            <div class="relative">
+                                <img src="https://i.pravatar.cc/100?img=12" class="w-10 h-10 rounded-full">
+                                <div class="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                                    <svg class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                                </div>
+                            </div>
+                            <div class="flex-1">
+                                <div class="text-sm font-medium">Алексей Петров</div>
+                                <div class="text-xs text-green-600">Говорит...</div>
+                            </div>
+                        </div>
+
+                        <!-- Other participants -->
+                        <div class="flex items-center gap-3 p-2">
+                            <img src="https://i.pravatar.cc/100?img=14" class="w-10 h-10 rounded-full">
+                            <div class="flex-1">
+                                <div class="text-sm font-medium">Антон Саховский</div>
+                                <div class="text-xs text-gray-500">Организатор</div>
+                            </div>
+                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                        </div>
+
+                        <div class="flex items-center gap-3 p-2">
+                            <img src="https://i.pravatar.cc/100?img=25" class="w-10 h-10 rounded-full">
+                            <div class="flex-1">
+                                <div class="text-sm font-medium">Елена Павлова</div>
+                                <div class="text-xs text-gray-500">QA Engineer</div>
+                            </div>
+                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                        </div>
+
+                        <div class="flex items-center gap-3 p-2">
+                            <img src="https://i.pravatar.cc/100?img=33" class="w-10 h-10 rounded-full">
+                            <div class="flex-1">
+                                <div class="text-sm font-medium">Дмитрий Козлов</div>
+                                <div class="text-xs text-gray-500">Frontend Dev</div>
+                            </div>
+                            <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" clip-rule="evenodd"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"></path></svg>
+                        </div>
+
+                        <div class="flex items-center gap-3 p-2">
+                            <img src="https://i.pravatar.cc/100?img=9" class="w-10 h-10 rounded-full">
+                            <div class="flex-1">
+                                <div class="text-sm font-medium">Ольга Миронова</div>
+                                <div class="text-xs text-gray-500">Designer</div>
+                            </div>
+                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
                         </div>
                     </div>
 
                     <!-- Quick Actions -->
-                    <div class="p-4 border-b">
-                        <h4 class="text-sm font-medium mb-3">Quick Actions</h4>
+                    <div class="p-4 border-t mt-auto">
+                        <h3 class="text-sm font-medium mb-3">Быстрые действия</h3>
                         <div class="space-y-2">
-                            <button class="w-full px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2 text-left">
-                                <svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
-                                Create Task from Discussion
+                            <button class="w-full px-3 py-2 text-sm text-left hover:bg-gray-50 rounded-lg flex items-center gap-2">
+                                <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                Создать задачу
                             </button>
-                            <button class="w-full px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2 text-left">
-                                <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                                Schedule Follow-up
-                            </button>
-                            <button class="w-full px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2 text-left">
-                                <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
-                                Share Screen
+                            <button class="w-full px-3 py-2 text-sm text-left hover:bg-gray-50 rounded-lg flex items-center gap-2">
+                                <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
+                                Поделиться экраном
                             </button>
                         </div>
                     </div>
-
-                    <!-- Live Participants -->
-                    <div class="flex-1 p-4 overflow-y-auto">
-                        <h4 class="text-sm font-medium mb-3">Active Participants (5)</h4>
-                        <div class="space-y-2">
-                            <div class="flex items-center gap-2 p-2 bg-green-50 rounded-lg">
-                                <div class="relative">
-                                    <img src="https://i.pravatar.cc/32?img=1" class="w-8 h-8 rounded-full">
-                                    <div class="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
-                                </div>
-                                <div class="flex-1">
-                                    <div class="text-sm font-medium">Anton S.</div>
-                                    <div class="text-xs text-gray-500">Organizer</div>
-                                </div>
-                                <svg class="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd"></path></svg>
-                            </div>
-                            <div class="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50">
-                                <div class="relative">
-                                    <img src="https://i.pravatar.cc/32?img=2" class="w-8 h-8 rounded-full">
-                                    <div class="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
-                                </div>
-                                <div class="flex-1">
-                                    <div class="text-sm font-medium">Dmitry K.</div>
-                                    <div class="text-xs text-gray-500">Presenting</div>
-                                </div>
-                                <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-                            </div>
-                            <div class="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50">
-                                <div class="relative">
-                                    <img src="https://i.pravatar.cc/32?img=3" class="w-8 h-8 rounded-full">
-                                    <div class="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
-                                </div>
-                                <div class="flex-1">
-                                    <div class="text-sm font-medium">Maria K.</div>
-                                </div>
-                                <svg class="w-4 h-4 text-gray-300" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM12.293 7.293a1 1 0 011.414 0L15 8.586l1.293-1.293a1 1 0 111.414 1.414L16.414 10l1.293 1.293a1 1 0 01-1.414 1.414L15 11.414l-1.293 1.293a1 1 0 01-1.414-1.414L13.586 10l-1.293-1.293a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
-                            </div>
-                        </div>
-                    </div>
-                </aside>
+                </div>
             </div>
         </main>
     </div>

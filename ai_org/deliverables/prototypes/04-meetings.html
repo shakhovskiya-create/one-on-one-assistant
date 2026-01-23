@@ -3,485 +3,471 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EKF Hub - Meetings</title>
+    <title>EKF Hub - Встречи</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'ekf-red': '#E53935',
+                        'ekf-dark': '#1a1a2e'
+                    }
+                }
+            }
+        }
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * { font-family: 'Inter', sans-serif; }
+        .meeting-slot { min-height: 60px; border-left: 3px solid transparent; }
+        .meeting-slot:hover { background: #f9fafb; }
+        .meeting-slot.selected { background: #fef2f2; border-left-color: #E53935; }
         .calendar-cell { min-height: 100px; }
-        .meeting-event { transition: all 0.15s ease; }
-        .meeting-event:hover { transform: scale(1.02); }
-        .participant-avatar { transition: all 0.15s ease; }
-        .participant-avatar:hover { transform: scale(1.1); z-index: 10; }
-        .status-accepted { border-color: #22c55e; }
-        .status-declined { border-color: #ef4444; }
-        .status-tentative { border-color: #f59e0b; }
-        .status-pending { border-color: #9ca3af; }
-        .view-toggle button.active { background: #3b82f6; color: white; }
-        .tab-active { border-bottom: 2px solid #3b82f6; color: #3b82f6; }
     </style>
 </head>
-<body class="bg-gray-50">
-    <div class="flex h-screen">
-        <!-- Sidebar -->
-        <aside class="w-64 bg-white border-r flex flex-col">
-            <div class="p-4 border-b">
-                <div class="flex items-center gap-2">
-                    <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">E</div>
-                    <span class="font-semibold text-lg">EKF Hub</span>
-                </div>
+<body class="bg-gray-100">
+    <!-- Global Top Navigation -->
+    <div class="fixed top-0 left-0 right-0 z-50 bg-ekf-dark text-white h-12 flex items-center px-4">
+        <div class="flex items-center gap-3">
+            <div class="bg-ekf-red text-white font-bold text-sm px-2 py-0.5 rounded">EKF</div>
+            <span class="font-semibold">Hub</span>
+        </div>
+        <nav class="flex items-center gap-1 ml-8">
+            <a href="index.html" class="px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded">Главная</a>
+            <a href="01-tasks.html" class="px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded">Задачи</a>
+            <a href="#" class="px-3 py-1.5 text-sm bg-ekf-red text-white rounded">Встречи</a>
+            <a href="03-service-desk-agent.html" class="px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded">Service Desk</a>
+            <a href="#" class="px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded">Сотрудники</a>
+            <a href="#" class="px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded">Аналитика</a>
+        </nav>
+        <div class="ml-auto flex items-center gap-4">
+            <button class="p-1.5 hover:bg-white/10 rounded relative">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                <span class="absolute -top-0.5 -right-0.5 w-4 h-4 bg-ekf-red text-white text-xs rounded-full flex items-center justify-center">2</span>
+            </button>
+            <div class="flex items-center gap-2">
+                <img src="https://i.pravatar.cc/100?img=14" alt="User" class="w-8 h-8 rounded-full">
+                <span class="text-sm">Антон С.</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex h-screen pt-12">
+        <!-- Meetings Sidebar -->
+        <aside class="w-60 bg-ekf-dark text-white flex flex-col">
+            <div class="p-4 border-b border-gray-700">
+                <button class="w-full px-4 py-2 bg-ekf-red text-white rounded-lg text-sm font-medium hover:bg-red-700 flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    Новая встреча
+                </button>
             </div>
 
-            <nav class="flex-1 p-2">
-                <div class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-50 cursor-pointer">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
-                    <span>Tasks</span>
-                </div>
-                <div class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-50 cursor-pointer">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                    <span>Service Desk</span>
-                </div>
-                <div class="flex items-center gap-3 px-3 py-2 rounded-lg bg-blue-50 text-blue-600 cursor-pointer">
+            <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+                <!-- Обзор -->
+                <div class="text-xs text-gray-500 uppercase tracking-wider px-3 pt-2 pb-1">Обзор</div>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg bg-ekf-red text-white">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                    <span class="font-medium">Meetings</span>
-                </div>
-                <div class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-50 cursor-pointer">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
-                    <span>Messenger</span>
-                </div>
-                <div class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-50 cursor-pointer">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-                    <span>Mail</span>
+                    <span>Календарь</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <span>Предстоящие</span>
+                    <span class="ml-auto text-xs bg-ekf-red/30 text-white px-1.5 py-0.5 rounded">4</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
+                    <span>Прошедшие</span>
+                </a>
+
+                <!-- Мои встречи -->
+                <div class="text-xs text-gray-500 uppercase tracking-wider px-3 pt-4 pb-1">Мои встречи</div>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                    <span>Организатор</span>
+                    <span class="ml-auto text-xs text-gray-400">8</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                    <span>Участник</span>
+                    <span class="ml-auto text-xs text-gray-400">12</span>
+                </a>
+
+                <!-- Типы встреч -->
+                <div class="text-xs text-gray-500 uppercase tracking-wider px-3 pt-4 pb-1">Типы встреч</div>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+                    <div class="w-5 h-5 flex items-center justify-center">
+                        <div class="w-3 h-3 bg-purple-500 rounded"></div>
+                    </div>
+                    <span>1:1 (Face-to-Face)</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+                    <div class="w-5 h-5 flex items-center justify-center">
+                        <div class="w-3 h-3 bg-blue-500 rounded"></div>
+                    </div>
+                    <span>Совещания</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+                    <div class="w-5 h-5 flex items-center justify-center">
+                        <div class="w-3 h-3 bg-green-500 rounded"></div>
+                    </div>
+                    <span>Планирование</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+                    <div class="w-5 h-5 flex items-center justify-center">
+                        <div class="w-3 h-3 bg-yellow-500 rounded"></div>
+                    </div>
+                    <span>Ретроспективы</span>
+                </a>
+
+                <!-- Инструменты -->
+                <div class="pt-4 mt-4 border-t border-gray-700">
+                    <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        <span>Шаблоны встреч</span>
+                    </a>
+                    <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        <span>Аналитика встреч</span>
+                    </a>
+                    <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        <span>Настройки</span>
+                    </a>
                 </div>
             </nav>
 
-            <!-- Mini Calendar -->
-            <div class="p-4 border-t">
-                <div class="text-sm font-medium mb-2">January 2026</div>
-                <div class="grid grid-cols-7 gap-1 text-xs text-center">
-                    <div class="text-gray-400">Mon</div>
-                    <div class="text-gray-400">Tue</div>
-                    <div class="text-gray-400">Wed</div>
-                    <div class="text-gray-400">Thu</div>
-                    <div class="text-gray-400">Fri</div>
-                    <div class="text-gray-400">Sat</div>
-                    <div class="text-gray-400">Sun</div>
-                    <div class="text-gray-300">30</div>
-                    <div class="text-gray-300">31</div>
-                    <div>1</div><div>2</div><div>3</div><div>4</div><div>5</div>
-                    <div>6</div><div>7</div><div>8</div><div>9</div><div>10</div><div>11</div><div>12</div>
-                    <div>13</div><div>14</div><div>15</div><div>16</div><div>17</div><div>18</div><div>19</div>
-                    <div>20</div><div>21</div><div>22</div>
-                    <div class="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center mx-auto">23</div>
-                    <div>24</div><div>25</div><div>26</div>
-                    <div>27</div><div>28</div><div>29</div><div>30</div><div>31</div>
-                </div>
-            </div>
-
             <!-- User -->
-            <div class="p-4 border-t">
+            <div class="p-4 border-t border-gray-700">
                 <div class="flex items-center gap-3">
-                    <img src="https://i.pravatar.cc/40?img=1" class="w-10 h-10 rounded-full">
-                    <div>
-                        <div class="font-medium text-sm">Anton Sahovskii</div>
-                        <div class="text-xs text-gray-500">Product Manager</div>
+                    <img src="https://i.pravatar.cc/100?img=14" alt="Антон" class="w-10 h-10 rounded-full">
+                    <div class="flex-1 min-w-0">
+                        <div class="font-medium text-sm truncate">Антон Саховский</div>
+                        <div class="text-xs text-gray-400">Product Owner</div>
                     </div>
+                    <div class="w-2 h-2 bg-green-400 rounded-full"></div>
                 </div>
             </div>
         </aside>
 
         <!-- Main Content -->
         <main class="flex-1 flex flex-col overflow-hidden">
-            <!-- Header -->
-            <header class="bg-white border-b px-6 py-4">
+            <!-- Calendar Header -->
+            <div class="bg-white border-b px-6 py-4">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-4">
-                        <h1 class="text-xl font-semibold">Meetings</h1>
-                        <!-- View Toggle -->
-                        <div class="view-toggle flex bg-gray-100 rounded-lg p-1">
-                            <button class="px-3 py-1 rounded-md text-sm">List</button>
-                            <button class="active px-3 py-1 rounded-md text-sm">Calendar</button>
+                        <h1 class="text-xl font-semibold">Январь 2026</h1>
+                        <div class="flex items-center gap-1">
+                            <button class="p-1.5 hover:bg-gray-100 rounded">
+                                <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                            </button>
+                            <button class="px-3 py-1 text-sm font-medium text-ekf-red hover:bg-red-50 rounded">Сегодня</button>
+                            <button class="p-1.5 hover:bg-gray-100 rounded">
+                                <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            </button>
                         </div>
                     </div>
-                    <div class="flex items-center gap-3">
-                        <div class="flex items-center gap-2">
-                            <button class="p-2 hover:bg-gray-100 rounded-lg">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-                            </button>
-                            <span class="text-sm font-medium">January 23, 2026</span>
-                            <button class="p-2 hover:bg-gray-100 rounded-lg">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                            </button>
-                            <button class="px-3 py-1 text-sm border rounded-lg hover:bg-gray-50 ml-2">Today</button>
-                        </div>
-                        <div class="flex border rounded-lg overflow-hidden">
-                            <button class="px-3 py-1 text-sm hover:bg-gray-50">Day</button>
-                            <button class="px-3 py-1 text-sm bg-gray-100 font-medium">Week</button>
-                            <button class="px-3 py-1 text-sm hover:bg-gray-50">Month</button>
-                        </div>
-                        <button class="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 hover:bg-blue-700">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                            New Meeting
-                        </button>
+                    <div class="flex items-center gap-2">
+                        <select class="border rounded-lg px-3 py-1.5 text-sm">
+                            <option>Неделя</option>
+                            <option>День</option>
+                            <option>Месяц</option>
+                        </select>
                     </div>
                 </div>
-            </header>
+            </div>
 
+            <!-- Calendar + Meeting Detail -->
             <div class="flex-1 flex overflow-hidden">
                 <!-- Calendar Grid -->
-                <div class="flex-1 overflow-auto p-4">
-                    <!-- Time + Days Grid -->
-                    <div class="bg-white rounded-xl border">
-                        <!-- Days Header -->
-                        <div class="grid grid-cols-8 border-b">
-                            <div class="p-3 text-xs text-gray-500"></div>
-                            <div class="p-3 text-center border-l">
-                                <div class="text-xs text-gray-500">Mon</div>
-                                <div class="text-lg font-medium">20</div>
+                <div class="flex-1 overflow-auto">
+                    <div class="min-w-[800px]">
+                        <!-- Week Header -->
+                        <div class="grid grid-cols-8 border-b bg-gray-50 sticky top-0">
+                            <div class="p-3 text-xs text-gray-500 text-center border-r">Время</div>
+                            <div class="p-3 text-center border-r">
+                                <div class="text-xs text-gray-500">ПН</div>
+                                <div class="text-lg font-semibold">20</div>
                             </div>
-                            <div class="p-3 text-center border-l">
-                                <div class="text-xs text-gray-500">Tue</div>
-                                <div class="text-lg font-medium">21</div>
+                            <div class="p-3 text-center border-r">
+                                <div class="text-xs text-gray-500">ВТ</div>
+                                <div class="text-lg font-semibold">21</div>
                             </div>
-                            <div class="p-3 text-center border-l">
-                                <div class="text-xs text-gray-500">Wed</div>
-                                <div class="text-lg font-medium">22</div>
+                            <div class="p-3 text-center border-r">
+                                <div class="text-xs text-gray-500">СР</div>
+                                <div class="text-lg font-semibold">22</div>
                             </div>
-                            <div class="p-3 text-center border-l bg-blue-50">
-                                <div class="text-xs text-blue-600">Thu</div>
-                                <div class="text-lg font-bold text-blue-600">23</div>
+                            <div class="p-3 text-center border-r bg-red-50">
+                                <div class="text-xs text-ekf-red font-medium">ЧТ</div>
+                                <div class="text-lg font-semibold text-ekf-red">23</div>
                             </div>
-                            <div class="p-3 text-center border-l">
-                                <div class="text-xs text-gray-500">Fri</div>
-                                <div class="text-lg font-medium">24</div>
+                            <div class="p-3 text-center border-r">
+                                <div class="text-xs text-gray-500">ПТ</div>
+                                <div class="text-lg font-semibold">24</div>
                             </div>
-                            <div class="p-3 text-center border-l">
-                                <div class="text-xs text-gray-400">Sat</div>
-                                <div class="text-lg text-gray-400">25</div>
+                            <div class="p-3 text-center border-r">
+                                <div class="text-xs text-gray-400">СБ</div>
+                                <div class="text-lg font-semibold text-gray-400">25</div>
                             </div>
-                            <div class="p-3 text-center border-l">
-                                <div class="text-xs text-gray-400">Sun</div>
-                                <div class="text-lg text-gray-400">26</div>
+                            <div class="p-3 text-center">
+                                <div class="text-xs text-gray-400">ВС</div>
+                                <div class="text-lg font-semibold text-gray-400">26</div>
                             </div>
                         </div>
 
-                        <!-- Time Slots -->
-                        <div class="relative">
-                            <!-- 9:00 -->
-                            <div class="grid grid-cols-8 border-b" style="height: 60px;">
-                                <div class="p-2 text-xs text-gray-500 text-right pr-3">09:00</div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative bg-blue-50/50"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative bg-gray-50"></div>
-                                <div class="border-l relative bg-gray-50"></div>
+                        <!-- Time Grid -->
+                        <div class="bg-white">
+                            <!-- 09:00 -->
+                            <div class="grid grid-cols-8 border-b">
+                                <div class="p-2 text-xs text-gray-400 text-right border-r">09:00</div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1 bg-red-50"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1 bg-gray-50"></div>
+                                <div class="calendar-cell p-1 bg-gray-50"></div>
                             </div>
 
                             <!-- 10:00 -->
-                            <div class="grid grid-cols-8 border-b" style="height: 60px;">
-                                <div class="p-2 text-xs text-gray-500 text-right pr-3">10:00</div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative">
-                                    <!-- Meeting Event -->
-                                    <div class="meeting-event absolute inset-x-1 top-0 bg-purple-100 border-l-4 border-purple-500 rounded-r p-2 cursor-pointer" style="height: 50px;">
-                                        <div class="text-xs font-medium text-purple-900 truncate">Team Standup</div>
-                                        <div class="text-xs text-purple-700">10:00 - 10:30</div>
+                            <div class="grid grid-cols-8 border-b">
+                                <div class="p-2 text-xs text-gray-400 text-right border-r">10:00</div>
+                                <div class="calendar-cell border-r p-1">
+                                    <div class="bg-blue-100 border-l-4 border-blue-500 rounded p-2 text-xs cursor-pointer hover:bg-blue-200">
+                                        <div class="font-medium text-blue-900">Планирование спринта</div>
+                                        <div class="text-blue-600">10:00 - 11:30</div>
                                     </div>
                                 </div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative bg-blue-50/50">
-                                    <!-- Today's Meeting -->
-                                    <div class="meeting-event absolute inset-x-1 top-0 bg-blue-100 border-l-4 border-blue-500 rounded-r p-2 cursor-pointer" style="height: 110px;">
-                                        <div class="text-xs font-medium text-blue-900 truncate">Sprint Planning</div>
-                                        <div class="text-xs text-blue-700">10:00 - 11:30</div>
-                                        <div class="flex -space-x-2 mt-1">
-                                            <img src="https://i.pravatar.cc/20?img=1" class="w-5 h-5 rounded-full border-2 border-white">
-                                            <img src="https://i.pravatar.cc/20?img=2" class="w-5 h-5 rounded-full border-2 border-white">
-                                            <img src="https://i.pravatar.cc/20?img=3" class="w-5 h-5 rounded-full border-2 border-white">
-                                            <div class="w-5 h-5 rounded-full border-2 border-white bg-gray-300 flex items-center justify-center text-xs">+4</div>
-                                        </div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1">
+                                    <div class="bg-purple-100 border-l-4 border-purple-500 rounded p-2 text-xs cursor-pointer hover:bg-purple-200">
+                                        <div class="font-medium text-purple-900">1:1 с Дмитрием</div>
+                                        <div class="text-purple-600">10:00 - 10:30</div>
                                     </div>
                                 </div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative bg-gray-50"></div>
-                                <div class="border-l relative bg-gray-50"></div>
+                                <div class="calendar-cell border-r p-1 bg-red-50">
+                                    <div class="bg-ekf-red/20 border-l-4 border-ekf-red rounded p-2 text-xs cursor-pointer meeting-slot selected">
+                                        <div class="font-medium text-red-900">Daily Standup</div>
+                                        <div class="text-red-600">10:00 - 10:15</div>
+                                    </div>
+                                </div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1 bg-gray-50"></div>
+                                <div class="calendar-cell p-1 bg-gray-50"></div>
                             </div>
 
                             <!-- 11:00 -->
-                            <div class="grid grid-cols-8 border-b" style="height: 60px;">
-                                <div class="p-2 text-xs text-gray-500 text-right pr-3">11:00</div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative">
-                                    <div class="meeting-event absolute inset-x-1 top-0 bg-green-100 border-l-4 border-green-500 rounded-r p-2 cursor-pointer" style="height: 50px;">
-                                        <div class="text-xs font-medium text-green-900 truncate">1:1 with Dmitry</div>
-                                        <div class="text-xs text-green-700">11:00 - 11:30</div>
+                            <div class="grid grid-cols-8 border-b">
+                                <div class="p-2 text-xs text-gray-400 text-right border-r">11:00</div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1">
+                                    <div class="bg-green-100 border-l-4 border-green-500 rounded p-2 text-xs cursor-pointer hover:bg-green-200">
+                                        <div class="font-medium text-green-900">Demo v2.0</div>
+                                        <div class="text-green-600">11:00 - 12:00</div>
                                     </div>
                                 </div>
-                                <div class="border-l relative bg-blue-50/50"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative bg-gray-50"></div>
-                                <div class="border-l relative bg-gray-50"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1 bg-red-50"></div>
+                                <div class="calendar-cell border-r p-1">
+                                    <div class="bg-yellow-100 border-l-4 border-yellow-500 rounded p-2 text-xs cursor-pointer hover:bg-yellow-200">
+                                        <div class="font-medium text-yellow-900">Ретроспектива</div>
+                                        <div class="text-yellow-600">11:00 - 12:00</div>
+                                    </div>
+                                </div>
+                                <div class="calendar-cell border-r p-1 bg-gray-50"></div>
+                                <div class="calendar-cell p-1 bg-gray-50"></div>
                             </div>
 
                             <!-- 12:00 -->
-                            <div class="grid grid-cols-8 border-b" style="height: 60px;">
-                                <div class="p-2 text-xs text-gray-500 text-right pr-3">12:00</div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative bg-blue-50/50"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative bg-gray-50"></div>
-                                <div class="border-l relative bg-gray-50"></div>
+                            <div class="grid grid-cols-8 border-b">
+                                <div class="p-2 text-xs text-gray-400 text-right border-r">12:00</div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1 bg-red-50"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1 bg-gray-50"></div>
+                                <div class="calendar-cell p-1 bg-gray-50"></div>
                             </div>
 
                             <!-- 13:00 -->
-                            <div class="grid grid-cols-8 border-b" style="height: 60px;">
-                                <div class="p-2 text-xs text-gray-500 text-right pr-3">13:00</div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative bg-blue-50/50"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative bg-gray-50"></div>
-                                <div class="border-l relative bg-gray-50"></div>
+                            <div class="grid grid-cols-8 border-b">
+                                <div class="p-2 text-xs text-gray-400 text-right border-r">13:00</div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1 bg-red-50"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1 bg-gray-50"></div>
+                                <div class="calendar-cell p-1 bg-gray-50"></div>
                             </div>
 
                             <!-- 14:00 -->
-                            <div class="grid grid-cols-8 border-b" style="height: 60px;">
-                                <div class="p-2 text-xs text-gray-500 text-right pr-3">14:00</div>
-                                <div class="border-l relative">
-                                    <div class="meeting-event absolute inset-x-1 top-0 bg-orange-100 border-l-4 border-orange-500 rounded-r p-2 cursor-pointer" style="height: 110px;">
-                                        <div class="text-xs font-medium text-orange-900 truncate">Design Review</div>
-                                        <div class="text-xs text-orange-700">14:00 - 15:30</div>
+                            <div class="grid grid-cols-8 border-b">
+                                <div class="p-2 text-xs text-gray-400 text-right border-r">14:00</div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1">
+                                    <div class="bg-purple-100 border-l-4 border-purple-500 rounded p-2 text-xs cursor-pointer hover:bg-purple-200">
+                                        <div class="font-medium text-purple-900">1:1 с Еленой</div>
+                                        <div class="text-purple-600">14:00 - 14:30</div>
                                     </div>
                                 </div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative bg-blue-50/50">
-                                    <!-- Selected Meeting -->
-                                    <div class="meeting-event absolute inset-x-1 top-0 bg-blue-600 rounded-r p-2 cursor-pointer ring-2 ring-blue-300 ring-offset-2" style="height: 80px;">
-                                        <div class="text-xs font-medium text-white truncate">Product Demo</div>
-                                        <div class="text-xs text-blue-200">14:00 - 15:00</div>
-                                        <div class="flex -space-x-2 mt-1">
-                                            <img src="https://i.pravatar.cc/20?img=1" class="w-5 h-5 rounded-full border-2 border-blue-600">
-                                            <img src="https://i.pravatar.cc/20?img=5" class="w-5 h-5 rounded-full border-2 border-blue-600">
-                                        </div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1 bg-red-50">
+                                    <div class="bg-blue-100 border-l-4 border-blue-500 rounded p-2 text-xs cursor-pointer hover:bg-blue-200">
+                                        <div class="font-medium text-blue-900">Статус проекта</div>
+                                        <div class="text-blue-600">14:00 - 15:00</div>
                                     </div>
                                 </div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative bg-gray-50"></div>
-                                <div class="border-l relative bg-gray-50"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1 bg-gray-50"></div>
+                                <div class="calendar-cell p-1 bg-gray-50"></div>
                             </div>
 
                             <!-- 15:00 -->
-                            <div class="grid grid-cols-8 border-b" style="height: 60px;">
-                                <div class="p-2 text-xs text-gray-500 text-right pr-3">15:00</div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative bg-blue-50/50"></div>
-                                <div class="border-l relative">
-                                    <div class="meeting-event absolute inset-x-1 top-0 bg-red-100 border-l-4 border-red-500 rounded-r p-2 cursor-pointer" style="height: 50px;">
-                                        <div class="text-xs font-medium text-red-900 truncate">Retrospective</div>
-                                        <div class="text-xs text-red-700">15:00 - 16:00</div>
+                            <div class="grid grid-cols-8 border-b">
+                                <div class="p-2 text-xs text-gray-400 text-right border-r">15:00</div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1">
+                                    <div class="bg-blue-100 border-l-4 border-blue-500 rounded p-2 text-xs cursor-pointer hover:bg-blue-200">
+                                        <div class="font-medium text-blue-900">Техническое ревью</div>
+                                        <div class="text-blue-600">15:00 - 16:00</div>
                                     </div>
                                 </div>
-                                <div class="border-l relative bg-gray-50"></div>
-                                <div class="border-l relative bg-gray-50"></div>
+                                <div class="calendar-cell border-r p-1 bg-red-50"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1 bg-gray-50"></div>
+                                <div class="calendar-cell p-1 bg-gray-50"></div>
                             </div>
 
                             <!-- 16:00 -->
-                            <div class="grid grid-cols-8 border-b" style="height: 60px;">
-                                <div class="p-2 text-xs text-gray-500 text-right pr-3">16:00</div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative bg-blue-50/50"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative bg-gray-50"></div>
-                                <div class="border-l relative bg-gray-50"></div>
+                            <div class="grid grid-cols-8 border-b">
+                                <div class="p-2 text-xs text-gray-400 text-right border-r">16:00</div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1 bg-red-50"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1 bg-gray-50"></div>
+                                <div class="calendar-cell p-1 bg-gray-50"></div>
                             </div>
 
                             <!-- 17:00 -->
-                            <div class="grid grid-cols-8" style="height: 60px;">
-                                <div class="p-2 text-xs text-gray-500 text-right pr-3">17:00</div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative bg-blue-50/50"></div>
-                                <div class="border-l relative"></div>
-                                <div class="border-l relative bg-gray-50"></div>
-                                <div class="border-l relative bg-gray-50"></div>
+                            <div class="grid grid-cols-8">
+                                <div class="p-2 text-xs text-gray-400 text-right border-r">17:00</div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1 bg-red-50"></div>
+                                <div class="calendar-cell border-r p-1"></div>
+                                <div class="calendar-cell border-r p-1 bg-gray-50"></div>
+                                <div class="calendar-cell p-1 bg-gray-50"></div>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Meeting Detail Panel -->
-                <aside class="w-96 bg-white border-l overflow-y-auto">
-                    <!-- Meeting Header -->
-                    <div class="p-4 border-b bg-blue-50">
-                        <div class="flex items-start justify-between mb-2">
-                            <div>
-                                <span class="text-xs text-blue-600 font-medium">Today, 14:00 - 15:00</span>
-                                <h2 class="text-lg font-semibold mt-1">Product Demo</h2>
-                            </div>
+                <div class="w-96 border-l bg-white overflow-y-auto">
+                    <div class="p-4 border-b">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs bg-ekf-red/10 text-ekf-red px-2 py-1 rounded font-medium">Сегодня, 10:00</span>
                             <div class="flex gap-1">
-                                <button class="p-2 hover:bg-blue-100 rounded-lg">
-                                    <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                <button class="p-1.5 hover:bg-gray-100 rounded">
+                                    <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                                 </button>
-                                <button class="p-2 hover:bg-blue-100 rounded-lg">
-                                    <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                <button class="p-1.5 hover:bg-gray-100 rounded">
+                                    <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"></path></svg>
                                 </button>
                             </div>
                         </div>
-                        <div class="flex gap-2">
-                            <button class="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center justify-center gap-2">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                                Join Meeting
-                            </button>
-                            <button class="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50">
-                                Copy Link
-                            </button>
+                        <h2 class="text-lg font-semibold mb-2">Daily Standup</h2>
+                        <div class="flex items-center gap-2 text-sm text-gray-500">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span>10:00 — 10:15 (15 мин)</span>
                         </div>
                     </div>
 
-                    <!-- Tabs -->
-                    <div class="flex border-b">
-                        <button class="flex-1 py-3 text-sm font-medium tab-active">Details</button>
-                        <button class="flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700">Script</button>
-                        <button class="flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700">Recording</button>
-                        <button class="flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700">Tasks</button>
-                    </div>
-
-                    <!-- Details Tab Content -->
-                    <div class="p-4">
-                        <!-- Location -->
-                        <div class="mb-4">
-                            <label class="text-xs text-gray-500 block mb-1">Location</label>
-                            <div class="flex items-center gap-2">
-                                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                                <span class="text-sm">Conference Room A (3rd floor)</span>
-                            </div>
-                            <div class="flex items-center gap-2 mt-1">
-                                <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                                <a href="#" class="text-sm text-blue-600 hover:underline">https://meet.ekf.su/demo-123</a>
-                            </div>
-                        </div>
-
-                        <!-- Organizer -->
-                        <div class="mb-4">
-                            <label class="text-xs text-gray-500 block mb-2">Organizer</label>
-                            <div class="flex items-center gap-3">
-                                <img src="https://i.pravatar.cc/40?img=1" class="w-10 h-10 rounded-full">
-                                <div>
-                                    <div class="font-medium text-sm">Anton Sahovskii</div>
-                                    <div class="text-xs text-gray-500">Product Manager</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Participants -->
-                        <div class="mb-4">
-                            <div class="flex items-center justify-between mb-2">
-                                <label class="text-xs text-gray-500">Participants (7)</label>
-                                <button class="text-xs text-blue-600 hover:underline">+ Add</button>
-                            </div>
-                            <div class="space-y-2">
-                                <!-- Accepted -->
-                                <div class="flex items-center gap-3 p-2 bg-green-50 rounded-lg">
-                                    <img src="https://i.pravatar.cc/36?img=2" class="w-9 h-9 rounded-full border-2 status-accepted">
-                                    <div class="flex-1">
-                                        <div class="font-medium text-sm">Dmitry Kozlov</div>
-                                        <div class="text-xs text-gray-500">Developer</div>
+                    <!-- Participants -->
+                    <div class="p-4 border-b">
+                        <h3 class="text-sm font-medium mb-3">Участники (5)</h3>
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <img src="https://i.pravatar.cc/100?img=14" class="w-8 h-8 rounded-full">
+                                    <div>
+                                        <div class="text-sm font-medium">Антон Саховский</div>
+                                        <div class="text-xs text-gray-500">Организатор</div>
                                     </div>
-                                    <span class="text-xs text-green-600 font-medium">Accepted</span>
                                 </div>
-
-                                <div class="flex items-center gap-3 p-2 bg-green-50 rounded-lg">
-                                    <img src="https://i.pravatar.cc/36?img=3" class="w-9 h-9 rounded-full border-2 status-accepted">
-                                    <div class="flex-1">
-                                        <div class="font-medium text-sm">Maria Kuznetsova</div>
-                                        <div class="text-xs text-gray-500">Marketing</div>
+                                <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Принял</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <img src="https://i.pravatar.cc/100?img=12" class="w-8 h-8 rounded-full">
+                                    <div>
+                                        <div class="text-sm font-medium">Алексей Петров</div>
+                                        <div class="text-xs text-gray-500">Backend Dev</div>
                                     </div>
-                                    <span class="text-xs text-green-600 font-medium">Accepted</span>
                                 </div>
-
-                                <!-- Tentative -->
-                                <div class="flex items-center gap-3 p-2 bg-yellow-50 rounded-lg">
-                                    <img src="https://i.pravatar.cc/36?img=5" class="w-9 h-9 rounded-full border-2 status-tentative">
-                                    <div class="flex-1">
-                                        <div class="font-medium text-sm">Ivan Smirnov</div>
+                                <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Принял</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <img src="https://i.pravatar.cc/100?img=25" class="w-8 h-8 rounded-full">
+                                    <div>
+                                        <div class="text-sm font-medium">Елена Павлова</div>
                                         <div class="text-xs text-gray-500">QA Engineer</div>
                                     </div>
-                                    <span class="text-xs text-yellow-600 font-medium">Tentative</span>
                                 </div>
-
-                                <!-- Pending -->
-                                <div class="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
-                                    <img src="https://i.pravatar.cc/36?img=8" class="w-9 h-9 rounded-full border-2 status-pending">
-                                    <div class="flex-1">
-                                        <div class="font-medium text-sm">Elena Petrova</div>
+                                <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Принял</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <img src="https://i.pravatar.cc/100?img=33" class="w-8 h-8 rounded-full">
+                                    <div>
+                                        <div class="text-sm font-medium">Дмитрий Козлов</div>
+                                        <div class="text-xs text-gray-500">Frontend Dev</div>
+                                    </div>
+                                </div>
+                                <span class="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded">Под вопросом</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <img src="https://i.pravatar.cc/100?img=9" class="w-8 h-8 rounded-full">
+                                    <div>
+                                        <div class="text-sm font-medium">Ольга Миронова</div>
                                         <div class="text-xs text-gray-500">Designer</div>
                                     </div>
-                                    <span class="text-xs text-gray-500 font-medium">No response</span>
                                 </div>
-
-                                <!-- Declined -->
-                                <div class="flex items-center gap-3 p-2 bg-red-50 rounded-lg opacity-60">
-                                    <img src="https://i.pravatar.cc/36?img=10" class="w-9 h-9 rounded-full border-2 status-declined">
-                                    <div class="flex-1">
-                                        <div class="font-medium text-sm">Alexey Petrov</div>
-                                        <div class="text-xs text-gray-500">IT Support</div>
-                                    </div>
-                                    <span class="text-xs text-red-600 font-medium">Declined</span>
-                                </div>
-
-                                <!-- Show more -->
-                                <button class="w-full text-center text-sm text-gray-500 hover:text-gray-700 py-2">
-                                    Show 2 more participants
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Description -->
-                        <div class="mb-4">
-                            <label class="text-xs text-gray-500 block mb-1">Description</label>
-                            <p class="text-sm text-gray-600">
-                                Demo of new features from Sprint 8. We'll showcase:
-                                - Unified Tasks view with filters
-                                - Service Desk portal improvements
-                                - Meeting transcription feature
-                            </p>
-                        </div>
-
-                        <!-- Attachments -->
-                        <div class="mb-4">
-                            <label class="text-xs text-gray-500 block mb-2">Attachments</label>
-                            <div class="space-y-2">
-                                <div class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer">
-                                    <svg class="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"></path></svg>
-                                    <span class="text-sm flex-1">Sprint_8_Demo.pdf</span>
-                                    <span class="text-xs text-gray-400">2.4 MB</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Response Status -->
-                        <div class="mb-4 p-3 bg-blue-50 rounded-lg">
-                            <label class="text-xs text-gray-500 block mb-2">Your response</label>
-                            <div class="flex gap-2">
-                                <button class="flex-1 py-2 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600">Accept</button>
-                                <button class="flex-1 py-2 bg-yellow-500 text-white rounded-lg text-sm font-medium hover:bg-yellow-600">Tentative</button>
-                                <button class="flex-1 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600">Decline</button>
+                                <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">Ожидание</span>
                             </div>
                         </div>
                     </div>
-                </aside>
+
+                    <!-- Description -->
+                    <div class="p-4 border-b">
+                        <h3 class="text-sm font-medium mb-2">Описание</h3>
+                        <p class="text-sm text-gray-600">
+                            Ежедневная синхронизация команды. Обсуждаем статус задач, блокеры и планы на день.
+                        </p>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="p-4">
+                        <div class="space-y-2">
+                            <a href="05-meeting-script-recording.html" class="w-full px-4 py-2 bg-ekf-red text-white rounded-lg text-sm font-medium hover:bg-red-700 flex items-center justify-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                Начать встречу
+                            </a>
+                            <a href="06-meeting-transcription.html" class="w-full px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center justify-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                Итоги прошлой встречи
+                            </a>
+                        </div>
+                    </div>
+                </div>
             </div>
         </main>
     </div>

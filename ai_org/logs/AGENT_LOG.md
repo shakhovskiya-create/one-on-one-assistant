@@ -10,6 +10,24 @@
 
 ---
 
+## 2026-01-23
+
+### UI Prototypes: Unified Portal Structure
+- **Инициатор:** PM (user feedback)
+- **Исполнитель:** Developer
+- **Результат:**
+  - Унифицирована структура всех прототипов (dark sidebar + top nav)
+  - `01-tasks.html` - Project Management сайдбар (Sprints, Releases, Tests, Docs)
+  - `04-meetings.html` - Календарь встреч с контекстным сайдбаром
+  - `05-meeting-script-recording.html` - Скрипт встречи с записью
+  - `06-meeting-transcription.html` - AI анализ и распределение задач
+  - `index.html` - Обновлена навигация
+  - Добавлены реальные фото участников (pravatar.cc)
+- **Дизайн-система:** ekf-red #E53935, ekf-dark #1a1a2e
+- **Замечания:** Готово к передаче в Figma
+
+---
+
 ## 2026-01-22
 
 ### Sprint 6: GitHub Integration
