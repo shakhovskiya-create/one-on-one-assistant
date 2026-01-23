@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { api, workflows, tasks as tasksApi, github, versions as versionsApi, sprints as sprintsApi } from '$lib/api/client';
 	import { user, subordinates } from '$lib/stores/auth';
-	import type { TaskDependency, StatusColumn, TimeEntry, ResourceSummary, GitHubCommit, Version, Sprint } from '$lib/api/client';
+	import type { TaskDependency, StatusColumn, TimeEntry, ResourceSummary, GitHubCommit, GitHubPullRequest, Version, Sprint } from '$lib/api/client';
 
 	// Types
 	interface Task {
@@ -76,8 +76,9 @@
 	// Loading states for task modal
 	let loadingTaskDetails = $state(false);
 
-	// GitHub commits state
+	// GitHub commits and PRs state
 	let taskCommits: GitHubCommit[] = $state([]);
+	let taskPullRequests: GitHubPullRequest[] = $state([]);
 	let loadingCommits = $state(false);
 	let githubConfigured = $state(false);
 	// Default repo for EKF - can be made configurable per project later
@@ -169,8 +170,9 @@
 		resourceSummary = null;
 		showTimeEntryForm = false;
 		newTimeEntry = { hours: 0, description: '', date: new Date().toISOString().split('T')[0] };
-		// Reset commits
+		// Reset commits and PRs
 		taskCommits = [];
+		taskPullRequests = [];
 		showTaskModal = true;
 	}
 
@@ -188,6 +190,7 @@
 		timeEntries = [];
 		resourceSummary = null;
 		taskCommits = [];
+		taskPullRequests = [];
 		// Load dependencies, time entries, and commits for existing task
 		if (task.id) {
 			loadingTaskDetails = true;
@@ -196,7 +199,8 @@
 					loadTaskDependencies(task.id),
 					loadTimeEntries(task.id),
 					loadResourceSummary(task.id),
-					loadTaskCommits(task.id)
+					loadTaskCommits(task.id),
+					loadTaskPullRequests(task.id)
 				]);
 			} finally {
 				loadingTaskDetails = false;
@@ -307,7 +311,7 @@
 		}
 	}
 
-	// GitHub commits functions
+	// GitHub commits and PRs functions
 	async function loadTaskCommits(taskId: string) {
 		if (!githubConfigured) return;
 		loadingCommits = true;
@@ -319,6 +323,17 @@
 			taskCommits = [];
 		} finally {
 			loadingCommits = false;
+		}
+	}
+
+	async function loadTaskPullRequests(taskId: string) {
+		if (!githubConfigured) return;
+		try {
+			const prs = await github.getTaskPullRequests(taskId, defaultGitHubOwner, defaultGitHubRepo, 10);
+			taskPullRequests = prs || [];
+		} catch (e) {
+			console.error('Error loading pull requests:', e);
+			taskPullRequests = [];
 		}
 	}
 
@@ -1361,6 +1376,60 @@
 									<p class="mt-1 text-gray-300">Используйте ID задачи в сообщениях коммитов</p>
 								</div>
 							{/if}
+
+							<!-- Pull Requests Section -->
+							<div class="mt-3 pt-3 border-t border-gray-100">
+								<label class="block text-xs font-medium text-gray-500 flex items-center gap-1.5 mb-2">
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+									</svg>
+									Связанные Pull Requests
+								</label>
+
+								{#if taskPullRequests.length > 0}
+									<div class="space-y-1.5 max-h-40 overflow-y-auto">
+										{#each taskPullRequests as pr}
+											<a
+												href={pr.html_url}
+												target="_blank"
+												rel="noopener noreferrer"
+												class="block p-2 bg-gray-50 hover:bg-gray-100 rounded text-xs transition-colors"
+											>
+												<div class="flex items-start gap-2">
+													{#if pr.user?.avatar_url}
+														<img
+															src={pr.user.avatar_url}
+															alt={pr.user.login}
+															class="w-5 h-5 rounded-full flex-shrink-0"
+														/>
+													{:else}
+														<div class="w-5 h-5 rounded-full bg-gray-300 flex-shrink-0"></div>
+													{/if}
+													<div class="flex-1 min-w-0">
+														<div class="flex items-center gap-1.5">
+															<span class="font-medium text-gray-700">#{pr.number}</span>
+															<span class={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+																pr.state === 'open' ? 'bg-green-100 text-green-700' :
+																pr.merged_at ? 'bg-purple-100 text-purple-700' :
+																'bg-red-100 text-red-700'
+															}`}>
+																{pr.state === 'open' ? 'Open' : pr.merged_at ? 'Merged' : 'Closed'}
+															</span>
+															<span class="text-gray-400 text-[10px]">{formatCommitDate(pr.created_at)}</span>
+														</div>
+														<p class="text-gray-700 truncate mt-0.5">{pr.title}</p>
+														<span class="text-gray-500">{pr.user?.login}</span>
+													</div>
+												</div>
+											</a>
+										{/each}
+									</div>
+								{:else}
+									<div class="text-xs text-gray-400 py-2">
+										<p>Нет PR, упоминающих задачу #{editingTask.id?.substring(0, 8)}</p>
+									</div>
+								{/if}
+							</div>
 						</div>
 					{/if}
 				{/if}

@@ -1030,6 +1030,11 @@ export const github = {
 		const params = new URLSearchParams({ owner, repo });
 		if (limit) params.append('limit', String(limit));
 		return request<GitHubCommit[]>(`/github/tasks/${taskId}/commits?${params}`);
+	},
+	getTaskPullRequests: (taskId: string, owner: string, repo: string, limit?: number) => {
+		const params = new URLSearchParams({ owner, repo });
+		if (limit) params.append('limit', String(limit));
+		return request<GitHubPullRequest[]>(`/github/tasks/${taskId}/pulls?${params}`);
 	}
 };
 

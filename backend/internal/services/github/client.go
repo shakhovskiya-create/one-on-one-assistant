@@ -296,3 +296,25 @@ func (c *Client) SearchCommitsForTaskID(owner, repo, taskID string, limit int) (
 
 	return matching, nil
 }
+
+// SearchPullRequestsForTaskID finds PRs mentioning a task ID
+func (c *Client) SearchPullRequestsForTaskID(owner, repo, taskID string, limit int) ([]PullRequest, error) {
+	prs, err := c.GetPullRequests(owner, repo, "all", limit*2) // Get more to filter
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter PRs that mention the task ID in title or body
+	pattern := regexp.MustCompile(`(?i)(task|#|EKF-)` + regexp.QuoteMeta(taskID))
+	var matching []PullRequest
+	for _, pr := range prs {
+		if pattern.MatchString(pr.Title) || pattern.MatchString(pr.Body) {
+			matching = append(matching, pr)
+			if len(matching) >= limit {
+				break
+			}
+		}
+	}
+
+	return matching, nil
+}

@@ -290,6 +290,7 @@ func main() {
 	protectedAPI.Get("/github/repos/:owner/:repo/branches", h.GetBranches)
 	protectedAPI.Get("/github/repos/:owner/:repo/pulls", h.GetPullRequests)
 	protectedAPI.Get("/github/tasks/:id/commits", h.GetTaskCommits)
+	protectedAPI.Get("/github/tasks/:id/pulls", h.GetTaskPullRequests)
 
 	// User role (for current user)
 	protectedAPI.Get("/auth/role", h.GetCurrentUserRole)

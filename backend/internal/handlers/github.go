@@ -132,6 +132,35 @@ func (h *Handler) GetTaskCommits(c *fiber.Ctx) error {
 	return c.JSON(commits)
 }
 
+// GetTaskPullRequests returns pull requests mentioning a task ID
+func (h *Handler) GetTaskPullRequests(c *fiber.Ctx) error {
+	taskID := c.Params("id")
+	owner := c.Query("owner")
+	repo := c.Query("repo")
+	limit, _ := strconv.Atoi(c.Query("limit", "10"))
+
+	if taskID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "task ID is required",
+		})
+	}
+
+	if owner == "" || repo == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "owner and repo query params are required",
+		})
+	}
+
+	prs, err := h.GitHub.SearchPullRequestsForTaskID(owner, repo, taskID, limit)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(prs)
+}
+
 // ParseRepoURL parses a GitHub URL and returns owner/repo
 func (h *Handler) ParseRepoURL(c *fiber.Ctx) error {
 	var req struct {

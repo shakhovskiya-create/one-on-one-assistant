@@ -165,6 +165,15 @@
     - Отображение: прогресс, даты, goal, количество задач и story points
     - Sidebar: добавлены ссылки на Sprints и Releases
     - Иконка sprint добавлена в Sidebar.svelte
+
+  - **GitHub: Pull Requests в задачах**
+    - Backend: `SearchPullRequestsForTaskID` в github/client.go
+    - Backend: `GetTaskPullRequests` handler в handlers/github.go
+    - Route: GET `/github/tasks/:id/pulls`
+    - Frontend API: `github.getTaskPullRequests()` в client.ts
+    - UI: секция "Связанные Pull Requests" в модальном окне задачи
+    - Отображение: номер PR, статус (Open/Merged/Closed), название, автор
+    - Цветовая индикация статуса: зелёный (open), фиолетовый (merged), красный (closed)
 	
 ---
 
