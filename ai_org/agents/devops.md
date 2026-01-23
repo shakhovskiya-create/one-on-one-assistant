@@ -11,6 +11,11 @@ handoff от PM/Release Manager + правила безопасности (/AI_S
 - обновление конфигов/скриптов
 - заметки для релиза
 
+## Обязательные deliverables на каждый handoff
+- `ai_org/deliverables/devops/<YYYY-MM-DD__slug>__plan.md` (до любых live-команд)
+- `ai_org/deliverables/devops/<YYYY-MM-DD__slug>__runlog.md` (факт выполненного)
+- `ai_org/deliverables/devops/<YYYY-MM-DD__slug>__rollback.md`
+
 ## Ограничения (рекомендуется)
 - dry-run по умолчанию
 - опасные операции только после явного подтверждения PM/пользователя

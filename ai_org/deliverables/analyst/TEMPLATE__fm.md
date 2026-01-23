@@ -1,0 +1,29 @@
+# Functional Model (FM) — <slug>
+
+Дата: YYYY-MM-DD  
+Основание: <link to handoff + answers>
+
+## Цель процесса
+- …
+
+## Акторы / роли
+- …
+
+## Триггер / входы
+- …
+
+## Основной поток (happy path)
+1) …
+2) …
+
+## Альтернативы / исключения (edge cases)
+- …
+
+## Данные / сущности / состояния (ссылки на DOMAIN_GLOSSARY / STATE_MACHINES)
+- …
+
+## Контрольные точки и KPI (если применимо)
+- …
+
+## OPEN QUESTIONS / RISKS / ASSUMPTIONS
+- …

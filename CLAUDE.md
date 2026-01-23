@@ -63,6 +63,9 @@
    - если изменился план — обновить `WORKPLAN.md`
 - Если данных не хватает — НЕ выдумывай. Оформи “вопрос/риск” и запроси недостающее у пользователя.
 - Запрещено начинать выполнение задачи, пока не создан handoff-файл в ai_org/handoffs/active/.
+- Запрещено начинать выполнение задачи, пока не создан handoff-файл в `ai_org/handoffs/active/`.
+- Запрещено считать задачу выполненной без deliverable-файлов роли в `ai_org/deliverables/<role>/...` (Analyst: questions+fm+spec; QA: testplan+results+bugs; DevOps: plan+runlog+rollback).
+
 
 ---
 

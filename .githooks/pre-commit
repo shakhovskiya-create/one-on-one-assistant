@@ -1,16 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# если менялся код/доки — требуем обновление агентного лога
 CHANGED="$(git diff --cached --name-only)"
 
-# считаем "существенным" всё, кроме самого лога/статуса и мелочей
+# "Существенные изменения" — всё, кроме служебных файлов
 SIGNIFICANT="$(echo "$CHANGED" | grep -Ev '^(ai_org/logs/AGENT_LOG\.md|ai_org/state/STATUS\.md|ai_org/state/ROADMAP\.md)$' || true)"
 
 if [ -n "$SIGNIFICANT" ]; then
+  # 1) Требуем агентный лог
   if ! echo "$CHANGED" | grep -q '^ai_org/logs/AGENT_LOG\.md$'; then
     echo "❌ Нужно обновить ai_org/logs/AGENT_LOG.md (есть существенные изменения)"
     echo "$SIGNIFICANT" | sed 's/^/ - /'
+    exit 1
+  fi
+
+  # 2) Требуем handoff-файл (active/done)
+  if ! echo "$CHANGED" | grep -Eq '^ai_org/handoffs/(active|done)/'; then
+    echo "❌ Нужно создать/обновить handoff-файл (ai_org/handoffs/active/* или done/*)"
+    exit 1
+  fi
+
+  # 3) Требуем deliverable (видимый результат роли)
+  if ! echo "$CHANGED" | grep -Eq '^ai_org/deliverables/'; then
+    echo "❌ Нужно создать/обновить deliverable-файл (ai_org/deliverables/<role>/*)"
     exit 1
   fi
 fi
