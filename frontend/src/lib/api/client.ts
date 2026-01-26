@@ -27,9 +27,10 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 
 	const config: RequestInit = {
 		method,
+		credentials: 'include', // Send cookies for HttpOnly auth
 		headers: {
 			'Content-Type': 'application/json',
-			...getAuthHeaders(),
+			...getAuthHeaders(), // Also send Authorization header for backwards compatibility
 			...headers
 		}
 	};
@@ -274,13 +275,12 @@ export const messenger = {
 		request<{ reactions: { emoji: string; users: string[] }[] }>(`/messages/${messageId}/reactions`),
 	getWebSocketUrl: (userId: string) => {
 		// WebSocket connects directly to the backend, not through the API proxy
+		// SECURITY: Token is NOT sent in URL to prevent leakage via logs/referrers
+		// Auth is handled via HttpOnly cookies (sent with upgrade request)
 		const wsProtocol = browser && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 		const wsHost = browser ? window.location.host : 'backend:8080';
-		const token = browser ? localStorage.getItem('auth_token') : null;
 		const params = new URLSearchParams({ user_id: userId });
-		if (token && token !== 'authenticated') {
-			params.append('token', token);
-		}
+		// NOTE: Cookie-based auth is used, no token in URL
 		return `${wsProtocol}//${wsHost}/ws/messenger?${params.toString()}`;
 	},
 	// Telegram integration

@@ -56,6 +56,7 @@ function createAuthStore() {
 		try {
 			const authToken = browser ? localStorage.getItem('auth_token') : null;
 			const res = await fetch(`${API_URL}/v1/ad/subordinates/${userId}`, {
+				credentials: 'include', // Send HttpOnly cookies
 				headers: {
 					...(authToken && authToken !== 'authenticated' ? { 'Authorization': `Bearer ${authToken}` } : {})
 				}
@@ -77,6 +78,7 @@ function createAuthStore() {
 
 			const res = await fetch(`${API_URL}/v1/ad/authenticate`, {
 				method: 'POST',
+				credentials: 'include', // Receive HttpOnly cookies
 				body: formData
 			});
 
@@ -118,6 +120,7 @@ function createAuthStore() {
 			const authToken = browser ? localStorage.getItem('auth_token') : null;
 			const res = await fetch(`${API_URL}/v1/users/change-password`, {
 				method: 'POST',
+				credentials: 'include', // Send HttpOnly cookies
 				headers: {
 					'Content-Type': 'application/json',
 					...(authToken && authToken !== 'authenticated' ? { 'Authorization': `Bearer ${authToken}` } : {})
@@ -144,16 +147,11 @@ function createAuthStore() {
 
 	async function refreshToken(): Promise<boolean> {
 		try {
-			const currentState = get({ subscribe });
-			if (!currentState.token || currentState.token === 'authenticated') {
-				return false;
-			}
-
 			const res = await fetch(`${API_URL}/v1/auth/refresh`, {
 				method: 'POST',
+				credentials: 'include', // Send HttpOnly cookies
 				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${currentState.token}`
+					'Content-Type': 'application/json'
 				}
 			});
 
@@ -161,6 +159,7 @@ function createAuthStore() {
 				const data = await res.json();
 				if (data.token) {
 					update(state => ({ ...state, token: data.token }));
+					// Keep localStorage for backwards compatibility during migration
 					if (browser) {
 						localStorage.setItem('auth_token', data.token);
 					}
@@ -174,9 +173,22 @@ function createAuthStore() {
 		}
 	}
 
-	function logout() {
+	async function logout() {
+		// Call backend to clear HttpOnly cookie
+		if (browser) {
+			try {
+				await fetch(`${API_URL}/v1/auth/logout`, {
+					method: 'POST',
+					credentials: 'include'
+				});
+			} catch {
+				// Ignore errors, still clear local state
+			}
+		}
+
 		update(state => ({ ...state, user: null, token: null, subordinates: [] }));
 
+		// Also clear localStorage for backwards compatibility
 		if (browser) {
 			localStorage.removeItem('auth_token');
 			localStorage.removeItem('auth_user');

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ekf/one-on-one-backend/internal/middleware"
 	"github.com/ekf/one-on-one-backend/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
@@ -489,10 +490,15 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 					token = generateToken()
 				}
 
+				// Set HttpOnly cookie for browser authentication
+				// Determine if we should use Secure flag (true in production)
+				isSecure := c.Protocol() == "https" || c.Get("X-Forwarded-Proto") == "https"
+				middleware.SetAuthCookie(c, token, isSecure)
+
 				return c.JSON(fiber.Map{
 					"authenticated":         true,
 					"employee":              employee,
-					"token":                 token,
+					"token":                 token, // Still return token for backwards compatibility
 					"force_password_change": false,
 				})
 			}
@@ -571,10 +577,14 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 					token = generateToken() // Fallback to simple token
 				}
 
+				// Set HttpOnly cookie for browser authentication
+				isSecure := c.Protocol() == "https" || c.Get("X-Forwarded-Proto") == "https"
+				middleware.SetAuthCookie(c, token, isSecure)
+
 				return c.JSON(fiber.Map{
 					"authenticated": true,
 					"employee":      employee,
-					"token":         token,
+					"token":         token, // Still return for backwards compatibility
 				})
 			}
 			errMsg, _ := result["error"].(string)
@@ -591,23 +601,47 @@ func (h *Handler) AuthenticateAD(c *fiber.Ctx) error {
 
 // RefreshToken refreshes a JWT token
 func (h *Handler) RefreshToken(c *fiber.Ctx) error {
+	var tokenString string
+
+	// Try Authorization header first
 	authHeader := c.Get("Authorization")
-	if authHeader == "" {
-		return c.Status(401).JSON(fiber.Map{"error": "Missing authorization header"})
+	if authHeader != "" {
+		tokenString = authHeader
+		if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+			tokenString = authHeader[7:]
+		}
 	}
 
-	tokenString := authHeader
-	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-		tokenString = authHeader[7:]
+	// Fall back to cookie
+	if tokenString == "" {
+		tokenString = c.Cookies(middleware.AuthCookieName)
+	}
+
+	if tokenString == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "No token provided"})
 	}
 
 	newToken, err := h.JWT.RefreshToken(tokenString)
 	if err != nil {
+		middleware.ClearAuthCookie(c)
 		return c.Status(401).JSON(fiber.Map{"error": "Invalid or expired token"})
 	}
 
+	// Update HttpOnly cookie
+	isSecure := c.Protocol() == "https" || c.Get("X-Forwarded-Proto") == "https"
+	middleware.SetAuthCookie(c, newToken, isSecure)
+
 	return c.JSON(fiber.Map{
 		"token": newToken,
+	})
+}
+
+// Logout clears the authentication cookie
+func (h *Handler) Logout(c *fiber.Ctx) error {
+	middleware.ClearAuthCookie(c)
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": "Logged out successfully",
 	})
 }
 

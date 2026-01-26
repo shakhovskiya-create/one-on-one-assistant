@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ekf/one-on-one-backend/internal/middleware"
 	"github.com/ekf/one-on-one-backend/internal/models"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
@@ -83,10 +84,15 @@ func (h *MessengerHub) run() {
 // MessengerWebSocket handles WebSocket connections for messenger
 func (h *Handler) MessengerWebSocket(conn *websocket.Conn) {
 	userID := conn.Query("user_id")
-	tokenString := conn.Query("token")
 	if userID == "" {
 		conn.Close()
 		return
+	}
+
+	// SECURITY: Get token from cookie first, then fallback to query param (for backwards compatibility)
+	tokenString := conn.Cookies(middleware.AuthCookieName)
+	if tokenString == "" {
+		tokenString = conn.Query("token")
 	}
 	if tokenString == "" {
 		conn.Close()

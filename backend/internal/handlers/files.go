@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
@@ -33,12 +34,156 @@ type FileMetadata struct {
 
 const defaultBucket = "attachments"
 
-// UploadFile handles file uploads
+// File upload security constants
+const (
+	// MaxFileSize is the maximum allowed file size (50 MB)
+	MaxFileSize = 50 * 1024 * 1024
+	// MaxFileSizeForImages is the maximum allowed image size (10 MB)
+	MaxFileSizeForImages = 10 * 1024 * 1024
+	// SniffSize is the number of bytes to read for MIME detection
+	SniffSize = 512
+)
+
+// AllowedFileTypes defines the whitelist of allowed file extensions and their MIME types
+var AllowedFileTypes = map[string][]string{
+	// Documents
+	".pdf":  {"application/pdf"},
+	".doc":  {"application/msword"},
+	".docx": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+	".xls":  {"application/vnd.ms-excel"},
+	".xlsx": {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+	".ppt":  {"application/vnd.ms-powerpoint"},
+	".pptx": {"application/vnd.openxmlformats-officedocument.presentationml.presentation"},
+	".txt":  {"text/plain"},
+	".csv":  {"text/csv", "text/plain", "application/csv"},
+	".json": {"application/json", "text/plain"},
+	".xml":  {"application/xml", "text/xml", "text/plain"},
+	// Images
+	".png":  {"image/png"},
+	".jpg":  {"image/jpeg"},
+	".jpeg": {"image/jpeg"},
+	".gif":  {"image/gif"},
+	".webp": {"image/webp"},
+	// Archives (limited support)
+	".zip": {"application/zip", "application/x-zip-compressed"},
+	// Audio (for meeting recordings)
+	".mp3": {"audio/mpeg"},
+	".wav": {"audio/wav", "audio/x-wav"},
+	".ogg": {"audio/ogg"},
+	// Video (for meeting recordings)
+	".mp4":  {"video/mp4"},
+	".webm": {"video/webm"},
+}
+
+// DangerousExtensions are extensions that should never be allowed
+var DangerousExtensions = map[string]bool{
+	".exe": true, ".bat": true, ".cmd": true, ".sh": true,
+	".ps1": true, ".vbs": true, ".js": true, ".msi": true,
+	".dll": true, ".com": true, ".scr": true, ".hta": true,
+	".jar": true, ".php": true, ".asp": true, ".aspx": true,
+	".jsp": true, ".py": true, ".rb": true, ".pl": true,
+	".cgi": true, ".htaccess": true, ".svg": true, // SVG can contain scripts
+}
+
+// validateFileUpload performs security validation on uploaded file
+func validateFileUpload(filename string, size int64, contentBuffer []byte) (string, error) {
+	// 1. Check file extension against whitelist
+	ext := strings.ToLower(filepath.Ext(filename))
+	if ext == "" {
+		return "", fmt.Errorf("file must have an extension")
+	}
+
+	// Check for dangerous extensions first
+	if DangerousExtensions[ext] {
+		return "", fmt.Errorf("file type not allowed for security reasons: %s", ext)
+	}
+
+	allowedMimes, ok := AllowedFileTypes[ext]
+	if !ok {
+		return "", fmt.Errorf("file type not allowed: %s", ext)
+	}
+
+	// 2. Check file size
+	maxSize := int64(MaxFileSize)
+	if strings.HasPrefix(allowedMimes[0], "image/") {
+		maxSize = MaxFileSizeForImages
+	}
+	if size > maxSize {
+		return "", fmt.Errorf("file size exceeds limit: %d bytes (max: %d bytes)", size, maxSize)
+	}
+
+	// 3. Detect actual MIME type from file content (magic bytes)
+	detectedMime := http.DetectContentType(contentBuffer)
+	// Normalize detected MIME (http.DetectContentType may return charset info)
+	detectedMime = strings.Split(detectedMime, ";")[0]
+	detectedMime = strings.TrimSpace(detectedMime)
+
+	// 4. Validate MIME type matches expected for extension
+	mimeValid := false
+	for _, allowed := range allowedMimes {
+		if detectedMime == allowed {
+			mimeValid = true
+			break
+		}
+	}
+
+	// Some files like DOCX/XLSX are detected as application/zip by magic bytes
+	// so we need special handling for Office documents
+	if !mimeValid {
+		// Office Open XML formats are ZIP archives
+		if (ext == ".docx" || ext == ".xlsx" || ext == ".pptx") &&
+			(detectedMime == "application/zip" || detectedMime == "application/octet-stream") {
+			mimeValid = true
+		}
+		// Text-based files might be detected as text/plain
+		if (ext == ".csv" || ext == ".json" || ext == ".xml" || ext == ".txt") &&
+			detectedMime == "text/plain" {
+			mimeValid = true
+		}
+		// Binary fallback for some formats
+		if detectedMime == "application/octet-stream" {
+			// Allow for document types that may not have clear magic bytes
+			if ext == ".doc" || ext == ".xls" || ext == ".ppt" {
+				mimeValid = true
+			}
+		}
+	}
+
+	if !mimeValid {
+		return "", fmt.Errorf("file content does not match extension: detected %s for %s file", detectedMime, ext)
+	}
+
+	// 5. Additional checks for dangerous content
+	// Check for script content in text files
+	if strings.HasPrefix(detectedMime, "text/") {
+		content := strings.ToLower(string(contentBuffer))
+		dangerousPatterns := []string{
+			"<script", "javascript:", "vbscript:", "onload=", "onerror=",
+			"onclick=", "onmouseover=", "eval(", "document.cookie",
+		}
+		for _, pattern := range dangerousPatterns {
+			if strings.Contains(content, pattern) {
+				return "", fmt.Errorf("file contains potentially dangerous content")
+			}
+		}
+	}
+
+	return detectedMime, nil
+}
+
+// UploadFile handles file uploads with security validation
 func (h *Handler) UploadFile(c *fiber.Ctx) error {
 	// Get file from form
 	file, err := c.FormFile("file")
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "No file provided"})
+	}
+
+	// 1. Early size check before reading file
+	if file.Size > MaxFileSize {
+		return c.Status(413).JSON(fiber.Map{
+			"error": fmt.Sprintf("File too large: %d bytes (max: %d bytes)", file.Size, MaxFileSize),
+		})
 	}
 
 	// Get optional metadata
@@ -54,22 +199,43 @@ func (h *Handler) UploadFile(c *fiber.Ctx) error {
 	}
 	defer fileContent.Close()
 
-	// Read file content
-	data, err := io.ReadAll(fileContent)
+	// 2. Read first 512 bytes for MIME detection (magic bytes)
+	sniffBuffer := make([]byte, SniffSize)
+	n, err := fileContent.Read(sniffBuffer)
+	if err != nil && err != io.EOF {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to read file header"})
+	}
+	sniffBuffer = sniffBuffer[:n]
+
+	// 3. Validate file (extension, size, MIME, dangerous content)
+	validatedMime, err := validateFileUpload(file.Filename, file.Size, sniffBuffer)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// 4. Reset file reader and read remaining content
+	_, err = fileContent.Seek(0, io.SeekStart)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to read file"})
+	}
+
+	// Read file content with size limit
+	limitedReader := io.LimitReader(fileContent, MaxFileSize+1)
+	data, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to read file content"})
 	}
+	if int64(len(data)) > MaxFileSize {
+		return c.Status(413).JSON(fiber.Map{"error": "File too large"})
+	}
 
 	// Generate unique filename
-	ext := filepath.Ext(file.Filename)
+	ext := strings.ToLower(filepath.Ext(file.Filename))
 	fileID := uuid.New().String()
 	storagePath := storage.GeneratePath(entityType, entityID, fileID, ext)
 
-	// Detect content type
-	contentType := file.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = detectContentType(ext)
-	}
+	// Use validated MIME type (from magic bytes detection)
+	contentType := validatedMime
 
 	// Upload to MinIO Storage
 	var publicURL string

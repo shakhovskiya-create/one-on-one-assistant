@@ -1,7 +1,9 @@
 package config
 
 import (
+	"log"
 	"os"
+	"strings"
 )
 
 type Config struct {
@@ -101,4 +103,47 @@ func getEnvRequired(key string) string {
 		panic("SECURITY ERROR: Required environment variable " + key + " is not set")
 	}
 	return value
+}
+
+// ValidateSecuritySettings logs warnings for insecure configurations
+// Should be called after Load() in main.go
+func (c *Config) ValidateSecuritySettings() {
+	warnings := []string{}
+
+	// Check TLS verification settings
+	if c.ADSkipVerify {
+		warnings = append(warnings, "AD_SKIP_VERIFY=true: LDAP TLS verification is DISABLED - vulnerable to MITM attacks")
+	}
+
+	if c.EWSSkipTLSVerify {
+		warnings = append(warnings, "EWS_SKIP_TLS_VERIFY=true: Exchange TLS verification is DISABLED - vulnerable to MITM attacks")
+	}
+
+	// Check PostgreSQL sslmode
+	if c.DatabaseURL != "" {
+		if strings.Contains(c.DatabaseURL, "sslmode=disable") {
+			warnings = append(warnings, "DATABASE_URL contains sslmode=disable: Database connection is UNENCRYPTED - use sslmode=require or sslmode=verify-full")
+		} else if !strings.Contains(c.DatabaseURL, "sslmode=") {
+			warnings = append(warnings, "DATABASE_URL missing sslmode parameter: Consider adding sslmode=require for encrypted connections")
+		}
+	}
+
+	// Check MinIO SSL
+	if !c.MinIOUseSSL && c.MinIOEndpoint != "" {
+		warnings = append(warnings, "MINIO_USE_SSL=false: MinIO storage connection is UNENCRYPTED")
+	}
+
+	// Check JWT secret strength
+	if len(c.JWTSecret) < 32 {
+		warnings = append(warnings, "JWT_SECRET is less than 32 characters: Use a stronger secret for production")
+	}
+
+	// Log all warnings
+	if len(warnings) > 0 {
+		log.Println("=== SECURITY CONFIGURATION WARNINGS ===")
+		for _, w := range warnings {
+			log.Printf("⚠️  SECURITY WARNING: %s", w)
+		}
+		log.Println("========================================")
+	}
 }

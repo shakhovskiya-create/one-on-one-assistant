@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 
+	"github.com/ekf/one-on-one-backend/internal/middleware"
 	"github.com/ekf/one-on-one-backend/internal/models"
 	"github.com/gofiber/fiber/v2"
 )
@@ -117,6 +118,7 @@ func (h *Handler) DeleteEmployee(c *fiber.Ctx) error {
 }
 
 // GetEmployeeDossier returns full employee profile
+// RBAC: Only self, manager, HR or admin can access sensitive dossier data
 func (h *Handler) GetEmployeeDossier(c *fiber.Ctx) error {
 	if h.DB == nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
@@ -124,9 +126,21 @@ func (h *Handler) GetEmployeeDossier(c *fiber.Ctx) error {
 
 	id := c.Params("id")
 
+	// RBAC check: sensitive data access
+	rbacCtx, err := middleware.GetRBACContext(c, h.DB)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": "Not authenticated"})
+	}
+
+	if !rbacCtx.CanAccessSensitiveEmployeeData(id, h.DB) {
+		return c.Status(403).JSON(fiber.Map{
+			"error": "Access denied: you don't have permission to view this employee's dossier",
+		})
+	}
+
 	// Get employee
 	var employee models.Employee
-	err := h.DB.From("employees").Select("*").Eq("id", id).Single().Execute(&employee)
+	err = h.DB.From("employees").Select("*").Eq("id", id).Single().Execute(&employee)
 	if err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "Employee not found"})
 	}
@@ -209,14 +223,30 @@ func (h *Handler) GetEmployeeDossier(c *fiber.Ctx) error {
 }
 
 // GetMyTeam returns subordinates of a manager
+// RBAC: User can only request their own team unless they are admin/HR
 func (h *Handler) GetMyTeam(c *fiber.Ctx) error {
 	if h.DB == nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
 	}
 
+	// RBAC check
+	rbacCtx, err := middleware.GetRBACContext(c, h.DB)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": "Not authenticated"})
+	}
+
 	managerID := c.Query("manager_id")
 	if managerID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "manager_id required"})
+		// If no manager_id provided, default to current user
+		managerID = rbacCtx.UserID
+	}
+
+	// Verify the requester has permission to view this manager's team
+	// Only allow: self, admin, HR
+	if managerID != rbacCtx.UserID && !rbacCtx.IsAdmin() && !rbacCtx.IsHR() {
+		return c.Status(403).JSON(fiber.Map{
+			"error": "Access denied: you can only view your own team",
+		})
 	}
 
 	includeIndirect := c.Query("include_indirect", "true") == "true"

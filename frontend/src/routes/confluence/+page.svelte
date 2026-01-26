@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { confluence } from '$lib/api/client';
+	import { sanitizeHtml, sanitizeExcerpt } from '$lib/utils/sanitize';
 	import type { ConfluenceSpace, ConfluenceContent, ConfluenceSearchResult } from '$lib/api/client';
 
 	let configured = $state(false);
@@ -231,7 +232,7 @@
 									onclick={() => openInConfluence(result.content._links.webui)}
 								>
 									<h3 class="font-medium text-blue-600 hover:text-blue-800">{result.title}</h3>
-									<p class="text-sm text-gray-600 mt-1 line-clamp-2">{@html result.excerpt}</p>
+									<p class="text-sm text-gray-600 mt-1 line-clamp-2">{@html sanitizeExcerpt(result.excerpt)}</p>
 									<div class="flex items-center gap-4 mt-2 text-xs text-gray-500">
 										<span>{result.content.space?.name || 'Unknown space'}</span>
 										<span>{result.friendlyLastModified}</span>
@@ -286,7 +287,7 @@
 								</div>
 							{:else if selectedPage.body?.view?.value}
 								<div class="prose max-w-none confluence-content">
-									{@html selectedPage.body.view.value}
+									{@html sanitizeHtml(selectedPage.body.view.value)}
 								</div>
 							{:else}
 								<p class="text-gray-500 italic">Содержимое страницы недоступно</p>

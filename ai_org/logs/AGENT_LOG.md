@@ -12,6 +12,53 @@
 
 ## 2026-01-26
 
+### Sprint Planning: Security + React Migration
+- **Инициатор:** User request (audit recommendations + frontend stack replacement)
+- **Исполнитель:** PM
+- **Handoffs:**
+  - `ai_org/handoffs/active/2026-01-26__PM__DEV__security-sprint.md`
+  - `ai_org/handoffs/active/2026-01-26__PM__DEV__react-migration.md`
+- **Результат:**
+  - Созданы Sprint 10 (Security fixes) и Sprint 11 (React Migration)
+  - Обновлён WORKPLAN.md с детальными задачами
+  - Создана документация страниц для Figma AI
+- **Артефакты:**
+  - `ai_org/deliverables/developer/2026-01-26__figma-pages-spec.md` — 12 страниц, layout, компоненты
+- **Статус:** ✅ УТВЕРЖДЕНО
+
+### Sprint 10: Security Fixes — ЗАВЕРШЁН
+- **Инициатор:** PM (Enterprise Audit recommendations)
+- **Исполнитель:** Developer
+- **Handoff:** `ai_org/handoffs/active/2026-01-26__PM__DEV__security-sprint.md`
+- **Результат:**
+  - ✅ **10.2-10.3 IDOR Protection** — RBAC middleware для employees/calendar
+    - Файлы: `internal/middleware/rbac.go` (NEW), `internal/handlers/employees.go`, `internal/handlers/calendar.go`
+    - GetEmployeeDossier: только self/manager/HR/admin
+    - GetMyTeam: только self/admin/HR
+    - GetCalendar: только self/manager/admin/HR
+  - ✅ **10.4 XSS Prevention** — DOMPurify интеграция
+    - Файлы: `frontend/src/lib/utils/sanitize.ts` (NEW), confluence/mail pages
+    - Confluence и Mail компоненты теперь безопасны от XSS
+  - ✅ **10.5-10.6 JWT/WS Token Security** — HttpOnly cookies
+    - Файлы: `internal/middleware/auth.go`, `internal/handlers/connector.go`, `internal/handlers/messenger.go`
+    - Frontend: `src/lib/api/client.ts`, `src/lib/stores/auth.ts`
+    - Dual-path auth: Authorization header + HttpOnly Cookie
+    - WebSocket читает токен из cookie (не из URL)
+    - Logout endpoint очищает HttpOnly cookie
+  - ✅ **10.7-10.8 TLS/SSL Security** — Security validation на старте
+    - Файлы: `internal/config/config.go`, `cmd/server/main.go`, `.env.example`
+    - Проверка: AD_SKIP_VERIFY, EWS_SKIP_TLS_VERIFY, DATABASE_URL sslmode, MINIO_USE_SSL
+    - Warnings при небезопасных настройках
+  - ✅ **10.10 File Upload Validation** — MIME/size/whitelist
+    - Файлы: `internal/handlers/files.go`, `internal/handlers/speech.go`
+    - Magic bytes detection с `http.DetectContentType()`
+    - Extension whitelist и dangerous extensions blacklist
+    - Size limits: 50MB general, 10MB images, 100MB audio
+- **Коммит:** feat(security): Complete Sprint 10 security fixes
+- **Статус:** ✅ ЗАВЕРШЁН
+
+---
+
 ### Mail Auth Persistence Fix
 - **Инициатор:** PM (BUG - повторная авторизация почты)
 - **Исполнитель:** Developer

@@ -19,6 +19,9 @@ func main() {
 	// Load config
 	cfg := config.Load()
 
+	// Validate security settings (logs warnings for insecure configs)
+	cfg.ValidateSecuritySettings()
+
 	// Create handler
 	h := handlers.NewHandler(cfg)
 
@@ -213,6 +216,7 @@ func main() {
 
 	// JWT Token Management
 	protectedAPI.Post("/auth/refresh", h.RefreshToken)
+	protectedAPI.Post("/auth/logout", h.Logout)
 	protectedAPI.Get("/auth/me", h.GetMe)
 
 	// Speech-to-Text

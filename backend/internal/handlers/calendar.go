@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ekf/one-on-one-backend/internal/middleware"
 	"github.com/ekf/one-on-one-backend/internal/models"
 	"github.com/ekf/one-on-one-backend/internal/utils"
 	"github.com/gofiber/fiber/v2"
@@ -18,14 +19,29 @@ type CalendarAuthRequest struct {
 }
 
 // GetMeetingRooms returns available meeting rooms from Exchange
+// RBAC: User can only use their own credentials, admin/HR can use any employee's credentials
 func (h *Handler) GetMeetingRooms(c *fiber.Ctx) error {
 	if h.EWS == nil {
 		return c.Status(500).JSON(fiber.Map{"error": "EWS not configured"})
 	}
 
+	// RBAC check
+	rbacCtx, err := middleware.GetRBACContext(c, h.DB)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": "Not authenticated"})
+	}
+
 	employeeID := c.Query("employee_id")
 	if employeeID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "employee_id required"})
+		// Default to current user
+		employeeID = rbacCtx.UserID
+	}
+
+	// Security: User can only use their own credentials unless admin/HR
+	if employeeID != rbacCtx.UserID && !rbacCtx.IsAdmin() && !rbacCtx.IsHR() {
+		return c.Status(403).JSON(fiber.Map{
+			"error": "Access denied: you can only use your own credentials for meeting rooms",
+		})
 	}
 
 	// Get employee credentials
@@ -33,7 +49,7 @@ func (h *Handler) GetMeetingRooms(c *fiber.Ctx) error {
 		ADLogin           string  `json:"ad_login"`
 		EncryptedPassword *string `json:"encrypted_password"`
 	}
-	err := h.DB.From("employees").Select("ad_login, encrypted_password").Eq("id", employeeID).Limit(1).Execute(&employees)
+	err = h.DB.From("employees").Select("ad_login, encrypted_password").Eq("id", employeeID).Limit(1).Execute(&employees)
 	if err != nil || len(employees) == 0 {
 		return c.Status(404).JSON(fiber.Map{"error": "Employee not found"})
 	}
@@ -64,6 +80,7 @@ func (h *Handler) GetMeetingRooms(c *fiber.Ctx) error {
 }
 
 // GetCalendar returns calendar events from Exchange
+// RBAC: User can view their own calendar, managers can view their team's calendars
 func (h *Handler) GetCalendar(c *fiber.Ctx) error {
 	if h.DB == nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
@@ -71,13 +88,25 @@ func (h *Handler) GetCalendar(c *fiber.Ctx) error {
 
 	employeeID := c.Params("id")
 
+	// RBAC check
+	rbacCtx, err := middleware.GetRBACContext(c, h.DB)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": "Not authenticated"})
+	}
+
+	if !rbacCtx.CanAccessCalendar(employeeID, h.DB) {
+		return c.Status(403).JSON(fiber.Map{
+			"error": "Access denied: you don't have permission to view this calendar",
+		})
+	}
+
 	// Get employee info
 	var employees []struct {
 		Email             string  `json:"email"`
 		ADLogin           string  `json:"ad_login"`
 		EncryptedPassword *string `json:"encrypted_password"`
 	}
-	err := h.DB.From("employees").Select("email, ad_login, encrypted_password").Eq("id", employeeID).Limit(1).Execute(&employees)
+	err = h.DB.From("employees").Select("email, ad_login, encrypted_password").Eq("id", employeeID).Limit(1).Execute(&employees)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Ошибка базы данных: " + err.Error()})
 	}
@@ -148,12 +177,25 @@ func (h *Handler) GetCalendar(c *fiber.Ctx) error {
 }
 
 // GetCalendarSimple returns calendar from database only
+// RBAC: User can view their own calendar, managers can view their team's calendars
 func (h *Handler) GetCalendarSimple(c *fiber.Ctx) error {
 	if h.DB == nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
 	}
 
 	employeeID := c.Params("id")
+
+	// RBAC check
+	rbacCtx, err := middleware.GetRBACContext(c, h.DB)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": "Not authenticated"})
+	}
+
+	if !rbacCtx.CanAccessCalendar(employeeID, h.DB) {
+		return c.Status(403).JSON(fiber.Map{
+			"error": "Access denied: you don't have permission to view this calendar",
+		})
+	}
 
 	var meetings []map[string]interface{}
 	h.DB.From("meetings").Select("*").Eq("employee_id", employeeID).Order("date", true).Execute(&meetings)

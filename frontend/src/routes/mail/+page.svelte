@@ -6,6 +6,7 @@
 	import { browser } from '$app/environment';
 	import RichTextEditor from '$lib/components/RichTextEditor.svelte';
 	import AttachmentPreview from '$lib/components/AttachmentPreview.svelte';
+	import { sanitizeEmailHtml } from '$lib/utils/sanitize';
 
 	// State
 	let folders: MailFolder[] = $state([]);
@@ -1624,7 +1625,7 @@
 							</div>
 						{:else if selectedEmail.body}
 							<div class="prose max-w-none">
-								{@html selectedEmail.body}
+								{@html sanitizeEmailHtml(selectedEmail.body)}
 							</div>
 						{:else}
 							<p class="text-gray-500">Нет содержимого</p>
@@ -1847,7 +1848,7 @@
 						</div>
 					{:else if selectedEmail.body}
 						<div class="prose max-w-none bg-white rounded-lg p-4">
-							{@html selectedEmail.body}
+							{@html sanitizeEmailHtml(selectedEmail.body)}
 						</div>
 					{:else}
 						<p class="text-gray-500 text-center py-8">Нет содержимого</p>

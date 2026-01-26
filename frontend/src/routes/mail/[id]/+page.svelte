@@ -6,6 +6,7 @@
 	import { mail } from '$lib/api/client';
 	import type { EmailMessage, EmailAttachment } from '$lib/api/client';
 	import AttachmentPreview from '$lib/components/AttachmentPreview.svelte';
+	import { sanitizeEmailHtml } from '$lib/utils/sanitize';
 	import {
 		ArrowLeft,
 		Reply,
@@ -432,7 +433,7 @@
 				<!-- Email body -->
 				<div class="p-6">
 					<div class="prose max-w-none">
-						{@html email.body}
+						{@html sanitizeEmailHtml(email.body)}
 					</div>
 				</div>
 			</div>

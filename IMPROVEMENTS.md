@@ -25,6 +25,37 @@
 - ✅ **Валидация входных данных** — pkg/validation/validator.go
 - ✅ **Структурированное логирование** — internal/utils/logger.go
 
+### 1.2 Sprint 10 Security Fixes (2026-01-26)
+
+- ✅ **IDOR Protection (10.2-10.3)** — RBAC middleware для employees/calendar endpoints
+  - `internal/middleware/rbac.go` — Role-Based Access Control с проверкой иерархии менеджеров
+  - GetEmployeeDossier: только self/manager/HR/admin
+  - GetMyTeam: только self/admin/HR
+  - GetCalendar: только self/manager/admin/HR
+
+- ✅ **XSS Prevention (10.4)** — DOMPurify интеграция
+  - `frontend/src/lib/sanitizer.ts` — централизованная санитизация HTML
+  - Confluence и Mail компоненты теперь безопасны от XSS через {@html}
+
+- ✅ **JWT/WS Token Security (10.5-10.6)** — HttpOnly cookies
+  - `internal/middleware/auth.go` — SetAuthCookie/ClearAuthCookie с HttpOnly, Secure, SameSite=Lax
+  - Dual-path auth: Authorization header (API clients) + Cookie (browser)
+  - WebSocket: токен из cookie, не из URL (предотвращает утечку в логах)
+  - Frontend: `credentials: 'include'` для автоматической отправки cookies
+  - Logout endpoint очищает HttpOnly cookie
+
+- ✅ **TLS/SSL Security (10.7-10.8)** — Security validation на старте
+  - `internal/config/config.go` — ValidateSecuritySettings() с предупреждениями
+  - Проверка: AD_SKIP_VERIFY, EWS_SKIP_TLS_VERIFY, DATABASE_URL sslmode, MINIO_USE_SSL
+  - `.env.example` обновлён с secure defaults (sslmode=require, MINIO_USE_SSL=true)
+
+- ✅ **File Upload Validation (10.10)** — MIME/size/whitelist
+  - `internal/handlers/files.go` — validateFileUpload() с magic bytes detection
+  - Extension whitelist: pdf, docx, xlsx, jpg, png, webp, etc.
+  - Dangerous extensions blacklist: exe, php, js, bat, etc.
+  - Size limits: 50MB general, 10MB images
+  - `internal/handlers/speech.go` — validateAudioUpload() для аудио файлов
+
 ### 2. Архитектура
 
 - ✅ Включен nginx reverse proxy
