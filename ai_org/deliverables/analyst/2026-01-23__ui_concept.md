@@ -8,7 +8,7 @@
 
 ---
 
-# 1. Задачи (Task Management)
+# 1. Задачи (Task Management)1
 
 ## 1.1 Философия дизайна
 
