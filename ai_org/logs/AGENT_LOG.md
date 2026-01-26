@@ -281,6 +281,7 @@
 - **Файлы:**
   - `frontend/src/routes/service-desk/agent/+page.svelte` (NEW)
   - `frontend/src/routes/service-desk/+page.svelte` (MODIFIED)
+- **Bugfix:** `{@const}` обёрнут в `{#if true}` для корректной работы Svelte 5
 - **Статус:** ✅ Исправлено
 
 ---

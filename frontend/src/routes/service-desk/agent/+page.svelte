@@ -383,10 +383,12 @@
 									</span>
 								</td>
 								<td class="px-4 py-3">
-									{@const sla = getSLAStatus(ticket)}
-									<span class="px-2 py-1 rounded text-xs font-medium {sla.class}">
-										{sla.label}
-									</span>
+									{#if true}
+										{@const sla = getSLAStatus(ticket)}
+										<span class="px-2 py-1 rounded text-xs font-medium {sla.class}">
+											{sla.label}
+										</span>
+									{/if}
 								</td>
 								<td class="px-4 py-3 text-sm text-gray-500">
 									{formatDate(ticket.created_at)}

@@ -62,3 +62,7 @@ Agent Console с:
 - Active nav: `bg-ekf-red`
 - Status colors: blue/yellow/purple/green/gray
 - Priority colors: red/orange/yellow/green
+
+## Bugfixes
+
+- `{@const}` обёрнут в `{#if true}` - Svelte 5 требует `@const` внутри блоков
