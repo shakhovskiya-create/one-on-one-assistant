@@ -602,114 +602,273 @@
 	<title>Задачи - EKF Hub</title>
 </svelte:head>
 
-<div class="space-y-4">
-	<!-- Header -->
-	<div class="flex items-center justify-between">
-		<div>
-			<h1 class="text-xl font-bold text-gray-900">Задачи</h1>
-			<div class="flex items-center gap-3 text-sm text-gray-500">
-				<span>{filteredTasks.length} задач</span>
-				{#if getTotalStoryPoints() > 0}
-					<span class="text-indigo-600 font-medium">{getTotalStoryPoints()} SP</span>
-				{/if}
-				<span class="flex items-center gap-1">
-					<span class="w-2 h-2 rounded-full bg-yellow-400"></span>
-					{getInProgressTasksCount()} в работе
-				</span>
-				<span class="flex items-center gap-1">
-					<span class="w-2 h-2 rounded-full bg-green-500"></span>
-					{getCompletedTasksCount()} выполнено
-				</span>
+<div class="flex h-[calc(100vh-4rem)] -m-4">
+	<!-- Project Sidebar -->
+	<aside class="w-60 bg-ekf-dark text-white flex flex-col flex-shrink-0">
+		<!-- Project Selector -->
+		<div class="p-4 border-b border-gray-700">
+			<button class="flex items-center gap-2 w-full hover:bg-white/5 rounded-lg p-1 -m-1 transition-colors">
+				<div class="w-8 h-8 bg-ekf-red rounded flex items-center justify-center text-white text-xs font-bold">EH</div>
+				<div class="flex-1 min-w-0 text-left">
+					<div class="font-semibold text-sm truncate">EKF Hub</div>
+					<div class="text-xs text-gray-400">Активный проект</div>
+				</div>
+				<svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+			</button>
+		</div>
+
+		<nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+			<!-- Планирование -->
+			<div class="text-xs text-gray-500 uppercase tracking-wider px-3 pt-2 pb-1">Планирование</div>
+			<a href="/tasks" class="flex items-center gap-3 px-3 py-2 rounded-lg bg-ekf-red text-white">
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"></path></svg>
+				<span>Доска задач</span>
+			</a>
+			<a href="/tasks?view=backlog" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+				<span>Бэклог</span>
+				<span class="ml-auto text-xs text-gray-400">{tasks.filter(t => t.status === 'backlog').length}</span>
+			</a>
+			<a href="/tasks?view=roadmap" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+				<span>Roadmap</span>
+			</a>
+
+			<!-- Спринты -->
+			<div class="text-xs text-gray-500 uppercase tracking-wider px-3 pt-4 pb-1">Спринты</div>
+			{#if activeSprint}
+				<button
+					onclick={() => filterSprint = activeSprint?.id || ''}
+					class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700 w-full text-left {filterSprint === activeSprint.id ? 'bg-gray-700' : ''}"
+				>
+					<div class="w-5 h-5 flex items-center justify-center">
+						<div class="w-2 h-2 bg-green-400 rounded-full"></div>
+					</div>
+					<span class="truncate">{activeSprint.name}</span>
+					<span class="ml-auto text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded">Active</span>
+				</button>
+			{/if}
+			{#each sprints.filter(s => s.id !== activeSprint?.id && s.status === 'planning').slice(0, 2) as sprint}
+				<button
+					onclick={() => filterSprint = sprint.id}
+					class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700 w-full text-left {filterSprint === sprint.id ? 'bg-gray-700' : ''}"
+				>
+					<div class="w-5 h-5 flex items-center justify-center">
+						<div class="w-2 h-2 bg-gray-500 rounded-full"></div>
+					</div>
+					<span class="truncate">{sprint.name}</span>
+					<span class="ml-auto text-xs text-gray-500">Planned</span>
+				</button>
+			{/each}
+			<a href="/sprints" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
+				<span>Архив спринтов</span>
+			</a>
+
+			<!-- Релизы -->
+			<div class="text-xs text-gray-500 uppercase tracking-wider px-3 pt-4 pb-1">Релизы</div>
+			{#each versions.filter(v => v.status === 'unreleased').slice(0, 2) as version}
+				<button
+					onclick={() => { /* filter by version */ }}
+					class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700 w-full text-left"
+				>
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+					<span class="truncate">{version.name}</span>
+					<span class="ml-auto text-xs bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded">Dev</span>
+				</button>
+			{/each}
+			{#each versions.filter(v => v.status === 'released').slice(0, 1) as version}
+				<button class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700 w-full text-left">
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+					<span class="truncate">{version.name}</span>
+					<span class="ml-auto text-xs text-gray-500">Released</span>
+				</button>
+			{/each}
+
+			<!-- Тестирование -->
+			<div class="text-xs text-gray-500 uppercase tracking-wider px-3 pt-4 pb-1">Тестирование</div>
+			<a href="/test-plans" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+				<span>Тест-планы</span>
+			</a>
+			<a href="/test-cases" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+				<span>Тест-кейсы</span>
+			</a>
+			<a href="/test-runs" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+				<span>Прогоны</span>
+			</a>
+
+			<!-- Документация -->
+			<div class="text-xs text-gray-500 uppercase tracking-wider px-3 pt-4 pb-1">Документация</div>
+			<a href="/wiki" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+				<span>Wiki</span>
+			</a>
+			<a href="/requirements" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+				<span>Требования</span>
+			</a>
+
+			<div class="pt-4 mt-4 border-t border-gray-700">
+				<a href="/project-settings" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-700">
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+					<span>Настройки проекта</span>
+				</a>
+			</div>
+		</nav>
+
+		<!-- User -->
+		{#if $user}
+			<div class="p-4 border-t border-gray-700">
+				<div class="flex items-center gap-3">
+					{#if $user.photo_base64}
+						<img src="data:image/jpeg;base64,{$user.photo_base64}" alt={$user.name} class="w-10 h-10 rounded-full object-cover" />
+					{:else}
+						<div class="w-10 h-10 rounded-full bg-gradient-to-br from-ekf-red to-red-600 flex items-center justify-center text-white font-bold">
+							{$user.name?.charAt(0) || '?'}
+						</div>
+					{/if}
+					<div class="flex-1 min-w-0">
+						<div class="font-medium text-sm truncate">{$user.name}</div>
+						<div class="text-xs text-gray-400">{$user.position || 'Сотрудник'}</div>
+					</div>
+					<div class="w-2 h-2 bg-green-400 rounded-full"></div>
+				</div>
+			</div>
+		{/if}
+	</aside>
+
+	<!-- Main Content -->
+	<main class="flex-1 flex flex-col overflow-hidden bg-gray-100">
+		<!-- Sprint Header -->
+		{#if activeSprint && (filterSprint === activeSprint.id || filterSprint === '')}
+			<div class="bg-white border-b px-6 py-4">
+				<div class="flex items-center justify-between">
+					<div>
+						<div class="flex items-center gap-3">
+							<h1 class="text-xl font-semibold">{activeSprint.name} — Доска задач</h1>
+							<span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">Активный</span>
+						</div>
+						<div class="text-sm text-gray-500 mt-1">
+							{#if activeSprint.start_date && activeSprint.end_date}
+								{new Date(activeSprint.start_date).toLocaleDateString('ru-RU', {day: 'numeric', month: 'short'})} — {new Date(activeSprint.end_date).toLocaleDateString('ru-RU', {day: 'numeric', month: 'short'})} •
+							{/if}
+							{getCompletedTasksCount()} из {filteredTasks.length} задач выполнено
+						</div>
+					</div>
+					<div class="flex items-center gap-3">
+						<div class="flex items-center gap-2">
+							<span class="text-sm text-gray-500">Прогресс:</span>
+							<div class="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
+								<div class="h-full bg-ekf-red rounded-full transition-all" style="width: {filteredTasks.length > 0 ? Math.round((getCompletedTasksCount() / filteredTasks.length) * 100) : 0}%"></div>
+							</div>
+							<span class="text-sm font-medium">{filteredTasks.length > 0 ? Math.round((getCompletedTasksCount() / filteredTasks.length) * 100) : 0}%</span>
+						</div>
+						<button
+							onclick={openNewTask}
+							class="px-4 py-2 bg-ekf-red text-white rounded-lg text-sm font-medium hover:bg-red-700 flex items-center gap-2"
+						>
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+							Новая задача
+						</button>
+					</div>
+				</div>
+			</div>
+		{:else}
+			<div class="bg-white border-b px-6 py-4">
+				<div class="flex items-center justify-between">
+					<div>
+						<h1 class="text-xl font-semibold">Задачи</h1>
+						<div class="flex items-center gap-3 text-sm text-gray-500">
+							<span>{filteredTasks.length} задач</span>
+							{#if getTotalStoryPoints() > 0}
+								<span class="text-indigo-600 font-medium">{getTotalStoryPoints()} SP</span>
+							{/if}
+							<span class="flex items-center gap-1">
+								<span class="w-2 h-2 rounded-full bg-yellow-400"></span>
+								{getInProgressTasksCount()} в работе
+							</span>
+							<span class="flex items-center gap-1">
+								<span class="w-2 h-2 rounded-full bg-green-500"></span>
+								{getCompletedTasksCount()} выполнено
+							</span>
+						</div>
+					</div>
+					<button
+						onclick={openNewTask}
+						class="px-4 py-2 bg-ekf-red text-white rounded-lg text-sm font-medium hover:bg-red-700 flex items-center gap-2"
+					>
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+						Новая задача
+					</button>
+				</div>
+			</div>
+		{/if}
+
+		<!-- Filters & View Toggle -->
+		<div class="bg-white border-b px-6 py-3 flex flex-wrap items-center gap-4">
+			<!-- Search -->
+			<div class="relative">
+				<input
+					type="text"
+					bind:value={searchQuery}
+					placeholder="Поиск задач..."
+					class="pl-9 pr-4 py-1.5 border rounded-lg text-sm w-64 focus:ring-2 focus:ring-ekf-red focus:border-ekf-red"
+				/>
+				<svg class="w-4 h-4 text-gray-400 absolute left-3 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+				</svg>
+			</div>
+
+			<!-- Filters -->
+			<select bind:value={filterAssignee} class="border rounded-lg px-3 py-1.5 text-sm">
+				<option value="">Все исполнители</option>
+				<option value={$user?.id}>Мои задачи</option>
+				{#each $subordinates as sub}
+					<option value={sub.id}>{sub.name}</option>
+				{/each}
+			</select>
+
+			<select bind:value={filterStatus} class="border rounded-lg px-3 py-1.5 text-sm">
+				<option value="">Все статусы</option>
+				{#each statusColumns as col}
+					<option value={col.id}>{col.label}</option>
+				{/each}
+			</select>
+
+			<select bind:value={filterProject} class="border rounded-lg px-3 py-1.5 text-sm">
+				<option value="">Все типы</option>
+				{#each projects as project}
+					<option value={project.id}>{project.name}</option>
+				{/each}
+			</select>
+
+			<!-- View Toggle -->
+			<div class="flex rounded-lg border border-gray-200 overflow-hidden ml-auto">
+				<button
+					onclick={() => viewMode = 'list'}
+					class="px-3 py-1.5 text-sm transition-colors {viewMode === 'list' ? 'bg-ekf-red text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}"
+				>
+					Список
+				</button>
+				<button
+					onclick={() => viewMode = 'kanban'}
+					class="px-3 py-1.5 text-sm transition-colors {viewMode === 'kanban' ? 'bg-ekf-red text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}"
+				>
+					Kanban
+				</button>
 			</div>
 		</div>
-		<button
-			onclick={openNewTask}
-			class="px-3 py-1.5 bg-ekf-red text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-1.5 text-sm"
-		>
-			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-			</svg>
-			Создать
-		</button>
-	</div>
 
-	<!-- Filters & View Toggle -->
-	<div class="bg-white rounded-lg shadow-sm p-3 flex flex-wrap items-center gap-3">
-		<!-- Search -->
-		<div class="relative flex-1 min-w-[200px] max-w-xs">
-			<input
-				type="text"
-				bind:value={searchQuery}
-				placeholder="Поиск задач..."
-				class="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-ekf-red focus:border-ekf-red"
-			/>
-			<svg class="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-			</svg>
-		</div>
-
-		<!-- Filters -->
-		<select bind:value={filterProject} class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-ekf-red">
-			<option value="">Все проекты</option>
-			{#each projects as project}
-				<option value={project.id}>{project.name}</option>
-			{/each}
-		</select>
-
-		<select bind:value={filterAssignee} class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-ekf-red">
-			<option value="">Все исполнители</option>
-			<option value={$user?.id}>Я</option>
-			{#each $subordinates as sub}
-				<option value={sub.id}>{sub.name}</option>
-			{/each}
-		</select>
-
-		<select bind:value={filterStatus} class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-ekf-red">
-			<option value="">Все статусы</option>
-			{#each statusColumns as col}
-				<option value={col.id}>{col.label}</option>
-			{/each}
-		</select>
-
-		<select bind:value={filterSprint} class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-ekf-red">
-			<option value="">Все спринты</option>
-			{#if activeSprint}
-				<option value={activeSprint.id}>⚡ {activeSprint.name} (активный)</option>
-			{/if}
-			{#each sprints.filter(s => s.id !== activeSprint?.id && s.status !== 'completed') as sprint}
-				<option value={sprint.id}>{sprint.name}</option>
-			{/each}
-			{#if sprints.filter(s => s.status === 'completed').length > 0}
-				<optgroup label="Завершённые">
-					{#each sprints.filter(s => s.status === 'completed') as sprint}
-						<option value={sprint.id}>{sprint.name}</option>
-					{/each}
-				</optgroup>
-			{/if}
-		</select>
-
-		<!-- View Toggle -->
-		<div class="flex rounded-lg border border-gray-200 overflow-hidden ml-auto">
-			<button
-				onclick={() => viewMode = 'list'}
-				class="px-3 py-1.5 text-sm transition-colors {viewMode === 'list' ? 'bg-ekf-red text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}"
-			>
-				Список
-			</button>
-			<button
-				onclick={() => viewMode = 'kanban'}
-				class="px-3 py-1.5 text-sm transition-colors {viewMode === 'kanban' ? 'bg-ekf-red text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}"
-			>
-				Kanban
-			</button>
-		</div>
-	</div>
-
-	{#if loading}
-		<div class="flex items-center justify-center h-48">
-			<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-ekf-red"></div>
-		</div>
-	{:else if viewMode === 'list'}
+		<!-- Content Area -->
+		<div class="flex-1 overflow-auto p-6">
+			{#if loading}
+				<div class="flex items-center justify-center h-48">
+					<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-ekf-red"></div>
+				</div>
+			{:else if viewMode === 'list'}
 		<!-- List View -->
 		<div class="bg-white rounded-lg shadow-sm overflow-hidden">
 			{#if filteredTasks.length === 0}
@@ -943,8 +1102,10 @@
 					</div>
 				</div>
 			{/each}
+			</div>
+		{/if}
 		</div>
-	{/if}
+	</main>
 </div>
 
 <!-- Task Modal -->

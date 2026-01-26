@@ -12,6 +12,18 @@
 
 ## 2026-01-26
 
+### Tasks Project Sidebar
+- **Инициатор:** PM (Sprint 9 - макет 01-tasks.html)
+- **Исполнитель:** Developer
+- **Handoff:** `ai_org/handoffs/active/2026-01-26__PM__DEV__tasks-sidebar.md`
+- **Результат:**
+  - Добавлен Project Management Sidebar на страницу Tasks
+  - Секции: Планирование, Спринты, Релизы, Тестирование, Документация
+  - Sprint Header с прогрессом
+  - User profile в sidebar
+- **Файлы:** `frontend/src/routes/tasks/+page.svelte`
+- **Статус:** ✅ DONE
+
 ### Enterprise Full Audit (Production readiness)
 - **Инициатор:** PM (user request)
 - **Исполнитель:** PM → Analyst
