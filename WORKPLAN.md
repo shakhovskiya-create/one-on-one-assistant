@@ -58,6 +58,22 @@
 
 ---
 
+## Audit / Compliance
+
+### Enterprise Full Audit (Production readiness)
+**Приоритет:** CRITICAL  
+**Статус:** DONE  
+**Артефакты:**
+- `ai_org/handoffs/done/2026-01-26__PM__ANALYST__full-audit.md`
+- `ai_org/deliverables/analyst/2026-01-26__full-audit__spec.md`
+
+**Задачи:**
+- [x] Полный аудит backend/frontend/infra/configs/docs
+- [x] Вердикт readiness + Top-10 CRITICAL/HIGH
+- [x] План исправлений (72 часа / 1 месяц / техдолг)
+
+---
+
 ## ПЛАН РАБОТ
 
 ### Фаза 1: Задачи - Расширение функционала

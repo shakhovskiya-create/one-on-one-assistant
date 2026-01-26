@@ -12,6 +12,7 @@
 - ✅ GAP-010: Service Desk MVP — DEPLOYED
 - ✅ GAP-005: Заявка на улучшение — DEPLOYED
 - 🔄 GAP-006: Планирование ресурсов — В РЕАЛИЗАЦИИ
+- ✅ Enterprise Full Audit — ЗАВЕРШЁН (PM→Analyst)
 
 ## Завершено сегодня
 
