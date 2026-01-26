@@ -43,8 +43,11 @@
 	onMount(async () => {
 		if (!browser) return;
 
-		// Get credentials from session storage
-		const stored = sessionStorage.getItem('ews_credentials');
+		// Get credentials from localStorage first (persistent), then sessionStorage
+		const localCreds = localStorage.getItem('ews_credentials');
+		const sessionCreds = sessionStorage.getItem('ews_credentials');
+		const stored = localCreds || sessionCreds;
+
 		if (!stored) {
 			goto('/mail');
 			return;

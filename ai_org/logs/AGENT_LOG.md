@@ -12,6 +12,17 @@
 
 ## 2026-01-26
 
+### Mail Auth Persistence Fix
+- **Инициатор:** PM (BUG - повторная авторизация почты)
+- **Исполнитель:** Developer
+- **Handoff:** `ai_org/handoffs/active/2026-01-26__PM__DEV__mail-auth-fix.md`
+- **Результат:**
+  - Добавлена опция "Запомнить меня"
+  - Credentials сохраняются в localStorage (persistent)
+  - Исправлена страница mail/[id]
+- **Файлы:** `frontend/src/routes/mail/+page.svelte`, `frontend/src/routes/mail/[id]/+page.svelte`
+- **Статус:** ✅ DONE
+
 ### Tasks Project Sidebar
 - **Инициатор:** PM (Sprint 9 - макет 01-tasks.html)
 - **Исполнитель:** Developer

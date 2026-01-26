@@ -19,6 +19,7 @@
 	// Credentials (from main login via ews_credentials)
 	let credentials = $state({ username: '', password: '' });
 	let showLogin = $state(true);
+	let rememberMe = $state(true); // Remember credentials by default
 
 	// Compose
 	let showCompose = $state(false);
@@ -119,30 +120,32 @@
 		loadEmployees();
 
 		if (browser) {
-			// First try ews_credentials from main login
-			const ewsCreds = sessionStorage.getItem('ews_credentials');
-			if (ewsCreds) {
+			// First try localStorage (persistent)
+			const localCreds = localStorage.getItem('ews_credentials');
+			if (localCreds) {
 				try {
-					credentials = JSON.parse(ewsCreds);
+					credentials = JSON.parse(localCreds);
 					showLogin = false;
 					loadFolders();
 					startAutoRefresh();
 					loading = false;
 					return;
 				} catch {
-					// Fall through to show login
+					localStorage.removeItem('ews_credentials');
 				}
 			}
-			// Fallback to mail_credentials for backwards compatibility
-			const savedCreds = sessionStorage.getItem('mail_credentials');
-			if (savedCreds) {
+			// Then try sessionStorage (temporary)
+			const sessionCreds = sessionStorage.getItem('ews_credentials');
+			if (sessionCreds) {
 				try {
-					credentials = JSON.parse(savedCreds);
+					credentials = JSON.parse(sessionCreds);
 					showLogin = false;
 					loadFolders();
 					startAutoRefresh();
+					loading = false;
+					return;
 				} catch {
-					showLogin = true;
+					sessionStorage.removeItem('ews_credentials');
 				}
 			}
 		}
@@ -168,10 +171,18 @@
 			folders = result;
 
 			if (browser) {
-				sessionStorage.setItem('ews_credentials', JSON.stringify(credentials));
+				// Store in localStorage if "Remember me" is checked, otherwise sessionStorage
+				if (rememberMe) {
+					localStorage.setItem('ews_credentials', JSON.stringify(credentials));
+					sessionStorage.removeItem('ews_credentials');
+				} else {
+					sessionStorage.setItem('ews_credentials', JSON.stringify(credentials));
+					localStorage.removeItem('ews_credentials');
+				}
 			}
 
 			showLogin = false;
+			startAutoRefresh();
 
 			// Select inbox by default
 			const inbox = folders.find(f => f.display_name.toLowerCase() === 'inbox' || f.display_name.toLowerCase() === 'входящие');
@@ -588,8 +599,14 @@
 
 	function logout() {
 		if (browser) {
+			// Clear credentials from both storages
+			localStorage.removeItem('ews_credentials');
 			sessionStorage.removeItem('ews_credentials');
 			sessionStorage.removeItem('mail_credentials');
+		}
+		if (refreshInterval) {
+			clearInterval(refreshInterval);
+			refreshInterval = null;
 		}
 		credentials = { username: '', password: '' };
 		showLogin = true;
@@ -1082,13 +1099,22 @@
 						class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ekf-red/20"
 					/>
 				</div>
-				<div class="mb-6">
+				<div class="mb-4">
 					<label class="block text-sm font-medium text-gray-700 mb-1">Пароль</label>
 					<input
 						type="password"
 						bind:value={credentials.password}
 						class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ekf-red/20"
 					/>
+				</div>
+				<div class="mb-6 flex items-center">
+					<input
+						type="checkbox"
+						id="rememberMe"
+						bind:checked={rememberMe}
+						class="w-4 h-4 text-ekf-red border-gray-300 rounded focus:ring-ekf-red"
+					/>
+					<label for="rememberMe" class="ml-2 text-sm text-gray-600">Запомнить меня</label>
 				</div>
 				<button
 					type="submit"
