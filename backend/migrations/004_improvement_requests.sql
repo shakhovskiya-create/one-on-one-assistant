@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS improvement_requests (
 
     -- Organizational
     initiator_id UUID NOT NULL REFERENCES employees(id),
-    department_id UUID REFERENCES departments(id),
+    department_id UUID,  -- No FK - departments table may not exist
     sponsor_id UUID REFERENCES employees(id),
 
     -- Budget

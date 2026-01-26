@@ -23,6 +23,9 @@ type Employee struct {
 	HourlyRate            *float64   `json:"hourly_rate,omitempty"`
 	EncryptedPassword     *string    `json:"-"` // Never expose in JSON - for EWS access only
 	CreatedAt             *time.Time `json:"created_at,omitempty"`
+	// Resource Planning fields (GAP-006)
+	WorkHoursPerWeek    *int `json:"work_hours_per_week,omitempty"`
+	AvailabilityPercent *int `json:"availability_percent,omitempty"`
 }
 
 // Project represents a team project
@@ -413,4 +416,63 @@ type ImprovementRequestActivity struct {
 	NewValue   *string    `json:"new_value,omitempty"`
 	CreatedAt  *time.Time `json:"created_at,omitempty"`
 	Actor      *Employee  `json:"actor,omitempty"`
+}
+
+// ======== Resource Planning (GAP-006) ========
+
+// ResourceAllocation represents hours allocated to an employee for a task/project
+type ResourceAllocation struct {
+	ID                    string     `json:"id"`
+	EmployeeID            string     `json:"employee_id"`
+	TaskID                *string    `json:"task_id,omitempty"`
+	ProjectID             *string    `json:"project_id,omitempty"`
+	Role                  *string    `json:"role,omitempty"`
+	AllocatedHoursPerWeek int        `json:"allocated_hours_per_week"`
+	PeriodStart           string     `json:"period_start"` // date
+	PeriodEnd             *string    `json:"period_end,omitempty"`
+	Notes                 *string    `json:"notes,omitempty"`
+	CreatedAt             *time.Time `json:"created_at,omitempty"`
+	UpdatedAt             *time.Time `json:"updated_at,omitempty"`
+	CreatedBy             *string    `json:"created_by,omitempty"`
+	// Joined fields
+	Employee *Employee `json:"employee,omitempty"`
+	Task     *Task     `json:"task,omitempty"`
+	Project  *Project  `json:"project,omitempty"`
+}
+
+// EmployeeAbsence represents an absence period (vacation, sick leave, etc.)
+type EmployeeAbsence struct {
+	ID          string     `json:"id"`
+	EmployeeID  string     `json:"employee_id"`
+	AbsenceType string     `json:"absence_type"` // vacation, sick_leave, holiday, out_of_office
+	StartDate   string     `json:"start_date"`
+	EndDate     string     `json:"end_date"`
+	Description *string    `json:"description,omitempty"`
+	Source      string     `json:"source"` // manual, exchange, hr_system
+	CreatedAt   *time.Time `json:"created_at,omitempty"`
+	// Joined fields
+	Employee *Employee `json:"employee,omitempty"`
+}
+
+// ResourceCapacity represents calculated capacity for an employee
+type ResourceCapacity struct {
+	EmployeeID         string  `json:"employee_id"`
+	EmployeeName       string  `json:"employee_name"`
+	Position           string  `json:"position,omitempty"`
+	WeeklyHours        int     `json:"weekly_hours"`        // work_hours_per_week
+	AvailabilityPct    int     `json:"availability_pct"`    // availability_percent
+	AvailableHours     float64 `json:"available_hours"`     // weekly_hours * availability_pct / 100
+	AllocatedHours     float64 `json:"allocated_hours"`     // sum of allocations
+	FreeHours          float64 `json:"free_hours"`          // available - allocated
+	UtilizationPercent float64 `json:"utilization_percent"` // allocated / available * 100
+	Overloaded         bool    `json:"overloaded"`          // utilization > 100
+}
+
+// ResourceAllocationStats represents aggregated resource stats
+type ResourceAllocationStats struct {
+	TotalEmployees    int     `json:"total_employees"`
+	TotalAllocations  int     `json:"total_allocations"`
+	OverloadedCount   int     `json:"overloaded_count"`
+	UnderutilizedCnt  int     `json:"underutilized_count"` // < 50%
+	AvgUtilization    float64 `json:"avg_utilization"`
 }

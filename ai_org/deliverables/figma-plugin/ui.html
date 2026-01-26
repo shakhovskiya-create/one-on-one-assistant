@@ -65,6 +65,9 @@
       background: #e5e7eb;
       border-color: #d1d5db;
     }
+    .button:active {
+      background: #d1d5db;
+    }
     .button.primary {
       background: #E53935;
       border-color: #E53935;
@@ -114,11 +117,11 @@
 
   <div class="section">
     <div class="section-title">Полные страницы</div>
-    <button class="button primary" onclick="generate('tasks-page')">
+    <button class="button primary" id="btn-tasks-page">
       <span class="button-icon">📋</span>
       Tasks Page (полная страница)
     </button>
-    <button class="button" onclick="generate('components')">
+    <button class="button" id="btn-components">
       <span class="button-icon">🎨</span>
       Component Library
     </button>
@@ -128,23 +131,23 @@
 
   <div class="section">
     <div class="section-title">Отдельные компоненты</div>
-    <button class="button" onclick="generate('sidebar')">
+    <button class="button" id="btn-sidebar">
       <span class="button-icon">◀️</span>
       Sidebar
     </button>
-    <button class="button" onclick="generate('header')">
+    <button class="button" id="btn-header">
       <span class="button-icon">🔝</span>
       Header
     </button>
-    <button class="button" onclick="generate('filter-bar')">
+    <button class="button" id="btn-filter-bar">
       <span class="button-icon">🔍</span>
       Filter Bar
     </button>
-    <button class="button" onclick="generate('kanban-column')">
+    <button class="button" id="btn-kanban-column">
       <span class="button-icon">📊</span>
       Kanban Column
     </button>
-    <button class="button" onclick="generate('task-card')">
+    <button class="button" id="btn-task-card">
       <span class="button-icon">🎫</span>
       Task Card
     </button>
@@ -156,9 +159,33 @@
   </div>
 
   <script>
-    function generate(type) {
-      parent.postMessage({ pluginMessage: { type: 'generate-' + type } }, '*');
-    }
+    document.getElementById('btn-tasks-page').addEventListener('click', function() {
+      parent.postMessage({ pluginMessage: { type: 'generate-tasks-page' } }, '*');
+    });
+
+    document.getElementById('btn-components').addEventListener('click', function() {
+      parent.postMessage({ pluginMessage: { type: 'generate-components' } }, '*');
+    });
+
+    document.getElementById('btn-sidebar').addEventListener('click', function() {
+      parent.postMessage({ pluginMessage: { type: 'generate-sidebar' } }, '*');
+    });
+
+    document.getElementById('btn-header').addEventListener('click', function() {
+      parent.postMessage({ pluginMessage: { type: 'generate-header' } }, '*');
+    });
+
+    document.getElementById('btn-filter-bar').addEventListener('click', function() {
+      parent.postMessage({ pluginMessage: { type: 'generate-filter-bar' } }, '*');
+    });
+
+    document.getElementById('btn-kanban-column').addEventListener('click', function() {
+      parent.postMessage({ pluginMessage: { type: 'generate-kanban-column' } }, '*');
+    });
+
+    document.getElementById('btn-task-card').addEventListener('click', function() {
+      parent.postMessage({ pluginMessage: { type: 'generate-task-card' } }, '*');
+    });
   </script>
 </body>
 </html>

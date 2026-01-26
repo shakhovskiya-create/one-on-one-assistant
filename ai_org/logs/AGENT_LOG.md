@@ -162,6 +162,45 @@
   - `frontend/src/routes/improvements/+page.svelte`
   - `frontend/src/routes/improvements/create/+page.svelte`
   - `frontend/src/routes/improvements/[id]/+page.svelte`
+- **Статус:** ✅ Задеплоено
+
+### GAP-005 DEPLOYMENT: Improvement Requests
+- **Инициатор:** PM (Sprint 9 CRITICAL)
+- **Исполнитель:** Developer
+- **Результат:**
+  - Миграция 004_improvement_requests.sql применена (с исправлением FK на departments)
+  - Backend и frontend пересобраны и развёрнуты
+  - API /improvements/* работает
+- **Файлы изменены:** исправлен FK на departments (убран, т.к. таблица не существует)
+- **Статус:** ✅ Задеплоено на 10.100.0.131
+
+### GAP-006 IMPLEMENTATION: Resource Planning (Планирование ресурсов)
+- **Инициатор:** PM (Sprint 9 CRITICAL)
+- **Исполнитель:** Developer
+- **Результат:**
+  - **Backend:**
+    - Расширение Employee: `work_hours_per_week`, `availability_percent`
+    - Модели: `ResourceAllocation`, `EmployeeAbsence`, `ResourceCapacity`, `ResourceStats`
+    - Handlers: `resources.go` — allocations CRUD, capacity, stats, absences, employee settings
+    - Routes: `/api/v1/resources/*`
+    - Миграция: `backend/migrations/005_resource_planning.sql`
+  - **Frontend:**
+    - `/resources` — Capacity overview с таблицей загрузки сотрудников
+    - Модальная форма создания аллокации
+    - Цветовая индикация загрузки (green/yellow/red)
+    - API client: `resources` functions
+  - **Метрики:**
+    - `utilization_percent` = allocated / available × 100
+    - `available_hours` = work_hours × availability_pct / 100
+    - `overloaded` = utilization > 100%
+- **Файлы:**
+  - `backend/internal/handlers/resources.go`
+  - `backend/internal/models/models.go`
+  - `backend/cmd/server/main.go`
+  - `backend/migrations/005_resource_planning.sql`
+  - `frontend/src/lib/api/client.ts`
+  - `frontend/src/routes/resources/+page.svelte`
+- **Deliverable:** `ai_org/deliverables/developer/2026-01-26__resource-planning.md`
 - **Статус:** 🔄 Реализовано, готово к деплою
 
 ---

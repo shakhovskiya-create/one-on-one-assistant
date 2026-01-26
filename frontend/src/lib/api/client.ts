@@ -1481,6 +1481,126 @@ export const improvements = {
 		request<ImprovementRequestComment>(`/improvements/${requestId}/comments`, { method: 'POST', body: data }),
 };
 
+// ======== Resource Planning (GAP-006) ========
+
+export interface ResourceAllocation {
+	id: string;
+	employee_id: string;
+	task_id?: string;
+	project_id?: string;
+	role?: string;
+	allocated_hours_per_week: number;
+	period_start: string;
+	period_end?: string;
+	notes?: string;
+	created_at?: string;
+	updated_at?: string;
+	created_by?: string;
+	employee?: Employee;
+	task?: Task;
+	project?: Project;
+}
+
+export interface EmployeeAbsence {
+	id: string;
+	employee_id: string;
+	absence_type: 'vacation' | 'sick_leave' | 'holiday' | 'out_of_office';
+	start_date: string;
+	end_date: string;
+	description?: string;
+	source: 'manual' | 'exchange' | 'hr_system';
+	created_at?: string;
+	employee?: Employee;
+}
+
+export interface ResourceCapacity {
+	employee_id: string;
+	employee_name: string;
+	position?: string;
+	weekly_hours: number;
+	availability_pct: number;
+	available_hours: number;
+	allocated_hours: number;
+	free_hours: number;
+	utilization_percent: number;
+	overloaded: boolean;
+}
+
+export interface ResourceStats {
+	total_employees: number;
+	total_allocations: number;
+	overloaded_count: number;
+	underutilized_count: number;
+	avg_utilization: number;
+}
+
+// Resource Planning API
+export const resources = {
+	// Allocations
+	listAllocations: (params?: { employee_id?: string; project_id?: string; task_id?: string; start_from?: string; end_to?: string }) => {
+		if (!params) return request<ResourceAllocation[]>('/resources/allocations');
+		const filtered: Record<string, string> = {};
+		Object.entries(params).forEach(([k, v]) => { if (v) filtered[k] = v; });
+		const query = Object.keys(filtered).length > 0 ? '?' + new URLSearchParams(filtered).toString() : '';
+		return request<ResourceAllocation[]>(`/resources/allocations${query}`);
+	},
+	getAllocation: (id: string) => request<ResourceAllocation>(`/resources/allocations/${id}`),
+	createAllocation: (data: {
+		employee_id: string;
+		task_id?: string;
+		project_id?: string;
+		role?: string;
+		allocated_hours_per_week: number;
+		period_start: string;
+		period_end?: string;
+		notes?: string;
+		created_by?: string;
+	}) => request<ResourceAllocation>('/resources/allocations', { method: 'POST', body: data }),
+	updateAllocation: (id: string, data: Partial<ResourceAllocation>) =>
+		request<ResourceAllocation>(`/resources/allocations/${id}`, { method: 'PUT', body: data }),
+	deleteAllocation: (id: string) =>
+		request<{ message: string }>(`/resources/allocations/${id}`, { method: 'DELETE' }),
+
+	// Capacity
+	getCapacity: (params?: { project_id?: string; period_start?: string; period_end?: string }) => {
+		if (!params) return request<ResourceCapacity[]>('/resources/capacity');
+		const filtered: Record<string, string> = {};
+		Object.entries(params).forEach(([k, v]) => { if (v) filtered[k] = v; });
+		const query = Object.keys(filtered).length > 0 ? '?' + new URLSearchParams(filtered).toString() : '';
+		return request<ResourceCapacity[]>(`/resources/capacity${query}`);
+	},
+	getStats: (params?: { project_id?: string }) => {
+		const query = params?.project_id ? `?project_id=${params.project_id}` : '';
+		return request<ResourceStats>(`/resources/stats${query}`);
+	},
+
+	// Absences
+	listAbsences: (params?: { employee_id?: string; start_from?: string; end_to?: string }) => {
+		if (!params) return request<EmployeeAbsence[]>('/resources/absences');
+		const filtered: Record<string, string> = {};
+		Object.entries(params).forEach(([k, v]) => { if (v) filtered[k] = v; });
+		const query = Object.keys(filtered).length > 0 ? '?' + new URLSearchParams(filtered).toString() : '';
+		return request<EmployeeAbsence[]>(`/resources/absences${query}`);
+	},
+	createAbsence: (data: {
+		employee_id: string;
+		absence_type: string;
+		start_date: string;
+		end_date: string;
+		description?: string;
+		source?: string;
+	}) => request<EmployeeAbsence>('/resources/absences', { method: 'POST', body: data }),
+	deleteAbsence: (id: string) =>
+		request<{ message: string }>(`/resources/absences/${id}`, { method: 'DELETE' }),
+
+	// Employee resource settings
+	updateEmployeeResourceSettings: (employeeId: string, data: {
+		work_hours_per_week?: number;
+		availability_percent?: number;
+		hourly_rate?: number;
+	}) => request<Employee>(`/employees/${employeeId}/resource-settings`, { method: 'PUT', body: data }),
+};
+
 // Combined API object for convenience
 export const api = {
 	employees,
@@ -1502,5 +1622,6 @@ export const api = {
 	admin,
 	auth,
 	serviceDesk,
-	improvements
+	improvements,
+	resources
 };

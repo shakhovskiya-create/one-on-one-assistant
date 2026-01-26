@@ -316,6 +316,19 @@ func main() {
 	protectedAPI.Post("/improvements/:id/create-project", h.CreateProjectFromRequest)
 	protectedAPI.Post("/improvements/:id/comments", h.AddImprovementRequestComment)
 
+	// Resource Planning (Планирование ресурсов)
+	protectedAPI.Get("/resources/allocations", h.ListResourceAllocations)
+	protectedAPI.Get("/resources/allocations/:id", h.GetResourceAllocation)
+	protectedAPI.Post("/resources/allocations", h.CreateResourceAllocation)
+	protectedAPI.Put("/resources/allocations/:id", h.UpdateResourceAllocation)
+	protectedAPI.Delete("/resources/allocations/:id", h.DeleteResourceAllocation)
+	protectedAPI.Get("/resources/capacity", h.GetResourceCapacity)
+	protectedAPI.Get("/resources/stats", h.GetResourceStats)
+	protectedAPI.Get("/resources/absences", h.ListEmployeeAbsences)
+	protectedAPI.Post("/resources/absences", h.CreateEmployeeAbsence)
+	protectedAPI.Delete("/resources/absences/:id", h.DeleteEmployeeAbsence)
+	protectedAPI.Put("/employees/:id/resource-settings", h.UpdateEmployeeResourceSettings)
+
 	// User role (for current user)
 	protectedAPI.Get("/auth/role", h.GetCurrentUserRole)
 

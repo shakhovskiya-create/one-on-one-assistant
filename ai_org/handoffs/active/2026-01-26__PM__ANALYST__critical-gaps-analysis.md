@@ -163,12 +163,21 @@
 - Activity log и комментарии
 - Bugfix: Svelte 5 event syntax (on:submit → onsubmit)
 
-### GAP-005: Заявка на улучшение (🔄 READY FOR DEPLOY)
+### GAP-005: Заявка на улучшение (✅ DEPLOYED)
 - Backend: модели, handlers, routes, миграция
 - Frontend: /improvements (list), /create, /[id] (detail)
 - Workflow: 9 статусов согласования
 - Связь с проектом после одобрения комитета
+- Deployed to 10.100.0.131
+
+### GAP-006: Планирование ресурсов (🔄 READY FOR DEPLOY)
+- Backend: ResourceAllocation, EmployeeAbsence models
+- Расширение Employee: work_hours_per_week, availability_percent
+- Handlers: allocations CRUD, capacity, stats, absences
+- Frontend: /resources (capacity overview + allocation modal)
+- Метрики: utilization_percent, overloaded
+- Миграция: 005_resource_planning.sql
 
 ### Следующие шаги:
 - GAP-007: Диагностика бага зависимостей (🔍 DIAGNOSED)
-- GAP-006: Планирование ресурсов
+- GAP-003: Связь задача→проект (HIGH)
