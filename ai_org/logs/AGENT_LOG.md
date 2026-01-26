@@ -91,6 +91,36 @@
 - **Рекомендация:** Создать тестовые данные (2 задачи с зависимостью) и проверить
 - **Статус:** 🔍 Требует верификации с реальными данными
 
+### GAP-010 IMPLEMENTATION: Service Desk MVP
+- **Инициатор:** PM (Sprint 9 CRITICAL)
+- **Исполнитель:** Developer
+- **Результат:**
+  - **Backend:**
+    - Модели: `ServiceTicket`, `ServiceTicketCategory`, `ServiceTicketComment`, `ServiceTicketActivity`
+    - Handlers: `servicedesk.go` — CRUD для tickets, comments, categories, stats
+    - Routes: `/api/v1/service-desk/*`
+    - Миграция: `backend/migrations/003_service_desk.sql`
+  - **Frontend:**
+    - `/service-desk` — User Portal (hero, my tickets, catalog)
+    - `/service-desk/create` — Create ticket form
+    - `/service-desk/tickets/[id]` — Ticket detail view
+    - API client: `serviceDesk` functions
+  - **ITIL Features:**
+    - Типы тикетов: incident, service_request, change, problem
+    - SLA: 4ч (critical), 8ч (high), 24ч (medium), 72ч (low)
+    - Номера тикетов: INC-2026-0001, REQ-2026-0001, CHG-2026-0001, PRB-2026-0001
+    - Activity log и комментарии (публичные/internal)
+- **Файлы:**
+  - `backend/internal/handlers/servicedesk.go`
+  - `backend/internal/models/models.go`
+  - `backend/cmd/server/main.go`
+  - `backend/migrations/003_service_desk.sql`
+  - `frontend/src/lib/api/client.ts`
+  - `frontend/src/routes/service-desk/+page.svelte`
+  - `frontend/src/routes/service-desk/create/+page.svelte`
+  - `frontend/src/routes/service-desk/tickets/[id]/+page.svelte`
+- **Статус:** ✅ Реализовано, готово к деплою
+
 ---
 
 ## 2026-01-23

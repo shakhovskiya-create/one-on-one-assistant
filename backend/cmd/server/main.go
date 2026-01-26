@@ -292,6 +292,16 @@ func main() {
 	protectedAPI.Get("/github/tasks/:id/commits", h.GetTaskCommits)
 	protectedAPI.Get("/github/tasks/:id/pulls", h.GetTaskPullRequests)
 
+	// Service Desk (ITIL)
+	protectedAPI.Get("/service-desk/tickets", h.ListServiceTickets)
+	protectedAPI.Get("/service-desk/tickets/my", h.GetMyServiceTickets)
+	protectedAPI.Get("/service-desk/tickets/:id", h.GetServiceTicket)
+	protectedAPI.Post("/service-desk/tickets", h.CreateServiceTicket)
+	protectedAPI.Put("/service-desk/tickets/:id", h.UpdateServiceTicket)
+	protectedAPI.Post("/service-desk/tickets/:id/comments", h.AddServiceTicketComment)
+	protectedAPI.Get("/service-desk/categories", h.ListServiceTicketCategories)
+	protectedAPI.Get("/service-desk/stats", h.GetServiceDeskStats)
+
 	// User role (for current user)
 	protectedAPI.Get("/auth/role", h.GetCurrentUserRole)
 

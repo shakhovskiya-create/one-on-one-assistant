@@ -155,8 +155,14 @@
 - Meetings sidebar по макету 04-meetings.html
 - Service Desk sidebar по макетам 02, 03
 
+### GAP-010: Service Desk MVP (✅ DONE)
+- Backend: модели, handlers, routes, миграция
+- Frontend: /service-desk (portal), /create, /tickets/[id]
+- ITIL: incidents, service_requests, changes, problems
+- SLA: 4h/8h/24h/72h по приоритету
+- Activity log и комментарии
+
 ### Следующие шаги:
-- GAP-007: Диагностика бага зависимостей
+- GAP-007: Диагностика бага зависимостей (🔍 DIAGNOSED)
 - GAP-005: Сущность "Заявка на улучшение"
 - GAP-006: Планирование ресурсов
-- GAP-010: Service Desk MVP

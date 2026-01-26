@@ -269,3 +269,65 @@ type Sprint struct {
 	CompletedPoints int      `json:"completed_points,omitempty"`
 	Progress        int      `json:"progress,omitempty"` // percentage
 }
+
+// ServiceTicket represents a Service Desk ticket (ITIL)
+type ServiceTicket struct {
+	ID           string     `json:"id"`
+	Number       string     `json:"number"` // SD-00001, INC-00001, REQ-00001
+	Type         string     `json:"type"`   // incident, service_request, change, problem
+	Title        string     `json:"title"`
+	Description  *string    `json:"description,omitempty"`
+	CategoryID   *string    `json:"category_id,omitempty"`
+	Priority     string     `json:"priority"`           // low, medium, high, critical
+	Impact       string     `json:"impact,omitempty"`   // individual, department, organization
+	Status       string     `json:"status"`             // new, in_progress, pending, resolved, closed
+	RequesterID  string     `json:"requester_id"`
+	AssigneeID   *string    `json:"assignee_id,omitempty"`
+	SLADeadline  *time.Time `json:"sla_deadline,omitempty"`
+	Resolution   *string    `json:"resolution,omitempty"`
+	ResolvedAt   *time.Time `json:"resolved_at,omitempty"`
+	ClosedAt     *time.Time `json:"closed_at,omitempty"`
+	CreatedAt    *time.Time `json:"created_at,omitempty"`
+	UpdatedAt    *time.Time `json:"updated_at,omitempty"`
+
+	// Relations
+	Requester *Employee              `json:"requester,omitempty"`
+	Assignee  *Employee              `json:"assignee,omitempty"`
+	Category  *ServiceTicketCategory `json:"category,omitempty"`
+	Comments  []ServiceTicketComment `json:"comments,omitempty"`
+	Activity  []ServiceTicketActivity `json:"activity,omitempty"`
+}
+
+// ServiceTicketCategory represents a Service Desk category
+type ServiceTicketCategory struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+	Icon        *string `json:"icon,omitempty"`
+	Color       *string `json:"color,omitempty"`
+	SLAHours    int     `json:"sla_hours,omitempty"` // Default SLA in hours
+	ParentID    *string `json:"parent_id,omitempty"`
+}
+
+// ServiceTicketComment represents a comment on a ticket
+type ServiceTicketComment struct {
+	ID          string     `json:"id"`
+	TicketID    string     `json:"ticket_id"`
+	AuthorID    string     `json:"author_id"`
+	Content     string     `json:"content"`
+	IsInternal  bool       `json:"is_internal"` // Internal note vs public reply
+	CreatedAt   *time.Time `json:"created_at,omitempty"`
+	Author      *Employee  `json:"author,omitempty"`
+}
+
+// ServiceTicketActivity represents activity log entry
+type ServiceTicketActivity struct {
+	ID         string     `json:"id"`
+	TicketID   string     `json:"ticket_id"`
+	ActorID    *string    `json:"actor_id,omitempty"`
+	Action     string     `json:"action"` // created, status_changed, assigned, comment_added, resolved, etc.
+	OldValue   *string    `json:"old_value,omitempty"`
+	NewValue   *string    `json:"new_value,omitempty"`
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	Actor      *Employee  `json:"actor,omitempty"`
+}

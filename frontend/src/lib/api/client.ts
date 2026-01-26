@@ -1239,6 +1239,107 @@ export const auth = {
 	refresh: () => request<{ token: string }>('/auth/refresh', { method: 'POST' }),
 };
 
+// Service Desk types
+export interface ServiceTicket {
+	id: string;
+	number: string;
+	type: 'incident' | 'service_request' | 'change' | 'problem';
+	title: string;
+	description?: string;
+	category_id?: string;
+	priority: 'low' | 'medium' | 'high' | 'critical';
+	impact?: 'individual' | 'department' | 'organization';
+	status: 'new' | 'in_progress' | 'pending' | 'resolved' | 'closed';
+	requester_id: string;
+	assignee_id?: string;
+	sla_deadline?: string;
+	resolution?: string;
+	resolved_at?: string;
+	closed_at?: string;
+	created_at?: string;
+	updated_at?: string;
+	requester?: Employee;
+	assignee?: Employee;
+	category?: ServiceTicketCategory;
+	comments?: ServiceTicketComment[];
+	activity?: ServiceTicketActivity[];
+}
+
+export interface ServiceTicketCategory {
+	id: string;
+	name: string;
+	description?: string;
+	icon?: string;
+	color?: string;
+	sla_hours?: number;
+	parent_id?: string;
+}
+
+export interface ServiceTicketComment {
+	id: string;
+	ticket_id: string;
+	author_id: string;
+	content: string;
+	is_internal: boolean;
+	created_at?: string;
+	author?: Employee;
+}
+
+export interface ServiceTicketActivity {
+	id: string;
+	ticket_id: string;
+	actor_id?: string;
+	action: string;
+	old_value?: string;
+	new_value?: string;
+	created_at?: string;
+	actor?: Employee;
+}
+
+export interface ServiceDeskStats {
+	open_tickets: number;
+	sla_breached: number;
+	sla_warning: number;
+	resolved_today: number;
+	sla_compliance: number;
+}
+
+// Service Desk API
+export const serviceDesk = {
+	listTickets: (params?: { requester_id?: string; assignee_id?: string; status?: string; type?: string; priority?: string }) => {
+		if (!params) return request<ServiceTicket[]>('/service-desk/tickets');
+		const filtered: Record<string, string> = {};
+		Object.entries(params).forEach(([k, v]) => { if (v) filtered[k] = v; });
+		const query = Object.keys(filtered).length > 0 ? '?' + new URLSearchParams(filtered).toString() : '';
+		return request<ServiceTicket[]>(`/service-desk/tickets${query}`);
+	},
+	getMyTickets: (userId: string) => request<ServiceTicket[]>(`/service-desk/tickets/my?user_id=${userId}`),
+	getTicket: (id: string) => request<ServiceTicket>(`/service-desk/tickets/${id}`),
+	createTicket: (data: {
+		type?: string;
+		title: string;
+		description?: string;
+		category_id?: string;
+		priority?: string;
+		impact?: string;
+		requester_id: string;
+	}) => request<ServiceTicket>('/service-desk/tickets', { method: 'POST', body: data }),
+	updateTicket: (id: string, data: {
+		status?: string;
+		priority?: string;
+		assignee_id?: string;
+		resolution?: string;
+		category_id?: string;
+		title?: string;
+		description?: string;
+		actor_id?: string;
+	}) => request<ServiceTicket>(`/service-desk/tickets/${id}`, { method: 'PUT', body: data }),
+	addComment: (ticketId: string, data: { author_id: string; content: string; is_internal?: boolean }) =>
+		request<ServiceTicketComment>(`/service-desk/tickets/${ticketId}/comments`, { method: 'POST', body: data }),
+	getCategories: () => request<ServiceTicketCategory[]>('/service-desk/categories'),
+	getStats: () => request<ServiceDeskStats>('/service-desk/stats'),
+};
+
 // Combined API object for convenience
 export const api = {
 	employees,
@@ -1258,5 +1359,6 @@ export const api = {
 	versions,
 	sprints,
 	admin,
-	auth
+	auth,
+	serviceDesk
 };
