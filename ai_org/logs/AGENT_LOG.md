@@ -22,7 +22,7 @@
   - Обновлён `Sidebar.svelte` - контекстная навигация по модулям
   - Удалён Header.svelte (интегрирован в GlobalNav)
 - **Структура:** Global Top Nav (h-12) + Dark Sidebar (w-60) + Content
-- **Статус:** В процессе деплоя
+- **Статус:** ✅ Завершён, деплой на 10.100.0.131 выполнен
 
 ### UI Prototypes: Unified Portal Structure
 - **Инициатор:** PM (user feedback)

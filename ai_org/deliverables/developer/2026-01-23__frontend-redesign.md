@@ -40,6 +40,11 @@
 - Font: system (inherited)
 - Tailwind CSS classes
 
+## Deployment
+- Server: 10.100.0.131
+- Commit: `4c4da8c`
+- Status: ✅ Deployed
+
 ## Related
 - Prototypes: `ai_org/deliverables/prototypes/`
-- Handoff: `ai_org/handoffs/active/2026-01-23__PM__DEV__frontend-redesign.md`
+- Handoff: `ai_org/handoffs/done/2026-01-23__PM__DEV__frontend-redesign.md`
