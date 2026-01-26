@@ -181,6 +181,9 @@ docker-compose down && docker-compose build --no-cache backend frontend && docke
   - `h.DB.Update("table", "key", id, data)` — вместо `h.DB.From("table").Update(data).Eq().Execute()`
   - `h.DB.Delete("table", "key", id)` — вместо `h.DB.From("table").Delete().Eq().Execute()`
 
+## Status
+✅ **DEPLOYED** to 10.100.0.131 on 2026-01-26
+
 ## Related
 - Functional Model: `ai_org/deliverables/analyst/2026-01-26__critical-gaps__fm.md` (Section 4)
 - Sprint: Sprint 9 CRITICAL

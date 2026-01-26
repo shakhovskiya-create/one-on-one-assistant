@@ -170,7 +170,7 @@
 - Связь с проектом после одобрения комитета
 - Deployed to 10.100.0.131
 
-### GAP-006: Планирование ресурсов (🔄 DEPLOYING)
+### GAP-006: Планирование ресурсов (✅ DONE)
 - Backend: ResourceAllocation, EmployeeAbsence models
 - Расширение Employee: work_hours_per_week, availability_percent
 - Handlers: allocations CRUD, capacity, stats, absences
@@ -179,6 +179,7 @@
 - Миграция: 005_resource_planning.sql
 - Bugfix: исправлен import path для models package
 - Bugfix: исправлен Database API (Insert/Update/Delete методы)
+- Deployed to 10.100.0.131
 
 ### Следующие шаги:
 - GAP-007: Диагностика бага зависимостей (🔍 DIAGNOSED)

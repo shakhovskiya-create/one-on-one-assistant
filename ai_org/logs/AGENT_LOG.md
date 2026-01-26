@@ -225,6 +225,16 @@
 - **Файлы:** `backend/internal/handlers/resources.go`
 - **Статус:** ✅ Исправлено
 
+### GAP-006 DEPLOYMENT: Resource Planning
+- **Инициатор:** PM (Sprint 9 CRITICAL)
+- **Исполнитель:** Developer
+- **Результат:**
+  - Backend пересобран с исправленным Database API
+  - Миграция 005_resource_planning.sql подтверждена
+  - API /resources/* работает (требует авторизацию)
+  - Endpoints: allocations CRUD, capacity, stats, absences, employee settings
+- **Статус:** ✅ Задеплоено на 10.100.0.131
+
 ---
 
 ## 2026-01-23
