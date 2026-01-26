@@ -129,6 +129,41 @@
 - **Файлы:** `frontend/src/routes/service-desk/create/+page.svelte`
 - **Статус:** ✅ Исправлено
 
+### GAP-005 IMPLEMENTATION: Заявка на улучшение (Improvement Requests)
+- **Инициатор:** PM (Sprint 9 CRITICAL)
+- **Исполнитель:** Developer
+- **Результат:**
+  - **Backend:**
+    - Модели: `ImprovementRequest`, `ImprovementRequestType`, `ImprovementRequestComment`, `ImprovementRequestApproval`, `ImprovementRequestActivity`
+    - Handlers: `improvements.go` — list, get, create, update, submit, approve, reject, createProject, addComment
+    - Routes: `/api/v1/improvements/*`
+    - Миграция: `backend/migrations/004_improvement_requests.sql`
+  - **Frontend:**
+    - `/improvements` — Список заявок с фильтрами и статистикой
+    - `/improvements/create` — Форма создания заявки с бизнес-обоснованием
+    - `/improvements/[id]` — Детали заявки с визуализацией workflow и действиями
+    - API client: `improvements` functions
+  - **Workflow (9 статусов):**
+    - draft → submitted → screening → evaluation → manager_approval → committee_review → budgeting → project_created → in_progress/completed
+    - На любом этапе возможен rejection
+  - **Атрибуты заявки:**
+    - Название, описание, бизнес-ценность, ожидаемый эффект
+    - Инициатор, спонсор, департамент
+    - Предварительный и утверждённый бюджет
+    - Сроки реализации
+    - Тип улучшения, приоритет
+    - Связь с проектом (после одобрения)
+- **Файлы:**
+  - `backend/internal/handlers/improvements.go`
+  - `backend/internal/models/models.go`
+  - `backend/cmd/server/main.go`
+  - `backend/migrations/004_improvement_requests.sql`
+  - `frontend/src/lib/api/client.ts`
+  - `frontend/src/routes/improvements/+page.svelte`
+  - `frontend/src/routes/improvements/create/+page.svelte`
+  - `frontend/src/routes/improvements/[id]/+page.svelte`
+- **Статус:** 🔄 Реализовано, готово к деплою
+
 ---
 
 ## 2026-01-23

@@ -302,6 +302,20 @@ func main() {
 	protectedAPI.Get("/service-desk/categories", h.ListServiceTicketCategories)
 	protectedAPI.Get("/service-desk/stats", h.GetServiceDeskStats)
 
+	// Improvement Requests (Заявки на улучшение)
+	protectedAPI.Get("/improvements", h.ListImprovementRequests)
+	protectedAPI.Get("/improvements/my", h.GetMyImprovementRequests)
+	protectedAPI.Get("/improvements/types", h.ListImprovementRequestTypes)
+	protectedAPI.Get("/improvements/stats", h.GetImprovementRequestStats)
+	protectedAPI.Get("/improvements/:id", h.GetImprovementRequest)
+	protectedAPI.Post("/improvements", h.CreateImprovementRequest)
+	protectedAPI.Put("/improvements/:id", h.UpdateImprovementRequest)
+	protectedAPI.Post("/improvements/:id/submit", h.SubmitImprovementRequest)
+	protectedAPI.Post("/improvements/:id/approve", h.ApproveImprovementRequest)
+	protectedAPI.Post("/improvements/:id/reject", h.RejectImprovementRequest)
+	protectedAPI.Post("/improvements/:id/create-project", h.CreateProjectFromRequest)
+	protectedAPI.Post("/improvements/:id/comments", h.AddImprovementRequestComment)
+
 	// User role (for current user)
 	protectedAPI.Get("/auth/role", h.GetCurrentUserRole)
 

@@ -1340,6 +1340,147 @@ export const serviceDesk = {
 	getStats: () => request<ServiceDeskStats>('/service-desk/stats'),
 };
 
+// Improvement Request types
+export interface ImprovementRequest {
+	id: string;
+	number: string;  // IR-2026-0001
+	title: string;
+	description?: string;
+	business_value?: string;
+	expected_effect?: string;
+	initiator_id: string;
+	department_id?: string;
+	sponsor_id?: string;
+	estimated_budget?: number;
+	approved_budget?: number;
+	estimated_start?: string;
+	estimated_end?: string;
+	status: 'draft' | 'submitted' | 'screening' | 'evaluation' | 'manager_approval' | 'committee_review' | 'budgeting' | 'project_created' | 'in_progress' | 'completed' | 'rejected';
+	committee_date?: string;
+	committee_decision?: string;
+	project_id?: string;
+	rejection_reason?: string;
+	rejected_by?: string;
+	rejected_at?: string;
+	type_id?: string;
+	priority?: 'low' | 'medium' | 'high' | 'critical';
+	created_at?: string;
+	updated_at?: string;
+	submitted_at?: string;
+	approved_at?: string;
+	initiator?: Employee;
+	sponsor?: Employee;
+	project?: Project;
+	type?: ImprovementRequestType;
+	comments?: ImprovementRequestComment[];
+	approvals?: ImprovementRequestApproval[];
+	activity?: ImprovementRequestActivity[];
+}
+
+export interface ImprovementRequestType {
+	id: string;
+	name: string;
+	description?: string;
+	icon?: string;
+	color?: string;
+}
+
+export interface ImprovementRequestComment {
+	id: string;
+	request_id: string;
+	author_id: string;
+	content: string;
+	is_internal: boolean;
+	created_at?: string;
+	author?: Employee;
+}
+
+export interface ImprovementRequestApproval {
+	id: string;
+	request_id: string;
+	approver_id: string;
+	stage: string;
+	decision: 'approved' | 'rejected' | 'pending';
+	comment?: string;
+	created_at?: string;
+	approver?: Employee;
+}
+
+export interface ImprovementRequestActivity {
+	id: string;
+	request_id: string;
+	actor_id?: string;
+	action: string;
+	old_value?: string;
+	new_value?: string;
+	created_at?: string;
+	actor?: Employee;
+}
+
+export interface ImprovementRequestStats {
+	total: number;
+	draft: number;
+	pending: number;
+	approved: number;
+	rejected: number;
+	by_status: Record<string, number>;
+}
+
+// Improvement Requests API
+export const improvements = {
+	list: (params?: { initiator_id?: string; sponsor_id?: string; status?: string; department_id?: string; type_id?: string; priority?: string }) => {
+		if (!params) return request<ImprovementRequest[]>('/improvements');
+		const filtered: Record<string, string> = {};
+		Object.entries(params).forEach(([k, v]) => { if (v) filtered[k] = v; });
+		const query = Object.keys(filtered).length > 0 ? '?' + new URLSearchParams(filtered).toString() : '';
+		return request<ImprovementRequest[]>(`/improvements${query}`);
+	},
+	getMy: (userId: string) => request<ImprovementRequest[]>(`/improvements/my?user_id=${userId}`),
+	get: (id: string) => request<ImprovementRequest>(`/improvements/${id}`),
+	getTypes: () => request<ImprovementRequestType[]>('/improvements/types'),
+	getStats: () => request<ImprovementRequestStats>('/improvements/stats'),
+	create: (data: {
+		title: string;
+		description?: string;
+		business_value?: string;
+		expected_effect?: string;
+		initiator_id: string;
+		department_id?: string;
+		sponsor_id?: string;
+		estimated_budget?: number;
+		estimated_start?: string;
+		estimated_end?: string;
+		type_id?: string;
+		priority?: string;
+	}) => request<ImprovementRequest>('/improvements', { method: 'POST', body: data }),
+	update: (id: string, data: {
+		title?: string;
+		description?: string;
+		business_value?: string;
+		expected_effect?: string;
+		sponsor_id?: string;
+		estimated_budget?: number;
+		approved_budget?: number;
+		estimated_start?: string;
+		estimated_end?: string;
+		type_id?: string;
+		priority?: string;
+		committee_date?: string;
+		committee_decision?: string;
+		actor_id?: string;
+	}) => request<ImprovementRequest>(`/improvements/${id}`, { method: 'PUT', body: data }),
+	submit: (id: string, actorId: string) =>
+		request<ImprovementRequest>(`/improvements/${id}/submit`, { method: 'POST', body: { actor_id: actorId } }),
+	approve: (id: string, data: { approver_id: string; comment?: string; approved_budget?: number }) =>
+		request<ImprovementRequest>(`/improvements/${id}/approve`, { method: 'POST', body: data }),
+	reject: (id: string, data: { rejector_id: string; reason: string }) =>
+		request<ImprovementRequest>(`/improvements/${id}/reject`, { method: 'POST', body: data }),
+	createProject: (id: string, actorId: string) =>
+		request<ImprovementRequest>(`/improvements/${id}/create-project`, { method: 'POST', body: { actor_id: actorId } }),
+	addComment: (requestId: string, data: { author_id: string; content: string; is_internal?: boolean }) =>
+		request<ImprovementRequestComment>(`/improvements/${requestId}/comments`, { method: 'POST', body: data }),
+};
+
 // Combined API object for convenience
 export const api = {
 	employees,
@@ -1360,5 +1501,6 @@ export const api = {
 	sprints,
 	admin,
 	auth,
-	serviceDesk
+	serviceDesk,
+	improvements
 };

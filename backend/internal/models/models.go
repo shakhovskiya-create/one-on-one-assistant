@@ -331,3 +331,86 @@ type ServiceTicketActivity struct {
 	CreatedAt  *time.Time `json:"created_at,omitempty"`
 	Actor      *Employee  `json:"actor,omitempty"`
 }
+
+// ImprovementRequest represents an improvement request (Заявка на улучшение)
+type ImprovementRequest struct {
+	ID                string     `json:"id"`
+	Number            string     `json:"number"` // IR-2026-0001
+	Title             string     `json:"title"`
+	Description       *string    `json:"description,omitempty"`
+	BusinessValue     *string    `json:"business_value,omitempty"`     // Бизнес-ценность
+	ExpectedEffect    *string    `json:"expected_effect,omitempty"`    // Ожидаемый эффект (KPI / финансовый)
+	InitiatorID       string     `json:"initiator_id"`
+	DepartmentID      *string    `json:"department_id,omitempty"`
+	SponsorID         *string    `json:"sponsor_id,omitempty"`
+	EstimatedBudget   *float64   `json:"estimated_budget,omitempty"`   // Предварительный бюджет
+	ApprovedBudget    *float64   `json:"approved_budget,omitempty"`    // Утверждённый бюджет
+	EstimatedStart    *string    `json:"estimated_start,omitempty"`
+	EstimatedEnd      *string    `json:"estimated_end,omitempty"`
+	Status            string     `json:"status"`                       // draft, submitted, screening, evaluation, manager_approval, committee_review, budgeting, project_created, in_progress, completed, rejected
+	CommitteeDate     *string    `json:"committee_date,omitempty"`
+	CommitteeDecision *string    `json:"committee_decision,omitempty"`
+	ProjectID         *string    `json:"project_id,omitempty"`         // Link to created project
+	RejectionReason   *string    `json:"rejection_reason,omitempty"`
+	RejectedBy        *string    `json:"rejected_by,omitempty"`
+	RejectedAt        *time.Time `json:"rejected_at,omitempty"`
+	TypeID            *string    `json:"type_id,omitempty"`
+	Priority          string     `json:"priority,omitempty"`           // low, medium, high, critical
+	CreatedAt         *time.Time `json:"created_at,omitempty"`
+	UpdatedAt         *time.Time `json:"updated_at,omitempty"`
+	SubmittedAt       *time.Time `json:"submitted_at,omitempty"`
+	ApprovedAt        *time.Time `json:"approved_at,omitempty"`
+
+	// Relations
+	Initiator  *Employee                      `json:"initiator,omitempty"`
+	Sponsor    *Employee                      `json:"sponsor,omitempty"`
+	Project    *Project                       `json:"project,omitempty"`
+	Type       *ImprovementRequestType        `json:"type,omitempty"`
+	Comments   []ImprovementRequestComment    `json:"comments,omitempty"`
+	Approvals  []ImprovementRequestApproval   `json:"approvals,omitempty"`
+	Activity   []ImprovementRequestActivity   `json:"activity,omitempty"`
+}
+
+// ImprovementRequestType represents a type/category of improvement request
+type ImprovementRequestType struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+	Icon        *string `json:"icon,omitempty"`
+	Color       *string `json:"color,omitempty"`
+}
+
+// ImprovementRequestComment represents a comment on an improvement request
+type ImprovementRequestComment struct {
+	ID         string     `json:"id"`
+	RequestID  string     `json:"request_id"`
+	AuthorID   string     `json:"author_id"`
+	Content    string     `json:"content"`
+	IsInternal bool       `json:"is_internal"` // Internal note vs public comment
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	Author     *Employee  `json:"author,omitempty"`
+}
+
+// ImprovementRequestApproval represents an approval decision in the workflow
+type ImprovementRequestApproval struct {
+	ID         string     `json:"id"`
+	RequestID  string     `json:"request_id"`
+	ApproverID string     `json:"approver_id"`
+	Stage      string     `json:"stage"`    // screening, evaluation, manager_approval, committee_review, budgeting
+	Decision   string     `json:"decision"` // approved, rejected, pending
+	Comment    *string    `json:"comment,omitempty"`
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	Approver   *Employee  `json:"approver,omitempty"`
+}
+
+// ImprovementRequestActivity represents activity log entry
+type ImprovementRequestActivity struct {
+	ID         string     `json:"id"`
+	RequestID  string     `json:"request_id"`
+	ActorID    *string    `json:"actor_id,omitempty"`
+	Action     string     `json:"action"` // created, submitted, status_changed, comment_added, approved, rejected, etc.
+	OldValue   *string    `json:"old_value,omitempty"`
+	NewValue   *string    `json:"new_value,omitempty"`
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	Actor      *Employee  `json:"actor,omitempty"`
+}

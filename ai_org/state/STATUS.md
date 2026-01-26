@@ -1,7 +1,7 @@
 # Status (оперативный)
 
 **Дата:** 2026-01-26
-**Обновлено:** 07:30 UTC
+**Обновлено:** 09:00 UTC
 
 ## Текущий фокус
 - ✅ Sprint 9 CRITICAL в процессе
@@ -9,11 +9,12 @@
 - ✅ GAP-002: GitHub добавлен в Tasks sidebar
 - ✅ GAP-009: Tasks sidebar полностью по макету
 - ✅ GAP-012: Профиль исправлен (полное ФИО)
-- 🔄 GAP-010: Service Desk MVP — реализация завершена, ожидает деплоя
+- ✅ GAP-010: Service Desk MVP — DEPLOYED
+- 🔄 GAP-005: Заявка на улучшение — В РЕАЛИЗАЦИИ
 
 ## Завершено сегодня
 
-### GAP-010: Service Desk MVP 🔄 READY FOR DEPLOY
+### GAP-010: Service Desk MVP ✅ DEPLOYED
 **Backend:**
 - Модели: ServiceTicket, ServiceTicketCategory, ServiceTicketComment, ServiceTicketActivity
 - Handlers: CRUD для tickets, comments, categories, stats
@@ -26,14 +27,32 @@
 - `/service-desk/tickets/[id]` — Ticket detail view
 - API client: serviceDesk functions
 
+**Коммит:** f8be668, 3dcd4b2
+
+### GAP-005: Заявка на улучшение 🔄 IN PROGRESS
+**Backend:**
+- Модели: ImprovementRequest, ImprovementRequestType, ImprovementRequestComment, ImprovementRequestApproval, ImprovementRequestActivity
+- Handlers: CRUD, submit, approve, reject, create-project
+- Routes: /api/v1/improvements/*
+- Миграция: `backend/migrations/004_improvement_requests.sql`
+
+**Frontend:**
+- `/improvements` — Список заявок с фильтрами
+- `/improvements/create` — Форма создания заявки
+- `/improvements/[id]` — Детали заявки с workflow
+
+**Workflow (9 статусов):**
+1. draft → submitted → screening → evaluation → manager_approval → committee_review → budgeting → project_created → in_progress/completed
+2. На любом этапе возможен rejection
+
 **Файлы:**
-- `backend/internal/handlers/servicedesk.go`
+- `backend/internal/handlers/improvements.go`
 - `backend/internal/models/models.go` (добавлены модели)
 - `backend/cmd/server/main.go` (добавлены routes)
 - `frontend/src/lib/api/client.ts` (добавлен API)
-- `frontend/src/routes/service-desk/+page.svelte`
-- `frontend/src/routes/service-desk/create/+page.svelte`
-- `frontend/src/routes/service-desk/tickets/[id]/+page.svelte`
+- `frontend/src/routes/improvements/+page.svelte`
+- `frontend/src/routes/improvements/create/+page.svelte`
+- `frontend/src/routes/improvements/[id]/+page.svelte`
 
 ### GAP-001: Global Navigation ✅ DONE
 - GlobalNav.svelte: 8 модулей (утверждённый состав)
@@ -65,7 +84,6 @@
 ## Следующие шаги
 
 ### CRITICAL (осталось):
-- GAP-005: Заявка на улучшение — НЕ РЕАЛИЗОВАНА (требует backend + frontend)
 - GAP-006: Планирование ресурсов — НЕ РЕАЛИЗОВАНО (требует backend + frontend)
 
 ### HIGH:
@@ -74,16 +92,16 @@
 ### MEDIUM:
 - GAP-008: Meetings main content — calendar view (не sidebar)
 
-## Для деплоя GAP-010
+## Для деплоя GAP-005
 ```bash
 # На сервере 10.100.0.131
 cd /opt/one-on-one/app
 
 # 1. Применить миграцию
-psql -U postgres -d oneonondb -f backend/migrations/003_service_desk.sql
+cat backend/migrations/004_improvement_requests.sql | docker exec -i oneonone-postgres psql -U postgres -d oneonone
 
 # 2. Пересобрать и запустить
-docker-compose down && docker-compose build && docker-compose up -d
+docker-compose down && docker-compose build --no-cache backend frontend && docker-compose up -d
 ```
 
 ## Артефакты
