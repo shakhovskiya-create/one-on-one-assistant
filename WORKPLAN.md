@@ -1,8 +1,8 @@
 # EKF Hub - План работ
 
 **Дата создания:** 2026-01-21
-**Статус:** Sprint 7 завершён ✅
-**Последнее обновление:** 2026-01-22
+**Статус:** Sprint 9 CRITICAL ⚠️ — Исправление расхождений макет↔реализация
+**Последнее обновление:** 2026-01-26
 
 ---
 
@@ -375,7 +375,149 @@
 #### 8.6 Проекты
 - [ ] Объединить с задачами
 
-### Sprint 9: JIRA Parity - Расширение (ожидает утверждения)
+### Sprint 9: CRITICAL — Исправление расхождений макет↔реализация ⚠️ ПРИОРИТЕТ
+**Статус:** ОЖИДАЕТ СТАРТА
+**Приоритет:** CRITICAL — блокирует дальнейшую разработку
+**Дата выявления:** 2026-01-26
+**Источник:** Ревью владельца продукта
+
+#### 9.1 CRITICAL: Исправить навигацию (GAP-001, GAP-002)
+- [ ] Перенести Сообщения, Почта, Confluence, GitHub, Настройки из sidebar в top-bar
+- [ ] Добавить GitHub в контекстный sidebar раздела Задачи
+- [ ] Убрать дублирование профиля
+
+#### 9.2 CRITICAL: Исправить баг зависимостей задач (GAP-007)
+- [ ] Диагностировать причину зависания UI при загрузке зависимостей
+- [ ] Исправить бесконечный цикл или ошибку API
+- [ ] Добавить таймаут и обработку ошибок
+
+#### 9.3 CRITICAL: Заявка на улучшение (GAP-005) — НОВАЯ СУЩНОСТЬ
+**Описание:** Полный workflow от идеи до проекта
+
+**Миграция:**
+```sql
+CREATE TABLE improvement_requests (
+  id UUID PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  description TEXT,
+  business_value TEXT,
+  initiator_id UUID REFERENCES employees(id),
+  department_id UUID REFERENCES departments(id),
+  estimated_budget DECIMAL,
+  estimated_duration INTERVAL,
+  status VARCHAR(50), -- draft, pending, justification, committee, approved, rejected
+  committee_date DATE,
+  committee_decision TEXT,
+  project_id UUID REFERENCES projects(id),
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+```
+
+**Backend:**
+- [ ] Модель ImprovementRequest
+- [ ] CRUD handlers
+- [ ] Workflow transitions
+
+**Frontend:**
+- [ ] Страница /improvement-requests
+- [ ] Форма создания/редактирования
+- [ ] Список с фильтрами по статусу
+
+#### 9.4 CRITICAL: Планирование ресурсов (GAP-006)
+**Описание:** Видеть загрузку исполнителей
+
+**Миграция:**
+```sql
+ALTER TABLE employees ADD COLUMN work_hours_per_month INT DEFAULT 160;
+ALTER TABLE employees ADD COLUMN hourly_rate DECIMAL;
+
+CREATE TABLE resource_allocations (
+  id UUID PRIMARY KEY,
+  employee_id UUID REFERENCES employees(id),
+  task_id UUID REFERENCES tasks(id),
+  allocated_hours INT,
+  period_start DATE,
+  period_end DATE
+);
+```
+
+**Backend:**
+- [ ] Расширить Employee model
+- [ ] CRUD для ResourceAllocation
+- [ ] API для получения загрузки сотрудника
+
+**Frontend:**
+- [ ] Отображение загрузки в карточке задачи
+- [ ] Виджет "Загрузка исполнителя" при назначении
+
+#### 9.5 CRITICAL: Service Desk MVP (GAP-010)
+**Описание:** Минимальный функционал Service Desk
+
+**Миграция:**
+```sql
+CREATE TABLE ticket_categories (
+  id UUID PRIMARY KEY,
+  name VARCHAR(100),
+  sla_hours INT
+);
+
+CREATE TABLE tickets (
+  id UUID PRIMARY KEY,
+  number VARCHAR(20) UNIQUE,
+  title VARCHAR(255),
+  description TEXT,
+  category_id UUID REFERENCES ticket_categories(id),
+  priority VARCHAR(20),
+  status VARCHAR(50),
+  requester_id UUID REFERENCES employees(id),
+  assignee_id UUID REFERENCES employees(id),
+  sla_deadline TIMESTAMP,
+  resolution TEXT,
+  created_at TIMESTAMP,
+  resolved_at TIMESTAMP
+);
+```
+
+**Backend:**
+- [ ] Models: Ticket, Category
+- [ ] CRUD handlers
+- [ ] SLA calculation
+
+**Frontend:**
+- [ ] /service-desk — портал пользователя
+- [ ] /service-desk/agent — консоль агента
+
+#### 9.6 HIGH: Привести Meetings в соответствие макету (GAP-008)
+- [ ] Сравнить `04-meetings.html` с текущей реализацией
+- [ ] Исправить UI/UX расхождения
+- [ ] Добавить фото участников
+
+#### 9.7 HIGH: Расширить sidebar Tasks (GAP-009)
+- [ ] Добавить раздел "Тестирование" (тест-планы, кейсы)
+- [ ] Добавить раздел "Документация" (требования, wiki)
+- [ ] Добавить Roadmap/Gantt
+
+#### 9.8 HIGH: Обязательная связь задача→проект (GAP-003)
+- [ ] Сделать project_id NOT NULL в tasks
+- [ ] Создать "Внутренний проект" по умолчанию
+- [ ] Миграция существующих задач
+
+#### 9.9 MEDIUM: Документы в проектах (GAP-004)
+- [ ] Добавить relation проект↔документы
+- [ ] UI для загрузки/просмотра документов
+
+#### 9.10 MEDIUM: SSO для почты (GAP-011)
+- [ ] Исследовать варианты (Kerberos, OAuth, credentials passthrough)
+- [ ] Реализовать выбранный вариант
+
+#### 9.11 LOW: Исправить профиль (GAP-012)
+- [ ] Убрать дублирование
+- [ ] Отображать полное ФИО
+
+---
+
+### Sprint 10: JIRA Parity - Расширение (ожидает утверждения)
 Возможные задачи:
 - Custom fields для задач (MEDIUM)
 - Roadmap/Timeline view (MEDIUM)
