@@ -12,6 +12,18 @@
 
 ## 2026-01-23
 
+### Frontend Redesign: Unified Navigation
+- **Инициатор:** PM (applying approved prototypes)
+- **Исполнитель:** Developer
+- **Handoff:** `ai_org/handoffs/active/2026-01-23__PM__DEV__frontend-redesign.md`
+- **Результат:**
+  - Создан `GlobalNav.svelte` - верхняя навигация модулей
+  - Обновлён `+layout.svelte` - новая структура (top nav + sidebar)
+  - Обновлён `Sidebar.svelte` - контекстная навигация по модулям
+  - Удалён Header.svelte (интегрирован в GlobalNav)
+- **Структура:** Global Top Nav (h-12) + Dark Sidebar (w-60) + Content
+- **Статус:** В процессе деплоя
+
 ### UI Prototypes: Unified Portal Structure
 - **Инициатор:** PM (user feedback)
 - **Исполнитель:** Developer

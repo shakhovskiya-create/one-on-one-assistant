@@ -4,8 +4,8 @@
 	import { goto } from '$app/navigation';
 	import { auth, user, isAuthenticated, isLoading, subordinates } from '$lib/stores/auth';
 	import { notifications, currentUser } from '$lib/stores/app';
+	import GlobalNav from '$lib/components/GlobalNav.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
-	import Header from '$lib/components/Header.svelte';
 
 	let { children } = $props();
 
@@ -46,24 +46,20 @@
 {:else if $page.url.pathname === '/login'}
 	{@render children()}
 {:else if $isAuthenticated}
-	<div class="h-screen overflow-hidden">
-		<!-- Fixed Sidebar -->
-		<aside class="fixed left-0 top-0 h-full w-64 z-40">
+	<!-- Global Top Navigation -->
+	<GlobalNav user={$user} onLogout={handleLogout} />
+
+	<!-- Main Layout with Sidebar -->
+	<div class="flex h-screen pt-12">
+		<!-- Dark Sidebar -->
+		<aside class="w-60 bg-ekf-dark text-white flex-shrink-0 fixed left-0 top-12 bottom-0 z-40 overflow-y-auto">
 			<Sidebar user={$user} subordinates={$subordinates} onLogout={handleLogout} />
 		</aside>
 
-		<!-- Main content area -->
-		<div class="ml-64 h-full flex flex-col">
-			<!-- Fixed Header -->
-			<header class="sticky top-0 z-30 bg-white">
-				<Header user={$user} subordinates={$subordinates} onProfileClick={() => goto('/profile')} onLogout={handleLogout} />
-			</header>
-
-			<!-- Scrollable content -->
-			<main class="flex-1 overflow-y-auto p-4 bg-gray-50">
-				{@render children()}
-			</main>
-		</div>
+		<!-- Main Content -->
+		<main class="flex-1 ml-60 overflow-y-auto bg-gray-50 min-h-[calc(100vh-3rem)]">
+			{@render children()}
+		</main>
 	</div>
 
 	<!-- Notifications -->
