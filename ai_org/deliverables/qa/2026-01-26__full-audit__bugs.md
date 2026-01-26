@@ -1,11 +1,16 @@
 # Full Audit — QA Bugs (Summary)
 
-## Critical/High (see audit report for details)
-- Reversible storage of user passwords (AES) for EWS access.
-- JWT tokens and WS tokens exposed via localStorage/URL query params.
-- Отсутствует централизованный RBAC/ABAC на уровне handlers (IDOR).
-- Input validation непоследовательна; нет обязательной схемы валидации.
-- TLS/db sslmode=disable в docker-compose.
+## CRITICAL
+1) Reversible password storage (AES-GCM) for EWS/AD → полный компромисс паролей при утечке JWT_SECRET.
+2) IDOR на employees/tasks/calendar → чтение/изменение чужих сущностей.
+3) XSS через {@html} в Confluence/Mail → кража токенов.
+4) JWT в localStorage + WS token в URL → утечки через XSS/логи.
+
+## HIGH
+1) TLS verify disabled/sslmode=disable по умолчанию.
+2) File upload без валидации MIME/size.
+3) CSP unsafe-inline/unsafe-eval.
+4) Нет валидации state transitions задач.
 
 ## Notes
-Полный перечень — в детальном аудит-отчете (в сообщении PM/Analyst).
+Полный перечень и контекст — в аналитическом отчете (spec).
