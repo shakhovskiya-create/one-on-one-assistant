@@ -178,6 +178,13 @@ docker-compose down && docker-compose build && docker-compose up -d
 - Svelte 5 runes ($state, $derived)
 - Tailwind CSS
 
+## Bugfixes
+
+### Svelte 5 Event Syntax
+- **Problem:** Mixed Svelte 4 (`on:submit`) and Svelte 5 (`onclick`) event handlers
+- **File:** `frontend/src/routes/service-desk/create/+page.svelte`
+- **Fix:** Changed `on:submit|preventDefault={handleSubmit}` to `onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}`
+
 ## Related
 - Prototypes: `ai_org/deliverables/prototypes/02-service-desk-portal.html`
 - Prototypes: `ai_org/deliverables/prototypes/03-service-desk-agent.html`

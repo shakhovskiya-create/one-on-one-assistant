@@ -124,7 +124,7 @@
 			<div class="bg-red-50 text-red-700 p-4 rounded-xl mb-6">{error}</div>
 		{/if}
 
-		<form on:submit|preventDefault={handleSubmit} class="space-y-6">
+		<form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }} class="space-y-6">
 			<!-- Ticket Type -->
 			<div class="bg-white rounded-xl p-5 border border-gray-200">
 				<label class="block text-sm font-medium text-gray-700 mb-3">Тип обращения</label>

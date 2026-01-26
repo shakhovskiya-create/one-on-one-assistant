@@ -121,6 +121,14 @@
   - `frontend/src/routes/service-desk/tickets/[id]/+page.svelte`
 - **Статус:** ✅ Реализовано, готово к деплою
 
+### GAP-010 BUGFIX: Svelte 5 event syntax
+- **Инициатор:** CI/CD (build error)
+- **Исполнитель:** Developer
+- **Проблема:** Смешивание синтаксисов Svelte 4 (`on:submit`) и Svelte 5 (`onclick`)
+- **Решение:** Заменено `on:submit|preventDefault={handleSubmit}` на `onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}`
+- **Файлы:** `frontend/src/routes/service-desk/create/+page.svelte`
+- **Статус:** ✅ Исправлено
+
 ---
 
 ## 2026-01-23

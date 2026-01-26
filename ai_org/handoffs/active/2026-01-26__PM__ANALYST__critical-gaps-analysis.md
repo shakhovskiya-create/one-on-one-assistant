@@ -161,6 +161,7 @@
 - ITIL: incidents, service_requests, changes, problems
 - SLA: 4h/8h/24h/72h по приоритету
 - Activity log и комментарии
+- Bugfix: Svelte 5 event syntax (on:submit → onsubmit)
 
 ### Следующие шаги:
 - GAP-007: Диагностика бага зависимостей (🔍 DIAGNOSED)
