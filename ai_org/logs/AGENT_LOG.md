@@ -477,3 +477,17 @@
 - Транскрибирование: асинхронное API для больших файлов;
 - Проверить работу задач с пользователем после очистки кэша;
 - Управление спринтами (создание, активация, завершение) - отдельная страница!
+
+---
+timestamp: 2026-01-26T14:40:28+03:00
+cycle_id: design-figma-process-bootstrap
+read:
+  - designer.md
+  - CLAUDE.md
+created_or_updated:
+  - /Users/antonsahovskii/Documents/EKF/Git/one-on-one-assistant/ai_org/handoffs/active/2026-01-26__DESIGN__FIGMA_AI_PROCESS.md
+  - /Users/antonsahovskii/Documents/EKF/Git/one-on-one-assistant/ai_org/deliverables/designer/figma_prompt_spec.md
+  - /Users/antonsahovskii/Documents/EKF/Git/one-on-one-assistant/ai_org/deliverables/designer/FIGMA_GAPS.md
+notes:
+  - Инициализирован формализованный процесс дизайна через Figma AI
+---
