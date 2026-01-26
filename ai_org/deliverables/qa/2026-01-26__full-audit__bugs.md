@@ -1,5 +1,7 @@
 # Full Audit — QA Bugs (Summary)
 
+**Last updated:** 2026-01-26
+
 ## CRITICAL
 1) Reversible password storage (AES-GCM) for EWS/AD → полный компромисс паролей при утечке JWT_SECRET.
 2) IDOR на employees/tasks/calendar → чтение/изменение чужих сущностей.

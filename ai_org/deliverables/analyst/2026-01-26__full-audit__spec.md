@@ -1,5 +1,7 @@
 # Full Audit — Specification (Enterprise)
 
+**Last updated:** 2026-01-26
+
 ## Objective
 Полный аудит EKF Hub по архитектуре, backend, security, frontend, QA/testability, product/ops readiness.
 
