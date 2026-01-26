@@ -174,6 +174,9 @@ docker-compose down && docker-compose build --no-cache backend frontend && docke
 - Svelte 5 runes ($state, $derived, $effect)
 - Tailwind CSS
 
+## Bugfixes
+- **Import path**: Исправлен import path для models package (`github.com/shakhovskiya-create/one-on-one-assistant` → `github.com/ekf/one-on-one-backend`)
+
 ## Related
 - Functional Model: `ai_org/deliverables/analyst/2026-01-26__critical-gaps__fm.md` (Section 4)
 - Sprint: Sprint 9 CRITICAL

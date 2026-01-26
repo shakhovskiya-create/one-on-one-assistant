@@ -203,6 +203,14 @@
 - **Deliverable:** `ai_org/deliverables/developer/2026-01-26__resource-planning.md`
 - **Статус:** 🔄 Реализовано, готово к деплою
 
+### GAP-006 BUGFIX: Import path
+- **Инициатор:** CI/CD (build error)
+- **Исполнитель:** Developer
+- **Проблема:** Неправильный import path для models (`github.com/shakhovskiya-create/one-on-one-assistant` вместо `github.com/ekf/one-on-one-backend`)
+- **Решение:** Исправлен import на `github.com/ekf/one-on-one-backend/internal/models`
+- **Файлы:** `backend/internal/handlers/resources.go`
+- **Статус:** ✅ Исправлено
+
 ---
 
 ## 2026-01-23

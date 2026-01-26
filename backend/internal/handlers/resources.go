@@ -5,7 +5,7 @@ import (
 	"log"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/shakhovskiya-create/one-on-one-assistant/internal/models"
+	"github.com/ekf/one-on-one-backend/internal/models"
 )
 
 // ==================== Resource Allocations ====================
