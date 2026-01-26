@@ -1,46 +1,35 @@
 package handlers
 
 import (
-	"encoding/json"
-	"log"
-
-	"github.com/gofiber/fiber/v2"
 	"github.com/ekf/one-on-one-backend/internal/models"
+	"github.com/gofiber/fiber/v2"
 )
 
 // ==================== Resource Allocations ====================
 
 // ListResourceAllocations returns all allocations with optional filters
 func (h *Handler) ListResourceAllocations(c *fiber.Ctx) error {
-	qb := NewQueryBuilder("resource_allocations")
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
+	query := h.DB.From("resource_allocations").Select("*, employee:employees(id, name, position, photo_base64), task:tasks(id, title), project:projects(id, name)")
 
 	// Filters
 	if employeeID := c.Query("employee_id"); employeeID != "" {
-		qb.Filter("employee_id", "eq", employeeID)
+		query = query.Eq("employee_id", employeeID)
 	}
 	if projectID := c.Query("project_id"); projectID != "" {
-		qb.Filter("project_id", "eq", projectID)
+		query = query.Eq("project_id", projectID)
 	}
 	if taskID := c.Query("task_id"); taskID != "" {
-		qb.Filter("task_id", "eq", taskID)
+		query = query.Eq("task_id", taskID)
 	}
-
-	// Date filters
-	if startFrom := c.Query("start_from"); startFrom != "" {
-		qb.Filter("period_start", "gte", startFrom)
-	}
-	if endTo := c.Query("end_to"); endTo != "" {
-		qb.Filter("period_end", "lte", endTo)
-	}
-
-	qb.Order("period_start", false)
-	qb.Limit(c.QueryInt("limit", 100))
-	qb.Offset(c.QueryInt("offset", 0))
 
 	var allocations []models.ResourceAllocation
-	statusCode, err := h.PostgrestRequest("GET", qb.Build(), nil, &allocations)
-	if err != nil || statusCode >= 400 {
-		return c.Status(statusCode).JSON(fiber.Map{"error": "Failed to fetch allocations"})
+	err := query.Order("period_start", true).Limit(100).Execute(&allocations)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	return c.JSON(allocations)
@@ -48,21 +37,29 @@ func (h *Handler) ListResourceAllocations(c *fiber.Ctx) error {
 
 // GetResourceAllocation returns a single allocation by ID
 func (h *Handler) GetResourceAllocation(c *fiber.Ctx) error {
-	id := c.Params("id")
-	qb := NewQueryBuilder("resource_allocations")
-	qb.Filter("id", "eq", id)
-
-	var allocations []models.ResourceAllocation
-	statusCode, err := h.PostgrestRequest("GET", qb.Build(), nil, &allocations)
-	if err != nil || statusCode >= 400 || len(allocations) == 0 {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Allocation not found"})
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
 	}
 
-	return c.JSON(allocations[0])
+	id := c.Params("id")
+
+	var allocation models.ResourceAllocation
+	err := h.DB.From("resource_allocations").
+		Select("*, employee:employees(id, name, position, photo_base64), task:tasks(id, title), project:projects(id, name)").
+		Eq("id", id).Single().Execute(&allocation)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Allocation not found"})
+	}
+
+	return c.JSON(allocation)
 }
 
 // CreateResourceAllocation creates a new allocation
 func (h *Handler) CreateResourceAllocation(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
 	var input struct {
 		EmployeeID            string  `json:"employee_id"`
 		TaskID                *string `json:"task_id"`
@@ -110,22 +107,20 @@ func (h *Handler) CreateResourceAllocation(c *fiber.Ctx) error {
 		payload["created_by"] = *input.CreatedBy
 	}
 
-	body, _ := json.Marshal(payload)
-	var result []models.ResourceAllocation
-	statusCode, err := h.PostgrestRequest("POST", "resource_allocations", body, &result)
-	if err != nil || statusCode >= 400 {
-		log.Printf("Error creating allocation: %v, status: %d", err, statusCode)
-		return c.Status(statusCode).JSON(fiber.Map{"error": "Failed to create allocation"})
+	result, err := h.DB.Insert("resource_allocations", payload)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	if len(result) > 0 {
-		return c.Status(fiber.StatusCreated).JSON(result[0])
-	}
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Allocation created"})
+	return c.Status(fiber.StatusCreated).JSON(result)
 }
 
 // UpdateResourceAllocation updates an existing allocation
 func (h *Handler) UpdateResourceAllocation(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
 	id := c.Params("id")
 
 	var input map[string]interface{}
@@ -136,31 +131,24 @@ func (h *Handler) UpdateResourceAllocation(c *fiber.Ctx) error {
 	// Remove id from input if present
 	delete(input, "id")
 
-	body, _ := json.Marshal(input)
-	qb := NewQueryBuilder("resource_allocations")
-	qb.Filter("id", "eq", id)
-
-	var result []models.ResourceAllocation
-	statusCode, err := h.PostgrestRequest("PATCH", qb.Build(), body, &result)
-	if err != nil || statusCode >= 400 {
-		return c.Status(statusCode).JSON(fiber.Map{"error": "Failed to update allocation"})
+	result, err := h.DB.Update("resource_allocations", "id", id, input)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	if len(result) > 0 {
-		return c.JSON(result[0])
-	}
-	return c.JSON(fiber.Map{"message": "Allocation updated"})
+	return c.JSON(result)
 }
 
 // DeleteResourceAllocation removes an allocation
 func (h *Handler) DeleteResourceAllocation(c *fiber.Ctx) error {
-	id := c.Params("id")
-	qb := NewQueryBuilder("resource_allocations")
-	qb.Filter("id", "eq", id)
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
 
-	statusCode, err := h.PostgrestRequest("DELETE", qb.Build(), nil, nil)
-	if err != nil || statusCode >= 400 {
-		return c.Status(statusCode).JSON(fiber.Map{"error": "Failed to delete allocation"})
+	id := c.Params("id")
+
+	if err := h.DB.Delete("resource_allocations", "id", id); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	return c.JSON(fiber.Map{"message": "Allocation deleted"})
@@ -170,16 +158,13 @@ func (h *Handler) DeleteResourceAllocation(c *fiber.Ctx) error {
 
 // GetResourceCapacity returns capacity info for all employees
 func (h *Handler) GetResourceCapacity(c *fiber.Ctx) error {
-	// Get optional filters
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
 	projectID := c.Query("project_id")
-	periodStart := c.Query("period_start")
-	periodEnd := c.Query("period_end")
 
 	// Get all employees with resource planning fields
-	qb := NewQueryBuilder("employees")
-	qb.Select("id,name,position,work_hours_per_week,availability_percent")
-	qb.Order("name", true)
-
 	var employees []struct {
 		ID                  string `json:"id"`
 		Name                string `json:"name"`
@@ -187,28 +172,22 @@ func (h *Handler) GetResourceCapacity(c *fiber.Ctx) error {
 		WorkHoursPerWeek    *int   `json:"work_hours_per_week"`
 		AvailabilityPercent *int   `json:"availability_percent"`
 	}
-	statusCode, err := h.PostgrestRequest("GET", qb.Build(), nil, &employees)
-	if err != nil || statusCode >= 400 {
-		return c.Status(statusCode).JSON(fiber.Map{"error": "Failed to fetch employees"})
+	err := h.DB.From("employees").Select("id, name, position, work_hours_per_week, availability_percent").Order("name", false).Execute(&employees)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	// Get allocations for these employees
-	allocQb := NewQueryBuilder("resource_allocations")
+	// Get allocations
+	allocQuery := h.DB.From("resource_allocations").Select("employee_id, allocated_hours_per_week")
 	if projectID != "" {
-		allocQb.Filter("project_id", "eq", projectID)
-	}
-	if periodStart != "" {
-		allocQb.Filter("period_start", "gte", periodStart)
-	}
-	if periodEnd != "" {
-		allocQb.Filter("period_end", "lte", periodEnd)
+		allocQuery = allocQuery.Eq("project_id", projectID)
 	}
 
-	var allocations []models.ResourceAllocation
-	statusCode, err = h.PostgrestRequest("GET", allocQb.Build(), nil, &allocations)
-	if err != nil || statusCode >= 400 {
-		allocations = []models.ResourceAllocation{} // Continue without allocations
+	var allocations []struct {
+		EmployeeID            string `json:"employee_id"`
+		AllocatedHoursPerWeek int    `json:"allocated_hours_per_week"`
 	}
+	allocQuery.Execute(&allocations)
 
 	// Build allocation map by employee
 	allocByEmployee := make(map[string]int)
@@ -256,26 +235,31 @@ func (h *Handler) GetResourceCapacity(c *fiber.Ctx) error {
 
 // GetResourceStats returns aggregated resource statistics
 func (h *Handler) GetResourceStats(c *fiber.Ctx) error {
-	// Get capacity data first
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
 	projectID := c.Query("project_id")
 
 	// Get employees
-	qb := NewQueryBuilder("employees")
-	qb.Select("id,work_hours_per_week,availability_percent")
 	var employees []struct {
 		ID                  string `json:"id"`
 		WorkHoursPerWeek    *int   `json:"work_hours_per_week"`
 		AvailabilityPercent *int   `json:"availability_percent"`
 	}
-	h.PostgrestRequest("GET", qb.Build(), nil, &employees)
+	h.DB.From("employees").Select("id, work_hours_per_week, availability_percent").Execute(&employees)
 
 	// Get allocations
-	allocQb := NewQueryBuilder("resource_allocations")
+	allocQuery := h.DB.From("resource_allocations").Select("employee_id, allocated_hours_per_week")
 	if projectID != "" {
-		allocQb.Filter("project_id", "eq", projectID)
+		allocQuery = allocQuery.Eq("project_id", projectID)
 	}
-	var allocations []models.ResourceAllocation
-	h.PostgrestRequest("GET", allocQb.Build(), nil, &allocations)
+
+	var allocations []struct {
+		EmployeeID            string `json:"employee_id"`
+		AllocatedHoursPerWeek int    `json:"allocated_hours_per_week"`
+	}
+	allocQuery.Execute(&allocations)
 
 	// Build allocation map
 	allocByEmployee := make(map[string]int)
@@ -329,28 +313,20 @@ func (h *Handler) GetResourceStats(c *fiber.Ctx) error {
 
 // ListEmployeeAbsences returns absences for an employee
 func (h *Handler) ListEmployeeAbsences(c *fiber.Ctx) error {
-	employeeID := c.Query("employee_id")
-
-	qb := NewQueryBuilder("employee_absences")
-	if employeeID != "" {
-		qb.Filter("employee_id", "eq", employeeID)
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
 	}
 
-	// Date filters
-	if startFrom := c.Query("start_from"); startFrom != "" {
-		qb.Filter("start_date", "gte", startFrom)
-	}
-	if endTo := c.Query("end_to"); endTo != "" {
-		qb.Filter("end_date", "lte", endTo)
-	}
+	query := h.DB.From("employee_absences").Select("*, employee:employees(id, name, photo_base64)")
 
-	qb.Order("start_date", false)
-	qb.Limit(c.QueryInt("limit", 100))
+	if employeeID := c.Query("employee_id"); employeeID != "" {
+		query = query.Eq("employee_id", employeeID)
+	}
 
 	var absences []models.EmployeeAbsence
-	statusCode, err := h.PostgrestRequest("GET", qb.Build(), nil, &absences)
-	if err != nil || statusCode >= 400 {
-		return c.Status(statusCode).JSON(fiber.Map{"error": "Failed to fetch absences"})
+	err := query.Order("start_date", true).Limit(100).Execute(&absences)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	return c.JSON(absences)
@@ -358,6 +334,10 @@ func (h *Handler) ListEmployeeAbsences(c *fiber.Ctx) error {
 
 // CreateEmployeeAbsence creates a new absence record
 func (h *Handler) CreateEmployeeAbsence(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
 	var input struct {
 		EmployeeID  string  `json:"employee_id"`
 		AbsenceType string  `json:"absence_type"`
@@ -390,28 +370,24 @@ func (h *Handler) CreateEmployeeAbsence(c *fiber.Ctx) error {
 		payload["description"] = *input.Description
 	}
 
-	body, _ := json.Marshal(payload)
-	var result []models.EmployeeAbsence
-	statusCode, err := h.PostgrestRequest("POST", "employee_absences", body, &result)
-	if err != nil || statusCode >= 400 {
-		return c.Status(statusCode).JSON(fiber.Map{"error": "Failed to create absence"})
+	result, err := h.DB.Insert("employee_absences", payload)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	if len(result) > 0 {
-		return c.Status(fiber.StatusCreated).JSON(result[0])
-	}
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Absence created"})
+	return c.Status(fiber.StatusCreated).JSON(result)
 }
 
 // DeleteEmployeeAbsence removes an absence record
 func (h *Handler) DeleteEmployeeAbsence(c *fiber.Ctx) error {
-	id := c.Params("id")
-	qb := NewQueryBuilder("employee_absences")
-	qb.Filter("id", "eq", id)
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
 
-	statusCode, err := h.PostgrestRequest("DELETE", qb.Build(), nil, nil)
-	if err != nil || statusCode >= 400 {
-		return c.Status(statusCode).JSON(fiber.Map{"error": "Failed to delete absence"})
+	id := c.Params("id")
+
+	if err := h.DB.Delete("employee_absences", "id", id); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	return c.JSON(fiber.Map{"message": "Absence deleted"})
@@ -421,6 +397,10 @@ func (h *Handler) DeleteEmployeeAbsence(c *fiber.Ctx) error {
 
 // UpdateEmployeeResourceSettings updates resource planning fields for an employee
 func (h *Handler) UpdateEmployeeResourceSettings(c *fiber.Ctx) error {
+	if h.DB == nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database not configured"})
+	}
+
 	id := c.Params("id")
 
 	var input struct {
@@ -448,18 +428,10 @@ func (h *Handler) UpdateEmployeeResourceSettings(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "No fields to update"})
 	}
 
-	body, _ := json.Marshal(payload)
-	qb := NewQueryBuilder("employees")
-	qb.Filter("id", "eq", id)
-
-	var result []models.Employee
-	statusCode, err := h.PostgrestRequest("PATCH", qb.Build(), body, &result)
-	if err != nil || statusCode >= 400 {
-		return c.Status(statusCode).JSON(fiber.Map{"error": "Failed to update employee"})
+	result, err := h.DB.Update("employees", "id", id, payload)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	if len(result) > 0 {
-		return c.JSON(result[0])
-	}
-	return c.JSON(fiber.Map{"message": "Employee resource settings updated"})
+	return c.JSON(result)
 }

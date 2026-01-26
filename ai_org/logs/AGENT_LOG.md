@@ -211,6 +211,20 @@
 - **Файлы:** `backend/internal/handlers/resources.go`
 - **Статус:** ✅ Исправлено
 
+### GAP-006 BUGFIX: Database API (Insert/Update/Delete)
+- **Инициатор:** CI/CD (build error)
+- **Исполнитель:** Developer
+- **Проблема:** Использовался неправильный паттерн Database API
+  - Неверно: `h.DB.From("table").Insert(data).Execute(&result)`
+  - Неверно: `h.DB.From("table").Update(data).Eq("id", id).Execute(&result)`
+  - Неверно: `h.DB.From("table").Delete().Eq("id", id).Execute(nil)`
+- **Решение:** Использованы правильные методы Database API:
+  - `h.DB.Insert("table", data)` — возвращает (result, error)
+  - `h.DB.Update("table", "key_column", id, data)` — возвращает (result, error)
+  - `h.DB.Delete("table", "key_column", id)` — возвращает error
+- **Файлы:** `backend/internal/handlers/resources.go`
+- **Статус:** ✅ Исправлено
+
 ---
 
 ## 2026-01-23

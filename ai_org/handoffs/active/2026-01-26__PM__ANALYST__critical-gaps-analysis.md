@@ -178,6 +178,7 @@
 - Метрики: utilization_percent, overloaded
 - Миграция: 005_resource_planning.sql
 - Bugfix: исправлен import path для models package
+- Bugfix: исправлен Database API (Insert/Update/Delete методы)
 
 ### Следующие шаги:
 - GAP-007: Диагностика бага зависимостей (🔍 DIAGNOSED)

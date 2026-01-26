@@ -176,6 +176,10 @@ docker-compose down && docker-compose build --no-cache backend frontend && docke
 
 ## Bugfixes
 - **Import path**: Исправлен import path для models package (`github.com/shakhovskiya-create/one-on-one-assistant` → `github.com/ekf/one-on-one-backend`)
+- **Database API**: Исправлен паттерн API для Insert/Update/Delete операций:
+  - `h.DB.Insert("table", data)` — вместо `h.DB.From("table").Insert(data).Execute()`
+  - `h.DB.Update("table", "key", id, data)` — вместо `h.DB.From("table").Update(data).Eq().Execute()`
+  - `h.DB.Delete("table", "key", id)` — вместо `h.DB.From("table").Delete().Eq().Execute()`
 
 ## Related
 - Functional Model: `ai_org/deliverables/analyst/2026-01-26__critical-gaps__fm.md` (Section 4)
