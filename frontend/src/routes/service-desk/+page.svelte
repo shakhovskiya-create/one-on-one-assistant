@@ -24,20 +24,39 @@
 	];
 
 	onMount(async () => {
+		// Set a timeout to prevent infinite loading
+		const timeoutId = setTimeout(() => {
+			if (loading) {
+				loading = false;
+				error = 'Превышено время ожидания. Попробуйте обновить страницу.';
+			}
+		}, 10000);
+
 		try {
-			const user = await auth.getMe();
-			currentUserId = user.id;
+			// Try to get user, but don't block if it fails
+			let userId: string | null = null;
+			try {
+				const user = await auth.getMe();
+				userId = user.id;
+				currentUserId = userId;
+			} catch {
+				// User not authenticated, show portal without personal tickets
+				console.log('User not authenticated, showing public portal');
+			}
 
-			const [ticketList, statsData] = await Promise.all([
-				serviceDesk.getMyTickets(user.id),
-				serviceDesk.getStats().catch(() => null),
-			]);
-
-			tickets = ticketList;
+			// Load stats regardless of auth status
+			const statsData = await serviceDesk.getStats().catch(() => null);
 			stats = statsData;
+
+			// Only load tickets if user is authenticated
+			if (userId) {
+				const ticketList = await serviceDesk.getMyTickets(userId).catch(() => []);
+				tickets = ticketList || [];
+			}
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load data';
+			error = e instanceof Error ? e.message : 'Не удалось загрузить данные';
 		} finally {
+			clearTimeout(timeoutId);
 			loading = false;
 		}
 	});
@@ -102,6 +121,20 @@
 </svelte:head>
 
 <div class="min-h-screen bg-gray-50">
+	<!-- Agent Console Link -->
+	<div class="fixed top-12 right-4 z-40">
+		<a
+			href="/service-desk/agent"
+			class="inline-flex items-center gap-2 px-3 py-1.5 bg-ekf-dark/90 text-gray-300 hover:text-white rounded-lg text-sm transition-colors border border-gray-700"
+		>
+			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+			</svg>
+			Консоль агента
+		</a>
+	</div>
+
 	<!-- Hero Section -->
 	<section class="bg-gradient-to-br from-ekf-dark via-gray-900 to-ekf-dark text-white overflow-hidden relative">
 		<div class="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(229,57,53,0.15),transparent_50%)]"></div>

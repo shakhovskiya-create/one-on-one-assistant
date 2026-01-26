@@ -23,6 +23,8 @@
 		sprint_id?: string;
 		fix_version_id?: string;
 		created_at: string;
+		// Task type
+		task_type?: 'feature' | 'bug' | 'tech_debt' | 'improvement' | 'task';
 		// Resource planning
 		estimated_hours?: number;
 		actual_hours?: number;
@@ -103,6 +105,24 @@
 		5: { label: 'Минимальный', color: 'text-gray-600 bg-gray-50' }
 	};
 
+	// Task type labels for badges
+	const taskTypeLabels: Record<string, { label: string; color: string; icon: string }> = {
+		feature: { label: 'Фича', color: 'bg-blue-100 text-blue-700', icon: '✨' },
+		bug: { label: 'Баг', color: 'bg-red-100 text-red-700', icon: '🐛' },
+		tech_debt: { label: 'Техдолг', color: 'bg-purple-100 text-purple-700', icon: '🔧' },
+		improvement: { label: 'Улучшение', color: 'bg-green-100 text-green-700', icon: '📈' },
+		task: { label: 'Задача', color: 'bg-gray-100 text-gray-700', icon: '📋' }
+	};
+
+	// Priority border colors for Kanban cards
+	const priorityBorderColors: Record<number, string> = {
+		1: 'border-l-red-500',
+		2: 'border-l-orange-500',
+		3: 'border-l-yellow-400',
+		4: 'border-l-blue-300',
+		5: 'border-l-gray-300'
+	};
+
 	onMount(async () => {
 		await loadData();
 		// Check GitHub configuration
@@ -155,6 +175,7 @@
 			assignee_id: $user?.id || '',
 			project_id: filterProject || '',
 			due_date: '',
+			task_type: 'task',
 			estimated_hours: undefined,
 			estimated_cost: undefined,
 			sprint_id: activeSprint?.id || '',
@@ -219,6 +240,8 @@
 				due_date: editingTask.due_date || undefined,
 				priority: Number(editingTask.priority) || 3,
 				story_points: editingTask.story_points ? Number(editingTask.story_points) : undefined,
+				// Task type
+				task_type: editingTask.task_type || 'task',
 				// Resource planning fields
 				estimated_hours: editingTask.estimated_hours ? Number(editingTask.estimated_hours) : undefined,
 				estimated_cost: editingTask.estimated_cost ? Number(editingTask.estimated_cost) : undefined,
@@ -524,6 +547,12 @@
 		if (!id) return '';
 		const version = versions.find(v => v.id === id);
 		return version?.name || '';
+	}
+
+	function getEmployeePhoto(id: string): string | null {
+		if (!id) return null;
+		const emp = employees.find(e => e.id === id);
+		return emp?.photo_base64 || null;
 	}
 
 	function formatDate(dateStr: string | undefined): string {
@@ -839,60 +868,68 @@
 					<div class="flex-1 p-2 space-y-2 overflow-y-auto">
 						{#each getTasksByStatus(column.id) as task (task.id)}
 							<div
-								class="bg-white rounded-lg shadow-sm p-3 cursor-pointer hover:shadow-md transition-shadow border-l-4 {task.priority === 1 ? 'border-red-500' : task.priority === 2 ? 'border-orange-500' : task.priority === 4 ? 'border-blue-300' : task.priority === 5 ? 'border-gray-300' : 'border-yellow-400'}"
+								class="task-card bg-white rounded-lg p-4 shadow-sm border border-gray-100 cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg border-l-[3px] {priorityBorderColors[task.priority || 3]} {task.status === 'done' ? 'opacity-75' : ''}"
 								draggable="true"
 								ondragstart={(e) => handleDragStart(e, task)}
 								onclick={() => openEditTask(task)}
 							>
-								<!-- Task ID / Project -->
-								{#if task.project_id}
-									<div class="text-xs text-gray-400 mb-1 flex items-center gap-1">
-										<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-										</svg>
-										{getProjectName(task.project_id)}
-									</div>
-								{/if}
-								<div class="font-medium text-gray-900 text-sm mb-1">{task.title}</div>
-								{#if task.description}
-									<p class="text-xs text-gray-500 line-clamp-2 mb-2">{task.description}</p>
-								{/if}
-								<!-- Sprint & Version badges -->
-								{#if task.sprint_id || task.fix_version_id}
-									<div class="flex flex-wrap gap-1 mb-2">
-										{#if task.sprint_id}
-											<span class="px-1.5 py-0.5 rounded text-[10px] bg-blue-50 text-blue-600" title="Спринт">
-												⚡ {getSprintName(task.sprint_id)}
-											</span>
-										{/if}
-										{#if task.fix_version_id}
-											<span class="px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-600" title="Версия">
-												🏷️ {getVersionName(task.fix_version_id)}
-											</span>
-										{/if}
-									</div>
-								{/if}
-								<div class="flex items-center justify-between text-xs">
-									<div class="flex items-center gap-1.5">
-										<span class="px-1.5 py-0.5 rounded {priorityLabels[task.priority || 3].color}">
-											P{task.priority || 3}
+								<!-- Header: Task ID + Type Badge -->
+								<div class="flex items-start justify-between mb-2">
+									<span class="text-xs text-gray-400 font-mono">EKF-{task.id.substring(0, 4).toUpperCase()}</span>
+									{#if task.task_type && taskTypeLabels[task.task_type]}
+										<span class="text-xs px-2 py-0.5 rounded-full font-medium {taskTypeLabels[task.task_type].color}">
+											{taskTypeLabels[task.task_type].icon} {taskTypeLabels[task.task_type].label}
 										</span>
-										{#if task.story_points}
-											<span class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 font-medium" title="Story Points">
-												{task.story_points}
-											</span>
+									{/if}
+								</div>
+
+								<!-- Title -->
+								<h4 class="font-medium text-gray-900 text-sm mb-2 line-clamp-2">{task.title}</h4>
+
+								<!-- Sprint badge -->
+								{#if task.sprint_id}
+									<div class="mb-2">
+										<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] bg-blue-50 text-blue-600 font-medium">
+											⚡ {getSprintName(task.sprint_id)}
+										</span>
+									</div>
+								{/if}
+
+								<!-- Footer: Assignee + Story Points -->
+								<div class="flex items-center justify-between pt-2 border-t border-gray-50">
+									<div class="flex items-center gap-2">
+										{#if task.assignee_id}
+											{@const photo = getEmployeePhoto(task.assignee_id)}
+											{#if photo}
+												<img
+													src="data:image/jpeg;base64,{photo}"
+													alt={getEmployeeName(task.assignee_id)}
+													class="w-6 h-6 rounded-full object-cover ring-2 ring-white shadow-sm"
+												/>
+											{:else}
+												<div class="w-6 h-6 rounded-full bg-gradient-to-br from-ekf-red to-red-600 text-white flex items-center justify-center text-[10px] font-bold ring-2 ring-white shadow-sm">
+													{getEmployeeName(task.assignee_id).charAt(0)}
+												</div>
+											{/if}
+											<span class="text-xs text-gray-500 truncate max-w-[100px]">{getEmployeeName(task.assignee_id).split(' ')[0]}</span>
+										{:else}
+											<div class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
+												<svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+												</svg>
+											</div>
 										{/if}
 									</div>
-									<div class="flex items-center gap-2">
+									<div class="flex items-center gap-1.5">
 										{#if task.due_date}
-											<span class="{isOverdue(task.due_date) && task.status !== 'done' ? 'text-red-600 font-medium' : 'text-gray-400'}" title="Срок">
+											<span class="text-[10px] {isOverdue(task.due_date) && task.status !== 'done' ? 'text-red-600 font-medium' : 'text-gray-400'}">
 												{formatDate(task.due_date)}
 											</span>
 										{/if}
-										{#if task.assignee_id}
-											<div class="w-5 h-5 rounded-full bg-gradient-to-br from-gray-400 to-gray-500 text-white flex items-center justify-center text-[10px] font-medium shadow-sm" title={getEmployeeName(task.assignee_id)}>
-												{getEmployeeName(task.assignee_id).charAt(0)}
-											</div>
+										{#if task.story_points}
+											<span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[10px] font-bold">
+												{task.story_points} SP
+											</span>
 										{/if}
 									</div>
 								</div>
@@ -965,7 +1002,17 @@
 						</select>
 					</div>
 				</div>
-				<div class="grid grid-cols-4 gap-3">
+				<div class="grid grid-cols-5 gap-3">
+					<div>
+						<label class="block text-xs font-medium text-gray-500 mb-1">Тип</label>
+						<select bind:value={editingTask.task_type} class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+							<option value="task">📋 Задача</option>
+							<option value="feature">✨ Фича</option>
+							<option value="bug">🐛 Баг</option>
+							<option value="tech_debt">🔧 Техдолг</option>
+							<option value="improvement">📈 Улучшение</option>
+						</select>
+					</div>
 					<div>
 						<label class="block text-xs font-medium text-gray-500 mb-1">Статус</label>
 						<select bind:value={editingTask.status} class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
@@ -985,7 +1032,7 @@
 						</select>
 					</div>
 					<div>
-						<label class="block text-xs font-medium text-gray-500 mb-1">Story Points</label>
+						<label class="block text-xs font-medium text-gray-500 mb-1">SP</label>
 						<select bind:value={editingTask.story_points} class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
 							<option value={undefined}>—</option>
 							{#each storyPointsOptions as sp}
