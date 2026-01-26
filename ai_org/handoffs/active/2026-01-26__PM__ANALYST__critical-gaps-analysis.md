@@ -141,8 +141,19 @@
 
 ### GAP-001: Global Navigation (✅ DONE)
 - GlobalNav.svelte: фиксированный состав 8 модулей
-- Sidebar.svelte: контекстная навигация по разделам
 - GAP-012: профиль с полным ФИО
+
+### GAP-009: Tasks Sidebar (✅ DONE)
+- Полностью переписан Sidebar.svelte по макету 01-tasks.html
+- Project Selector с отображением активного проекта
+- Планирование: Доска задач, Бэклог, Roadmap
+- Спринты: динамическая загрузка (Active/Planned) + архив
+- Релизы: динамическая загрузка (Dev/Released)
+- Тестирование: Тест-планы, Тест-кейсы, Прогоны
+- Документация: Wiki, Требования
+- Интеграции: GitHub, Confluence
+- Meetings sidebar по макету 04-meetings.html
+- Service Desk sidebar по макетам 02, 03
 
 ### Следующие шаги:
 - GAP-007: Диагностика бага зависимостей
