@@ -263,6 +263,26 @@
 - **Файлы:** `frontend/src/routes/tasks/+page.svelte`
 - **Статус:** ✅ Исправлено
 
+### Service Desk: Agent Console + Portal/Agent Toggle
+- **Инициатор:** Владелец продукта
+- **Исполнитель:** Developer
+- **Проблема:**
+  - Отсутствовала консоль агента (макет 03-service-desk-agent.html)
+  - Не было переключателя Portal/Agent
+  - Страница зависала при ошибках API
+- **Решение:**
+  - Создана страница `/service-desk/agent` с Agent Console:
+    - Sidebar с навигацией (Queue, Incidents, Requests, My Tickets)
+    - Статистика (SLA, открыто, просрочено, решено)
+    - Таблица тикетов с фильтрами
+  - Добавлен переключатель "Консоль агента" на Portal
+  - Добавлен timeout (10 сек) для предотвращения зависания
+  - Улучшена обработка ошибок авторизации
+- **Файлы:**
+  - `frontend/src/routes/service-desk/agent/+page.svelte` (NEW)
+  - `frontend/src/routes/service-desk/+page.svelte` (MODIFIED)
+- **Статус:** ✅ Исправлено
+
 ---
 
 ## 2026-01-23
