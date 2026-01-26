@@ -29,7 +29,34 @@
   - GAP-007: Зависимости задач — БАГ, UI зависает
   - GAP-010: Service Desk — НЕ РЕАЛИЗОВАН
   - GAP-001: Навигация — элементы в неправильном месте
-- **Статус:** Ожидает ответов владельца продукта на вопросы
+- **Статус:** ✅ Получены ответы, реализация в процессе
+
+### GAP-001 FIX: Global Navigation и Context Sidebar
+- **Инициатор:** PM (Sprint 9 CRITICAL)
+- **Исполнитель:** Developer
+- **Результат:**
+  - **GlobalNav.svelte**: Фиксированный состав 8 модулей (утверждённое бизнес-решение):
+    1. Главная (/)
+    2. Сотрудники (/employees)
+    3. Задачи (/tasks)
+    4. Встречи (/meetings)
+    5. Почта (/mail)
+    6. Сообщения (/messenger)
+    7. SD (/service-desk)
+    8. Аналитика (/analytics)
+  - **Sidebar.svelte**: Контекстная навигация по разделам:
+    - Tasks: Доска задач, Бэклог, Проекты, Спринты, Релизы, GitHub, Confluence
+    - Meetings: Календарь, Расписание, Предстоящие, Прошедшие
+    - Service Desk: Мои заявки, Создать заявку
+  - Удалено дублирование глобальных пунктов (Почта, Сообщения, SD, Аналитика) в sidebar
+  - Профиль: полное ФИО вместо только имени (GAP-012)
+  - Обновлены deliverables аналитика с ответами владельца продукта
+- **Файлы:**
+  - `frontend/src/lib/components/GlobalNav.svelte`
+  - `frontend/src/lib/components/Sidebar.svelte`
+  - `ai_org/deliverables/analyst/2026-01-26__critical-gaps__fm.md`
+  - `ai_org/deliverables/analyst/2026-01-26__critical-gaps__questions.md`
+- **Статус:** В процессе деплоя
 
 ---
 

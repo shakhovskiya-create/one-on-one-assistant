@@ -11,11 +11,15 @@
 	let { user = null, onLogout }: Props = $props();
 	let showUserMenu = $state(false);
 
+	// Global Navigation — утверждённый состав (бизнес-решение 2026-01-26)
 	const modules = [
-		{ href: '/', label: 'Дашборд', exact: true },
+		{ href: '/', label: 'Главная', exact: true },
+		{ href: '/employees', label: 'Сотрудники' },
 		{ href: '/tasks', label: 'Задачи' },
 		{ href: '/meetings', label: 'Встречи' },
-		{ href: '/employees', label: 'Сотрудники' },
+		{ href: '/mail', label: 'Почта' },
+		{ href: '/messenger', label: 'Сообщения' },
+		{ href: '/service-desk', label: 'SD' },
 		{ href: '/analytics', label: 'Аналитика' },
 	];
 
@@ -79,7 +83,7 @@
 							{user.name.charAt(0)}
 						</div>
 					{/if}
-					<span class="text-sm hidden sm:block">{user.name.split(' ')[0]}</span>
+					<span class="text-sm hidden sm:block">{user.name}</span>
 				</button>
 
 				{#if showUserMenu}
