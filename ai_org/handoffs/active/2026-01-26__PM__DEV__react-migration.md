@@ -37,19 +37,21 @@
 - [x] Настроить API client (fetch wrapper)
 - [x] Настроить WebSocket client
 
-#### Фаза 2: Компоненты дизайн-системы
-- [ ] Layout components (Sidebar, Header, MainContent)
-- [ ] Navigation components
-- [ ] Form components (Input, Select, Button, etc.)
-- [ ] Card components
-- [ ] Modal/Dialog components
-- [ ] Table components
+#### Фаза 2: Компоненты дизайн-системы ✅ ЗАВЕРШЕНА
+- [x] Layout components (Sidebar, Header, MainContent)
+- [x] Navigation components
+- [x] Form components (Input, Select, Button, Textarea)
+- [x] Card components (Card, CardHeader, CardTitle, CardContent, CardFooter)
+- [x] Modal/Dialog components (Modal, ConfirmDialog)
+- [x] Table components (Table, TableHeader, TableBody, TableRow, etc.)
+- [x] Badge components (Badge, StatusBadge, PriorityBadge)
+- [x] Avatar components (Avatar, AvatarGroup)
 - [ ] Toast/Notification components
 
 #### Фаза 3: Страницы (по приоритету)
-1. [ ] Auth (Login)
-2. [ ] Dashboard
-3. [ ] Tasks (Kanban + List views)
+1. [x] Auth (Login) ✅
+2. [x] Dashboard ✅
+3. [x] Tasks (Kanban + List views) ✅
 4. [ ] Employees
 5. [ ] Messenger
 6. [ ] Mail
